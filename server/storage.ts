@@ -4,7 +4,9 @@ import {
   processDef,
   processStep,
   pfmea,
+  pfmeaRow,
   controlPlan,
+  controlPlanRow,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -13,8 +15,12 @@ import {
   type InsertProcessStep,
   type PFMEA,
   type InsertPFMEA,
+  type PFMEARow,
+  type InsertPFMEARow,
   type ControlPlan,
   type InsertControlPlan,
+  type ControlPlanRow,
+  type InsertControlPlanRow,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -34,11 +40,17 @@ export interface IStorage {
   
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
+  getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined>;
   createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA>;
+  createPFMEARow(insertRow: InsertPFMEARow): Promise<PFMEARow>;
+  updatePFMEARow(id: string, updates: Partial<InsertPFMEARow>): Promise<PFMEARow | undefined>;
   
   // Control Plans
   getControlPlansByPartId(partId: string): Promise<ControlPlan[]>;
+  getControlPlanById(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[] }) | undefined>;
   createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan>;
+  createControlPlanRow(insertRow: InsertControlPlanRow): Promise<ControlPlanRow>;
+  updateControlPlanRow(id: string, updates: Partial<InsertControlPlanRow>): Promise<ControlPlanRow | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -100,7 +112,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPFMEAsByPartId(partId: string): Promise<PFMEA[]> {
-    return await db.select().from(pfmea).where(eq(pfmea.partId, partId));
+    return await db.select().from(pfmea).where(eq(pfmea.partId, partId)).orderBy(desc(pfmea.rev));
+  }
+
+  async getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined> {
+    const [pfmeaRecord] = await db.select().from(pfmea).where(eq(pfmea.id, id));
+    if (!pfmeaRecord) return undefined;
+    
+    const rows = await db.select().from(pfmeaRow).where(eq(pfmeaRow.pfmeaId, id));
+    return { ...pfmeaRecord, rows };
   }
 
   async createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA> {
@@ -108,13 +128,47 @@ export class DatabaseStorage implements IStorage {
     return newPFMEA;
   }
 
+  async createPFMEARow(insertRow: InsertPFMEARow): Promise<PFMEARow> {
+    const [newRow] = await db.insert(pfmeaRow).values(insertRow).returning();
+    return newRow;
+  }
+
+  async updatePFMEARow(id: string, updates: Partial<InsertPFMEARow>): Promise<PFMEARow | undefined> {
+    const [updatedRow] = await db.update(pfmeaRow)
+      .set(updates)
+      .where(eq(pfmeaRow.id, id))
+      .returning();
+    return updatedRow || undefined;
+  }
+
   async getControlPlansByPartId(partId: string): Promise<ControlPlan[]> {
-    return await db.select().from(controlPlan).where(eq(controlPlan.partId, partId));
+    return await db.select().from(controlPlan).where(eq(controlPlan.partId, partId)).orderBy(desc(controlPlan.rev));
+  }
+
+  async getControlPlanById(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[] }) | undefined> {
+    const [plan] = await db.select().from(controlPlan).where(eq(controlPlan.id, id));
+    if (!plan) return undefined;
+    
+    const rows = await db.select().from(controlPlanRow).where(eq(controlPlanRow.controlPlanId, id));
+    return { ...plan, rows };
   }
 
   async createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan> {
     const [newControlPlan] = await db.insert(controlPlan).values(insertControlPlan).returning();
     return newControlPlan;
+  }
+
+  async createControlPlanRow(insertRow: InsertControlPlanRow): Promise<ControlPlanRow> {
+    const [newRow] = await db.insert(controlPlanRow).values(insertRow).returning();
+    return newRow;
+  }
+
+  async updateControlPlanRow(id: string, updates: Partial<InsertControlPlanRow>): Promise<ControlPlanRow | undefined> {
+    const [updatedRow] = await db.update(controlPlanRow)
+      .set(updates)
+      .where(eq(controlPlanRow.id, id))
+      .returning();
+    return updatedRow || undefined;
   }
 }
 
