@@ -99,6 +99,16 @@ The seed script creates:
 
 ## Recent Changes
 
+**2025-11-24**: Frontend-backend integration completed
+- Connected Dashboard to display real metrics from /api/parts and /api/processes
+- Connected Parts page with TanStack Query for data fetching and CRUD operations
+- Built New Part dialog with react-hook-form + Zod validation, proper cache invalidation
+- Connected Processes page with real data from backend API
+- Built New Process dialog with controlled Select components (fixed stale data bug)
+- Fixed dialog closing sequence: form.reset() before setOpen(false) for proper cleanup
+- All CRUD operations tested end-to-end with playwright (Dashboard, Parts, Processes)
+- Proper loading states, error handling, and toast notifications implemented throughout
+
 **2025-11-23**: Initial backend integration
 - Created comprehensive PostgreSQL schema (20+ tables)
 - Implemented DatabaseStorage with Drizzle ORM
