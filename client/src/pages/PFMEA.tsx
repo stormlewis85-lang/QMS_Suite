@@ -54,7 +54,7 @@ export default function PFMEA() {
 
   const selectedPart = parts.find(p => p.id === selectedPartId);
 
-  if (selectedPfmeaId && pfmeaDetail) {
+  if (selectedPfmeaId) {
     return <PFMEADetailView pfmea={pfmeaDetail} part={selectedPart!} onBack={() => setSelectedPfmeaId(null)} loading={pfmeaDetailLoading} />;
   }
 
@@ -164,11 +164,25 @@ export default function PFMEA() {
 }
 
 function PFMEADetailView({ pfmea, part, onBack, loading }: {
-  pfmea: PFMEAWithRows;
+  pfmea?: PFMEAWithRows;
   part: Part;
   onBack: () => void;
   loading: boolean;
 }) {
+  if (loading || !pfmea) {
+    return (
+      <div className="space-y-6">
+        <Button variant="outline" size="sm" onClick={onBack} data-testid="button-back">
+          <ChevronLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
