@@ -41,7 +41,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Part, ControlPlan, ControlPlanRow } from "@shared/schema";
+import type { Part, ControlPlan, ControlPlanRow, InsertControlPlan } from "@shared/schema";
+import { insertControlPlanSchema } from "@shared/schema";
 
 type ControlPlanWithRows = ControlPlan & { rows: ControlPlanRow[] };
 
@@ -395,9 +396,178 @@ function ControlPlanRowDialog({
   );
 }
 
+const generateControlPlanFormSchema = insertControlPlanSchema
+  .pick({ rev: true, type: true, docNo: true })
+  .extend({
+    rev: z.string().min(1, "Revision is required"),
+    type: z.string().min(1, "Type is required"),
+    processOwner: z.string().optional(),
+  });
+
+type GenerateControlPlanFormValues = z.infer<typeof generateControlPlanFormSchema>;
+
+function GenerateControlPlanDialog({
+  open,
+  onOpenChange,
+  partId,
+  existingPlans,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  partId: string;
+  existingPlans: ControlPlan[];
+}) {
+  const { toast } = useToast();
+  const form = useForm<GenerateControlPlanFormValues>({
+    resolver: zodResolver(generateControlPlanFormSchema),
+    defaultValues: {
+      rev: "A",
+      type: "Production",
+      docNo: "",
+      processOwner: "",
+    },
+  });
+
+  // Reset form if part changes while dialog is open
+  useEffect(() => {
+    if (open) {
+      form.reset({ rev: "A", type: "Production", docNo: "", processOwner: "" });
+    }
+  }, [partId, open, form]);
+
+  const createMutation = useMutation({
+    mutationFn: async (values: GenerateControlPlanFormValues) => {
+      const payload: InsertControlPlan = {
+        partId,
+        rev: values.rev,
+        type: values.type,
+        status: "draft",
+        docNo: values.docNo || null,
+        processOwner: values.processOwner || null,
+        approvedBy: null,
+        approvedAt: null,
+        effectiveFrom: null,
+        supersedesId: null,
+      };
+      return await apiRequest<ControlPlan>("POST", "/api/control-plans", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", partId] });
+      toast({ title: "Control Plan created successfully" });
+      form.reset({ rev: "A", type: "Production", docNo: "", processOwner: "" });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Failed to create Control Plan", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const onSubmit = (values: GenerateControlPlanFormValues) => {
+    // Check for duplicate revision before calling API
+    const duplicate = existingPlans.find(p => p.rev === values.rev);
+    if (duplicate) {
+      toast({ 
+        title: "Duplicate revision", 
+        description: `Control Plan with revision ${values.rev} already exists for this part. Please use a different revision.`,
+        variant: "destructive" 
+      });
+      return;
+    }
+    createMutation.mutate(values);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Generate New Control Plan</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="rev"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Revision</FormLabel>
+                  <FormControl>
+                    <Input placeholder="A" {...field} data-testid="input-controlplan-rev" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-controlplan-type">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Pre-Launch">Pre-Launch</SelectItem>
+                      <SelectItem value="Production">Production</SelectItem>
+                      <SelectItem value="Prototype">Prototype</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="docNo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Document Number (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="CP-001" {...field} data-testid="input-controlplan-docno" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="processOwner"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Process Owner (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="John Doe" {...field} data-testid="input-controlplan-owner" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending} data-testid="button-create-controlplan">
+                {createMutation.isPending ? "Creating..." : "Create Control Plan"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ControlPlans() {
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: parts = [], isLoading: partsLoading } = useQuery<Part[]>({
@@ -413,10 +583,7 @@ export default function ControlPlans() {
       });
       return;
     }
-    toast({
-      title: "Generate Control Plan",
-      description: "Control Plan generation feature coming soon",
-    });
+    setGenerateDialogOpen(true);
   };
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<ControlPlan[]>({
@@ -545,6 +712,15 @@ export default function ControlPlans() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {selectedPartId && (
+        <GenerateControlPlanDialog
+          open={generateDialogOpen}
+          onOpenChange={setGenerateDialogOpen}
+          partId={selectedPartId}
+          existingPlans={plans}
+        />
       )}
     </div>
   );

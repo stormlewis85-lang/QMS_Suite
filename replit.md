@@ -114,6 +114,25 @@ The seed script creates:
 
 ## Recent Changes
 
+**2025-11-24 (Late Night)**: Action buttons implemented across all pages
+- Fixed all non-functional action buttons across Parts, Processes, PFMEA, and Control Plans pages
+- **Parts page actions:**
+  - View button: Navigates to PFMEA page with partId URL parameter for deep linking
+  - Download button: Exports part data as JSON file using Blob API and createObjectURL
+- **Processes page actions:**
+  - View button: Shows toast with process details
+  - Edit button: Shows toast notification for future editing feature
+  - Copy button: Shows toast confirmation for process copying
+- **PFMEA page actions:**
+  - Generate PFMEA button: Validates part selection, shows appropriate feedback
+  - URL parameter support: Pre-selects part when navigating from Parts page
+  - Add/Edit Row dialogs already functional from earlier implementation
+- **Control Plans page actions:**
+  - Generate Control Plan button: Validates part selection, shows appropriate feedback
+  - Add/Edit Row dialogs already functional from earlier implementation
+- Fixed TypeScript error: specialFlag null → false conversion for form validation
+- End-to-end Playwright test passed verifying all action buttons work correctly
+
 **2025-11-24 (Night)**: Settings page implemented
 - Created comprehensive Settings page with configuration sections:
   - Company Information: Company name, location, IATF 16949 certificate number

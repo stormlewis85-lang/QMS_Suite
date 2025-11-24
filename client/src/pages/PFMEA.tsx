@@ -41,7 +41,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Part, PFMEA, PFMEARow } from "@shared/schema";
+import type { Part, PFMEA, PFMEARow, InsertPFMEA } from "@shared/schema";
+import { insertPfmeaSchema } from "@shared/schema";
 
 type PFMEAWithRows = PFMEA & { rows: PFMEARow[] };
 
@@ -381,11 +382,154 @@ function PFMEARowDialog({
   );
 }
 
+const generatePfmeaFormSchema = insertPfmeaSchema
+  .pick({ rev: true, basis: true, docNo: true })
+  .extend({
+    rev: z.string().min(1, "Revision is required"),
+  });
+
+type GeneratePFMEAFormValues = z.infer<typeof generatePfmeaFormSchema>;
+
+function GeneratePFMEADialog({
+  open,
+  onOpenChange,
+  partId,
+  existingPfmeas,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  partId: string;
+  existingPfmeas: PFMEA[];
+}) {
+  const { toast } = useToast();
+  const form = useForm<GeneratePFMEAFormValues>({
+    resolver: zodResolver(generatePfmeaFormSchema),
+    defaultValues: {
+      rev: "A",
+      basis: "",
+      docNo: "",
+    },
+  });
+
+  // Close dialog and reset form if part changes while dialog is open
+  useEffect(() => {
+    if (open) {
+      form.reset({ rev: "A", basis: "", docNo: "" });
+    }
+  }, [partId, open, form]);
+
+  const createMutation = useMutation({
+    mutationFn: async (values: GeneratePFMEAFormValues) => {
+      const payload: InsertPFMEA = {
+        partId,
+        rev: values.rev,
+        status: "draft",
+        basis: values.basis || null,
+        docNo: values.docNo || null,
+        approvedBy: null,
+        approvedAt: null,
+        effectiveFrom: null,
+        supersedesId: null,
+      };
+      return await apiRequest<PFMEA>("POST", "/api/pfmea", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pfmea", partId] });
+      toast({ title: "PFMEA created successfully" });
+      form.reset({ rev: "A", basis: "", docNo: "" });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Failed to create PFMEA", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const onSubmit = (values: GeneratePFMEAFormValues) => {
+    // Check for duplicate revision before calling API
+    const duplicate = existingPfmeas.find(p => p.rev === values.rev);
+    if (duplicate) {
+      toast({ 
+        title: "Duplicate revision", 
+        description: `PFMEA with revision ${values.rev} already exists for this part. Please use a different revision.`,
+        variant: "destructive" 
+      });
+      return;
+    }
+    createMutation.mutate(values);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Generate New PFMEA</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="rev"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Revision</FormLabel>
+                  <FormControl>
+                    <Input placeholder="A" {...field} data-testid="input-pfmea-rev" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="docNo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Document Number (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="PFMEA-001" {...field} data-testid="input-pfmea-docno" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="basis"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Basis (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Describe the basis for this PFMEA..." {...field} data-testid="input-pfmea-basis" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending} data-testid="button-create-pfmea">
+                {createMutation.isPending ? "Creating..." : "Create PFMEA"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PFMEA() {
   const urlParams = new URLSearchParams(window.location.search);
   const partIdFromUrl = urlParams.get("partId");
   const [selectedPartId, setSelectedPartId] = useState<string | null>(partIdFromUrl);
   const [selectedPfmeaId, setSelectedPfmeaId] = useState<string | null>(null);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: parts = [], isLoading: partsLoading } = useQuery<Part[]>({
@@ -401,10 +545,7 @@ export default function PFMEA() {
       });
       return;
     }
-    toast({
-      title: "Generate PFMEA",
-      description: "PFMEA generation feature coming soon",
-    });
+    setGenerateDialogOpen(true);
   };
 
   const { data: pfmeas = [], isLoading: pfmeasLoading } = useQuery<PFMEA[]>({
@@ -442,7 +583,7 @@ export default function PFMEA() {
             Process Failure Mode and Effects Analysis (AIAG-VDA 2019)
           </p>
         </div>
-        <Button onClick={handleGeneratePFMEA} data-testid="button-generate-pfmea">
+        <Button onClick={handleGeneratePFMEA} data-testid="button-generate-pfmea-header">
           <Plus className="h-4 w-4 mr-2" />
           Generate PFMEA
         </Button>
@@ -478,7 +619,7 @@ export default function PFMEA() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">PFMEAs for {selectedPart?.partNumber}</CardTitle>
-            <Button onClick={handleGeneratePFMEA} data-testid="button-generate-pfmea">
+            <Button onClick={handleGeneratePFMEA} data-testid="button-generate-pfmea-card">
               <Plus className="h-4 w-4 mr-2" />
               Generate PFMEA
             </Button>
@@ -533,6 +674,15 @@ export default function PFMEA() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {selectedPartId && (
+        <GeneratePFMEADialog
+          open={generateDialogOpen}
+          onOpenChange={setGenerateDialogOpen}
+          partId={selectedPartId}
+          existingPfmeas={pfmeas}
+        />
       )}
     </div>
   );
