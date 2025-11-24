@@ -9,6 +9,9 @@ import {
   insertPfmeaRowSchema,
   insertControlPlanSchema,
   insertControlPlanRowSchema,
+  insertEquipmentLibrarySchema,
+  insertEquipmentErrorProofingSchema,
+  insertEquipmentControlMethodsSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
@@ -264,6 +267,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating control plan row:", error);
       res.status(500).json({ error: "Failed to update control plan row" });
+    }
+  });
+
+  // Equipment Library API
+  app.get("/api/equipment", async (req, res) => {
+    try {
+      const equipment = await storage.getAllEquipment();
+      res.json(equipment);
+    } catch (error) {
+      console.error("Error fetching equipment:", error);
+      res.status(500).json({ error: "Failed to fetch equipment" });
+    }
+  });
+
+  app.get("/api/equipment/:id", async (req, res) => {
+    try {
+      const equipment = await storage.getEquipmentById(req.params.id);
+      if (!equipment) {
+        return res.status(404).json({ error: "Equipment not found" });
+      }
+      res.json(equipment);
+    } catch (error) {
+      console.error("Error fetching equipment:", error);
+      res.status(500).json({ error: "Failed to fetch equipment" });
+    }
+  });
+
+  app.post("/api/equipment", async (req, res) => {
+    try {
+      const validatedData = insertEquipmentLibrarySchema.parse(req.body);
+      const newEquipment = await storage.createEquipment(validatedData);
+      res.status(201).json(newEquipment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating equipment:", error);
+      res.status(500).json({ error: "Failed to create equipment" });
+    }
+  });
+
+  app.patch("/api/equipment/:id", async (req, res) => {
+    try {
+      const updates = insertEquipmentLibrarySchema.partial().parse(req.body);
+      const updatedEquipment = await storage.updateEquipment(req.params.id, updates);
+      if (!updatedEquipment) {
+        return res.status(404).json({ error: "Equipment not found" });
+      }
+      res.json(updatedEquipment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating equipment:", error);
+      res.status(500).json({ error: "Failed to update equipment" });
+    }
+  });
+
+  app.delete("/api/equipment/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteEquipment(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Equipment not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting equipment:", error);
+      res.status(500).json({ error: "Failed to delete equipment" });
+    }
+  });
+
+  // Equipment Error-Proofing Controls API
+  app.post("/api/equipment/:id/error-proofing", async (req, res) => {
+    try {
+      const control = insertEquipmentErrorProofingSchema.parse({
+        ...req.body,
+        equipmentId: req.params.id,
+      });
+      const newControl = await storage.createErrorProofingControl(control);
+      res.status(201).json(newControl);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating error-proofing control:", error);
+      res.status(500).json({ error: "Failed to create error-proofing control" });
+    }
+  });
+
+  app.patch("/api/equipment-error-proofing/:id", async (req, res) => {
+    try {
+      const updates = insertEquipmentErrorProofingSchema.partial().parse(req.body);
+      const updatedControl = await storage.updateErrorProofingControl(req.params.id, updates);
+      if (!updatedControl) {
+        return res.status(404).json({ error: "Error-proofing control not found" });
+      }
+      res.json(updatedControl);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating error-proofing control:", error);
+      res.status(500).json({ error: "Failed to update error-proofing control" });
+    }
+  });
+
+  app.delete("/api/equipment-error-proofing/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteErrorProofingControl(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Error-proofing control not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting error-proofing control:", error);
+      res.status(500).json({ error: "Failed to delete error-proofing control" });
+    }
+  });
+
+  // Equipment Control Methods API
+  app.post("/api/equipment/:id/control-methods", async (req, res) => {
+    try {
+      const method = insertEquipmentControlMethodsSchema.parse({
+        ...req.body,
+        equipmentId: req.params.id,
+      });
+      const newMethod = await storage.createControlMethod(method);
+      res.status(201).json(newMethod);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating control method:", error);
+      res.status(500).json({ error: "Failed to create control method" });
+    }
+  });
+
+  app.patch("/api/equipment-control-methods/:id", async (req, res) => {
+    try {
+      const updates = insertEquipmentControlMethodsSchema.partial().parse(req.body);
+      const updatedMethod = await storage.updateControlMethod(req.params.id, updates);
+      if (!updatedMethod) {
+        return res.status(404).json({ error: "Control method not found" });
+      }
+      res.json(updatedMethod);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating control method:", error);
+      res.status(500).json({ error: "Failed to update control method" });
+    }
+  });
+
+  app.delete("/api/equipment-control-methods/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteControlMethod(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Control method not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting control method:", error);
+      res.status(500).json({ error: "Failed to delete control method" });
     }
   });
 
