@@ -163,6 +163,13 @@ export default function PFMEA() {
   );
 }
 
+function getAPLevel(ap: string): "high" | "medium" | "low" {
+  const apNum = parseInt(ap);
+  if (apNum >= 100) return "high";
+  if (apNum >= 50) return "medium";
+  return "low";
+}
+
 function PFMEADetailView({ pfmea, part, onBack, loading }: {
   pfmea?: PFMEAWithRows;
   part: Part;
@@ -284,7 +291,7 @@ function PFMEADetailView({ pfmea, part, onBack, loading }: {
                         <Badge variant="outline" className="font-mono">{row.detection}</Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <APBadge ap={row.ap} />
+                        <APBadge level={getAPLevel(row.ap)} value={parseInt(row.ap)} />
                       </TableCell>
                       <TableCell>
                         <Button variant="outline" size="sm" data-testid={`button-edit-row-${row.id}`}>

@@ -183,7 +183,7 @@ function ControlPlanDetailView({ plan, part, onBack, loading }: {
     );
   }
 
-  const specialChars = plan.rows.filter(r => r.specialChar && r.specialChar !== "none").length;
+  const specialChars = plan.rows.filter(r => r.csrSymbol).length;
 
   return (
     <div className="space-y-6">
@@ -254,30 +254,32 @@ function ControlPlanDetailView({ plan, part, onBack, loading }: {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-24">Step</TableHead>
+                    <TableHead className="min-w-24">Char ID</TableHead>
                     <TableHead className="min-w-48">Characteristic</TableHead>
-                    <TableHead className="min-w-32">Specification</TableHead>
+                    <TableHead className="min-w-32">Target ± Tol</TableHead>
                     <TableHead className="min-w-24">Method</TableHead>
                     <TableHead className="min-w-32">Measurement</TableHead>
                     <TableHead className="min-w-24">Sample Size</TableHead>
                     <TableHead className="min-w-24">Frequency</TableHead>
-                    <TableHead className="min-w-20">Special</TableHead>
+                    <TableHead className="min-w-20">CSR</TableHead>
                     <TableHead className="min-w-24">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {plan.rows.map((row) => (
                     <TableRow key={row.id} className="hover-elevate" data-testid={`row-characteristic-${row.id}`}>
-                      <TableCell className="font-mono text-sm">{row.stepRef}</TableCell>
-                      <TableCell className="text-sm">{row.characteristic}</TableCell>
-                      <TableCell className="font-mono text-sm">{row.specification}</TableCell>
-                      <TableCell className="text-sm">{row.controlMethod}</TableCell>
-                      <TableCell className="text-sm">{row.measurementTechnique || "-"}</TableCell>
+                      <TableCell className="font-mono text-sm">{row.charId}</TableCell>
+                      <TableCell className="text-sm">{row.characteristicName}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {row.target ? `${row.target}${row.tolerance ? ` ± ${row.tolerance}` : ''}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-sm">{row.controlMethod || "-"}</TableCell>
+                      <TableCell className="text-sm">{row.measurementSystem || "-"}</TableCell>
                       <TableCell className="font-mono text-center">{row.sampleSize || "-"}</TableCell>
-                      <TableCell className="text-sm">{row.samplingFrequency || "-"}</TableCell>
+                      <TableCell className="text-sm">{row.frequency || "-"}</TableCell>
                       <TableCell className="text-center">
-                        {row.specialChar && row.specialChar !== "none" ? (
-                          <Badge className="bg-chart-5 text-white">{row.specialChar}</Badge>
+                        {row.csrSymbol ? (
+                          <Badge className="bg-chart-5 text-white">{row.csrSymbol}</Badge>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

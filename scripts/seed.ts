@@ -1,5 +1,5 @@
 import { db } from '../server/db';
-import { part, processDef, processStep, fmeaTemplateRow, controlTemplateRow, gageLibrary, ratingScale, calibrationLink } from '@shared/schema';
+import { part, processDef, processStep, fmeaTemplateRow, controlTemplateRow, gageLibrary, ratingScale, calibrationLink, pfmea, pfmeaRow, controlPlan, controlPlanRow } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 const AIAG_VDA_SEVERITY = [
@@ -152,6 +152,138 @@ async function seed() {
         { name: 'Final Inspection', rev: 'A', status: 'effective', effectiveFrom: new Date('2024-02-01'), createdBy: seedUserId },
         { name: 'Paint Application', rev: 'A', status: 'effective', effectiveFrom: new Date('2024-02-01'), createdBy: seedUserId },
       ]).onConflictDoNothing();
+
+      console.log('  → Creating sample PFMEAs and Control Plans...');
+      const parts = await tx.select().from(part);
+      const wheelPart = parts.find(p => p.partNumber === 'WHL-2024-001');
+      
+      if (wheelPart) {
+        const [pfmeaDoc] = await tx.insert(pfmea).values({
+          partId: wheelPart.id,
+          rev: 'A',
+          docNo: 'PFMEA-WHL-001-A',
+          status: 'effective',
+          effectiveFrom: new Date('2024-01-15'),
+        }).returning().onConflictDoNothing();
+
+        if (pfmeaDoc) {
+          await tx.insert(pfmeaRow).values([
+            {
+              pfmeaId: pfmeaDoc.id,
+              stepRef: '10',
+              function: 'Receive wheel casting',
+              requirement: 'Material per spec WHL-MAT-001',
+              failureMode: 'Wrong alloy received',
+              effect: 'Structural failure in service',
+              severity: '9',
+              cause: 'Supplier mix-up',
+              occurrence: '3',
+              preventionControls: ['Material certification review'],
+              detectionControls: ['Incoming material verification'],
+              detection: '2',
+              ap: '45',
+              specialFlag: true,
+            },
+            {
+              pfmeaId: pfmeaDoc.id,
+              stepRef: '20',
+              function: 'Machine bolt holes',
+              requirement: 'Holes Ø8.0 ±0.1mm per print',
+              failureMode: 'Hole diameter out of spec',
+              effect: 'Bolt torque failure',
+              severity: '8',
+              cause: 'Drill wear',
+              occurrence: '4',
+              preventionControls: ['Tool life monitoring', 'Preventive maintenance'],
+              detectionControls: ['First piece and periodic inspection'],
+              detection: '3',
+              ap: '56',
+              specialFlag: false,
+            },
+            {
+              pfmeaId: pfmeaDoc.id,
+              stepRef: '30',
+              function: 'Apply corrosion coating',
+              requirement: 'Coating thickness 50-80 µm',
+              failureMode: 'Insufficient coating thickness',
+              effect: 'Premature corrosion',
+              severity: '6',
+              cause: 'Low spray pressure',
+              occurrence: '3',
+              preventionControls: ['Pressure monitoring system'],
+              detectionControls: ['Thickness gauge measurement'],
+              detection: '2',
+              ap: '30',
+              specialFlag: false,
+            },
+          ]).onConflictDoNothing();
+        }
+
+        const [controlPlanDoc] = await tx.insert(controlPlan).values({
+          partId: wheelPart.id,
+          rev: 'A',
+          type: 'Production',
+          docNo: 'CP-WHL-001-A',
+          status: 'effective',
+          effectiveFrom: new Date('2024-01-15'),
+        }).returning().onConflictDoNothing();
+
+        if (controlPlanDoc) {
+          await tx.insert(controlPlanRow).values([
+            {
+              controlPlanId: controlPlanDoc.id,
+              charId: 'C-010',
+              characteristicName: 'Material certification',
+              type: 'Material',
+              target: 'A356-T6',
+              tolerance: null,
+              specialFlag: true,
+              csrSymbol: 'Ⓢ',
+              measurementSystem: 'Document review',
+              gageDetails: 'Material cert',
+              sampleSize: '100%',
+              frequency: 'Every lot',
+              controlMethod: 'Attribute',
+              acceptanceCriteria: 'Cert matches PO',
+              reactionPlan: 'Reject lot, return to supplier',
+            },
+            {
+              controlPlanId: controlPlanDoc.id,
+              charId: 'C-020',
+              characteristicName: 'Bolt hole diameter',
+              type: 'Product',
+              target: '8.0',
+              tolerance: '±0.1',
+              specialFlag: true,
+              csrSymbol: 'Ⓢ',
+              measurementSystem: 'CMM',
+              gageDetails: 'Zeiss Contura G2',
+              sampleSize: '5/lot',
+              frequency: '1/shift',
+              controlMethod: 'X̄-R Chart',
+              acceptanceCriteria: 'Cpk ≥ 1.33',
+              reactionPlan: 'Stop line, adjust tooling, verify 5 pcs OK',
+            },
+            {
+              controlPlanId: controlPlanDoc.id,
+              charId: 'C-030',
+              characteristicName: 'Coating thickness',
+              type: 'Product',
+              target: '65',
+              tolerance: '±15',
+              specialFlag: false,
+              csrSymbol: null,
+              measurementSystem: 'Coating thickness gauge',
+              gageDetails: 'Elcometer 456',
+              sampleSize: '3/hr',
+              frequency: 'Continuous',
+              controlMethod: 'Individual-MR Chart',
+              acceptanceCriteria: '50-80 µm',
+              reactionPlan: 'Adjust spray pressure, recoat if needed',
+            },
+          ]).onConflictDoNothing();
+        }
+      }
     });
 
     console.log('✅ Seed complete!');
