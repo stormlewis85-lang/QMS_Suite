@@ -60,14 +60,27 @@ This application enables quality engineers and process owners to manage:
 
 ## API Endpoints
 
+**Parts:**
 - `GET /api/parts` - List all parts
 - `GET /api/parts/:id` - Get part by ID
 - `POST /api/parts` - Create new part
+
+**Processes:**
 - `GET /api/processes` - List all process definitions
 - `GET /api/processes/:id` - Get process with steps
 - `POST /api/processes` - Create new process
+
+**PFMEA:**
 - `GET /api/pfmea?partId=<id>` - Get PFMEAs for a part
+- `GET /api/pfmea/:id` - Get PFMEA with all failure mode rows
+- `POST /api/pfmea/:id/rows` - Create new PFMEA row
+- `PATCH /api/pfmea-rows/:id` - Update PFMEA row
+
+**Control Plans:**
 - `GET /api/control-plans?partId=<id>` - Get control plans for a part
+- `GET /api/control-plans/:id` - Get control plan with all characteristic rows
+- `POST /api/control-plans/:id/rows` - Create new control plan row
+- `PATCH /api/control-plan-rows/:id` - Update control plan row
 
 ## Development
 
@@ -81,6 +94,8 @@ This application enables quality engineers and process owners to manage:
 The seed script creates:
 - 4 automotive parts (Ford F-150 Wheel, GM Brake Caliper, Tesla Engine Mount, Ford Suspension Arm)
 - 6 process definitions (Injection Molding with full FMEA, Machining, Welding, Forming, Inspection, Paint)
+- 1 PFMEA document for Wheel Assembly with 3 failure mode rows (AP scores: 45, 56, 30)
+- 1 Control Plan for Wheel Assembly (Production) with 3 control characteristic rows
 - AIAG-VDA 2019 rating scales
 - Measurement equipment with calibration tracking
 
@@ -99,7 +114,22 @@ The seed script creates:
 
 ## Recent Changes
 
-**2025-11-24**: Frontend-backend integration completed
+**2025-11-24 (Evening)**: PFMEA and Control Plans pages completed
+- Extended backend APIs: GET /api/pfmea/:id and GET /api/control-plans/:id with all rows
+- Added CRUD endpoints for PFMEA and Control Plan rows (POST/PATCH)
+- Built PFMEA page with part selector, revision list, and detail view
+  - Displays failure modes with S/O/D ratings and color-coded AP badges
+  - Proper loading states and navigation (list → detail → back)
+  - APBadge component with level-based coloring (high/medium/low)
+- Built Control Plans page with identical structure to PFMEA
+  - Displays control characteristics with targets, tolerances, CSR symbols
+  - Shows measurement methods, sample sizes, and frequencies
+  - Proper field mapping to schema (charId, characteristicName, csrSymbol)
+- Extended seed script with comprehensive PFMEA and Control Plan documents
+- End-to-end Playwright tests verify both pages work correctly
+- Fixed bugs: APBadge props, conditional rendering, Control Plan field names
+
+**2025-11-24 (Earlier)**: Frontend-backend integration completed
 - Connected Dashboard to display real metrics from /api/parts and /api/processes
 - Connected Parts page with TanStack Query for data fetching and CRUD operations
 - Built New Part dialog with react-hook-form + Zod validation, proper cache invalidation
