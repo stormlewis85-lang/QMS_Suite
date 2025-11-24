@@ -398,10 +398,26 @@ function ControlPlanRowDialog({
 export default function ControlPlans() {
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: parts = [], isLoading: partsLoading } = useQuery<Part[]>({
     queryKey: ["/api/parts"],
   });
+
+  const handleGenerateControlPlan = () => {
+    if (!selectedPartId) {
+      toast({
+        variant: "destructive",
+        title: "No part selected",
+        description: "Please select a part first to generate a Control Plan.",
+      });
+      return;
+    }
+    toast({
+      title: "Generate Control Plan",
+      description: "Control Plan generation feature coming soon",
+    });
+  };
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<ControlPlan[]>({
     queryKey: ["/api/control-plans", selectedPartId],
@@ -438,7 +454,7 @@ export default function ControlPlans() {
             Quality control plans with inspection characteristics
           </p>
         </div>
-        <Button data-testid="button-generate-control-plan">
+        <Button onClick={handleGenerateControlPlan} data-testid="button-generate-control-plan">
           <Plus className="h-4 w-4 mr-2" />
           Generate Control Plan
         </Button>

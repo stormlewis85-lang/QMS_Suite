@@ -203,10 +203,32 @@ function NewProcessDialog() {
 
 export default function Processes() {
   const [searchQuery, setSearchQuery] = useState("");
+  const { toast } = useToast();
 
   const { data: processes = [], isLoading, error } = useQuery<ProcessDef[]>({
     queryKey: ["/api/processes"],
   });
+
+  const handleViewProcess = (process: ProcessDef) => {
+    toast({
+      title: "Process Details",
+      description: `Viewing ${process.name} (Rev ${process.rev})`,
+    });
+  };
+
+  const handleEditProcess = (process: ProcessDef) => {
+    toast({
+      title: "Edit Process",
+      description: "Process editing coming soon",
+    });
+  };
+
+  const handleCopyProcess = (process: ProcessDef) => {
+    toast({
+      title: "Copy Process",
+      description: `Creating a copy of ${process.name}...`,
+    });
+  };
 
   const filteredProcesses = processes.filter(process => 
     process.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -295,14 +317,30 @@ export default function Processes() {
                 )}
                 
                 <div className="flex items-center gap-2 pt-2">
-                  <Button variant="outline" size="sm" className="flex-1" data-testid={`button-view-${process.id}`}>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => handleViewProcess(process)}
+                    data-testid={`button-view-${process.id}`}
+                  >
                     <Eye className="h-4 w-4 mr-1" />
                     View
                   </Button>
-                  <Button variant="outline" size="icon" data-testid={`button-edit-${process.id}`}>
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => handleEditProcess(process)}
+                    data-testid={`button-edit-${process.id}`}
+                  >
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="icon" data-testid={`button-copy-${process.id}`}>
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => handleCopyProcess(process)}
+                    data-testid={`button-copy-${process.id}`}
+                  >
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>

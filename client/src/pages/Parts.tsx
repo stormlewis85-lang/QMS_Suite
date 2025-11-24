@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Package, Plus, Search, FileText, Download, Loader2 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -208,10 +209,26 @@ function NewPartDialog() {
 
 export default function Parts() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [, setLocation] = useLocation();
 
   const { data: parts = [], isLoading, error } = useQuery<Part[]>({
     queryKey: ["/api/parts"],
   });
+
+  const handleViewPart = (partId: string) => {
+    setLocation(`/pfmea?partId=${partId}`);
+  };
+
+  const handleDownloadPart = (part: Part) => {
+    const dataStr = JSON.stringify(part, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${part.partNumber}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const filteredParts = parts.filter(part => 
     part.partNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -305,10 +322,20 @@ export default function Parts() {
                       <TableCell>{part.plant}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" data-testid={`button-view-${part.id}`}>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleViewPart(part.id)}
+                            data-testid={`button-view-${part.id}`}
+                          >
                             <FileText className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" data-testid={`button-download-${part.id}`}>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleDownloadPart(part)}
+                            data-testid={`button-download-${part.id}`}
+                          >
                             <Download className="h-4 w-4" />
                           </Button>
                         </div>

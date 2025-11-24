@@ -167,7 +167,7 @@ function PFMEARowDialog({
         cause: row.cause,
         occurrence: row.occurrence,
         detection: row.detection,
-        specialFlag: row.specialFlag,
+        specialFlag: row.specialFlag || false,
         csrSymbol: row.csrSymbol || "",
         notes: row.notes || "",
       });
@@ -382,12 +382,30 @@ function PFMEARowDialog({
 }
 
 export default function PFMEA() {
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const urlParams = new URLSearchParams(window.location.search);
+  const partIdFromUrl = urlParams.get("partId");
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(partIdFromUrl);
   const [selectedPfmeaId, setSelectedPfmeaId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: parts = [], isLoading: partsLoading } = useQuery<Part[]>({
     queryKey: ["/api/parts"],
   });
+
+  const handleGeneratePFMEA = () => {
+    if (!selectedPartId) {
+      toast({
+        variant: "destructive",
+        title: "No part selected",
+        description: "Please select a part first to generate a PFMEA.",
+      });
+      return;
+    }
+    toast({
+      title: "Generate PFMEA",
+      description: "PFMEA generation feature coming soon",
+    });
+  };
 
   const { data: pfmeas = [], isLoading: pfmeasLoading } = useQuery<PFMEA[]>({
     queryKey: ["/api/pfmea", selectedPartId],
@@ -424,7 +442,7 @@ export default function PFMEA() {
             Process Failure Mode and Effects Analysis (AIAG-VDA 2019)
           </p>
         </div>
-        <Button data-testid="button-generate-pfmea">
+        <Button onClick={handleGeneratePFMEA} data-testid="button-generate-pfmea">
           <Plus className="h-4 w-4 mr-2" />
           Generate PFMEA
         </Button>
@@ -460,7 +478,7 @@ export default function PFMEA() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">PFMEAs for {selectedPart?.partNumber}</CardTitle>
-            <Button data-testid="button-generate-pfmea">
+            <Button onClick={handleGeneratePFMEA} data-testid="button-generate-pfmea">
               <Plus className="h-4 w-4 mr-2" />
               Generate PFMEA
             </Button>
