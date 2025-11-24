@@ -1,0 +1,146 @@
+Complete the Equipment Library UI with full CRUD operations:
+
+## 1. Edit Equipment Dialog
+
+Create an edit dialog that:
+- Opens when clicking "Edit" button on equipment details
+- Pre-populates form with current equipment data
+- Uses the existing `equipment.update` mutation
+- Closes and refreshes list on success
+```tsx
+// EditEquipmentDialog component
+- Same form fields as Create: name, type, manufacturer, model, tonnage, serialNumber, location, status, notes
+- Pre-fill with selectedEquipment data
+- Call trpc.equipment.update.useMutation()
+- Show success toast and refetch on completion
+```
+
+## 2. Add/Edit/Delete Error-Proofing Controls
+
+In the Error-Proofing tab, add full CRUD:
+
+### Add Control Dialog
+```tsx
+// Opens from "+ Add Prevention Control" or "+ Add Detection Control" buttons
+Form fields:
+- controlType: 'prevention' | 'detection' (pre-set based on which button clicked)
+- name: string (required)
+- description: string (textarea)
+- failureModesAddressed: string[] (multi-select or tag input with common suggestions)
+- suggestedDetectionRating: number 1-10 (only show if controlType === 'detection')
+
+Use: trpc.equipment.addErrorProofingControl.useMutation()
+```
+
+### Edit Control
+```tsx
+// Click on control row to edit, or add edit icon button
+- Same form as Add, pre-populated
+- Use: trpc.equipment.updateErrorProofingControl.useMutation()
+```
+
+### Delete Control
+```tsx
+// Add delete icon button on each control
+- Confirm dialog: "Delete this control? This cannot be undone."
+- Use: trpc.equipment.deleteErrorProofingControl.useMutation()
+```
+
+## 3. Add/Edit/Delete Control Methods
+
+In the Control Methods tab, add full CRUD:
+
+### Add Control Method Dialog
+```tsx
+Form fields:
+- characteristicType: 'product' | 'process' (radio buttons)
+- characteristicName: string (required)
+- controlMethod: string (required)
+- measurementSystem: string
+- sampleSize: string (e.g., "100%", "5 pc", "1 pc")
+- frequency: string (e.g., "Every cycle", "1/hour", "1/shift")
+- acceptanceCriteria: string
+- reactionPlan: string (textarea)
+
+Use: trpc.equipment.addControlMethod.useMutation()
+```
+
+### Edit Control Method
+```tsx
+// Click on table row to edit, or add edit icon
+- Same form as Add, pre-populated
+- Use: trpc.equipment.updateControlMethod.useMutation()
+```
+
+### Delete Control Method
+```tsx
+// Add delete icon in table row
+- Confirm dialog
+- Use: trpc.equipment.deleteControlMethod.useMutation()
+```
+
+## 4. Failure Mode Suggestions
+
+For the failureModesAddressed field, use the existing API:
+```tsx
+const { data: commonFailureModes } = trpc.equipment.getCommonFailureModes.useQuery();
+
+// Render as a tag input or multi-select with these as suggestions:
+// User can also type custom failure modes
+```
+
+## 5. UI Pattern to Follow
+
+Use consistent dialog pattern:
+```tsx
+const [isOpen, setIsOpen] = useState(false);
+const [editingItem, setEditingItem] = useState<ItemType | null>(null);
+
+// For Add: setEditingItem(null), setIsOpen(true)
+// For Edit: setEditingItem(item), setIsOpen(true)
+// Dialog checks editingItem to know if Add or Edit mode
+
+const mutation = editingItem 
+  ? trpc.equipment.updateXxx.useMutation()
+  : trpc.equipment.addXxx.useMutation();
+
+// On success:
+mutation.onSuccess = () => {
+  setIsOpen(false);
+  setEditingItem(null);
+  refetch(); // Refresh equipment data
+  toast.success(editingItem ? 'Updated successfully' : 'Added successfully');
+};
+```
+
+## 6. Inline Toggle for isActive
+
+For both error-proofing controls and control methods, add a toggle switch:
+```tsx
+// In the control/method row, add a toggle
+<Switch
+  checked={control.isActive}
+  onChange={(checked) => {
+    updateMutation.mutate({ 
+      id: control.id, 
+      isActive: checked 
+    });
+  }}
+/>
+```
+
+This lets users quickly enable/disable controls without opening edit dialog.
+
+## Expected Result
+
+After completion, users can:
+1. ✅ Create equipment
+2. ✅ Edit equipment details
+3. ✅ Delete equipment
+4. ✅ Add/edit/delete prevention controls
+5. ✅ Add/edit/delete detection controls
+6. ✅ Add/edit/delete control methods
+7. ✅ Toggle controls active/inactive
+8. ✅ See failure mode suggestions when adding controls
+
+All data persists to database and refreshes in UI immediately.
