@@ -7,6 +7,9 @@ import {
   pfmeaRow,
   controlPlan,
   controlPlanRow,
+  equipmentLibrary,
+  equipmentErrorProofing,
+  equipmentControlMethods,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -21,6 +24,12 @@ import {
   type InsertControlPlan,
   type ControlPlanRow,
   type InsertControlPlanRow,
+  type EquipmentLibrary,
+  type InsertEquipmentLibrary,
+  type EquipmentErrorProofing,
+  type InsertEquipmentErrorProofing,
+  type EquipmentControlMethods,
+  type InsertEquipmentControlMethods,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -51,6 +60,19 @@ export interface IStorage {
   createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan>;
   createControlPlanRow(insertRow: InsertControlPlanRow): Promise<ControlPlanRow>;
   updateControlPlanRow(id: string, updates: Partial<InsertControlPlanRow>): Promise<ControlPlanRow | undefined>;
+  
+  // Equipment Library
+  getAllEquipment(): Promise<EquipmentLibrary[]>;
+  getEquipmentById(id: string): Promise<(EquipmentLibrary & { errorProofingControls: EquipmentErrorProofing[]; controlMethods: EquipmentControlMethods[] }) | undefined>;
+  createEquipment(insertEquipment: InsertEquipmentLibrary): Promise<EquipmentLibrary>;
+  updateEquipment(id: string, updates: Partial<InsertEquipmentLibrary>): Promise<EquipmentLibrary | undefined>;
+  deleteEquipment(id: string): Promise<boolean>;
+  createErrorProofingControl(insertControl: InsertEquipmentErrorProofing): Promise<EquipmentErrorProofing>;
+  updateErrorProofingControl(id: string, updates: Partial<InsertEquipmentErrorProofing>): Promise<EquipmentErrorProofing | undefined>;
+  deleteErrorProofingControl(id: string): Promise<boolean>;
+  createControlMethod(insertMethod: InsertEquipmentControlMethods): Promise<EquipmentControlMethods>;
+  updateControlMethod(id: string, updates: Partial<InsertEquipmentControlMethods>): Promise<EquipmentControlMethods | undefined>;
+  deleteControlMethod(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -169,6 +191,75 @@ export class DatabaseStorage implements IStorage {
       .where(eq(controlPlanRow.id, id))
       .returning();
     return updatedRow || undefined;
+  }
+
+  // Equipment Library
+  async getAllEquipment(): Promise<EquipmentLibrary[]> {
+    return await db.select().from(equipmentLibrary).orderBy(equipmentLibrary.name);
+  }
+
+  async getEquipmentById(id: string): Promise<(EquipmentLibrary & { errorProofingControls: EquipmentErrorProofing[]; controlMethods: EquipmentControlMethods[] }) | undefined> {
+    const [equipment] = await db.select().from(equipmentLibrary).where(eq(equipmentLibrary.id, id));
+    if (!equipment) return undefined;
+    
+    const errorProofingControls = await db.select().from(equipmentErrorProofing).where(eq(equipmentErrorProofing.equipmentId, id));
+    const controlMethods = await db.select().from(equipmentControlMethods).where(eq(equipmentControlMethods.equipmentId, id));
+    
+    return { ...equipment, errorProofingControls, controlMethods };
+  }
+
+  async createEquipment(insertEquipment: InsertEquipmentLibrary): Promise<EquipmentLibrary> {
+    const [newEquipment] = await db.insert(equipmentLibrary).values(insertEquipment).returning();
+    return newEquipment;
+  }
+
+  async updateEquipment(id: string, updates: Partial<InsertEquipmentLibrary>): Promise<EquipmentLibrary | undefined> {
+    const [updatedEquipment] = await db.update(equipmentLibrary)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(equipmentLibrary.id, id))
+      .returning();
+    return updatedEquipment || undefined;
+  }
+
+  async deleteEquipment(id: string): Promise<boolean> {
+    const result = await db.delete(equipmentLibrary).where(eq(equipmentLibrary.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async createErrorProofingControl(insertControl: InsertEquipmentErrorProofing): Promise<EquipmentErrorProofing> {
+    const [newControl] = await db.insert(equipmentErrorProofing).values(insertControl).returning();
+    return newControl;
+  }
+
+  async updateErrorProofingControl(id: string, updates: Partial<InsertEquipmentErrorProofing>): Promise<EquipmentErrorProofing | undefined> {
+    const [updatedControl] = await db.update(equipmentErrorProofing)
+      .set(updates)
+      .where(eq(equipmentErrorProofing.id, id))
+      .returning();
+    return updatedControl || undefined;
+  }
+
+  async deleteErrorProofingControl(id: string): Promise<boolean> {
+    const result = await db.delete(equipmentErrorProofing).where(eq(equipmentErrorProofing.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async createControlMethod(insertMethod: InsertEquipmentControlMethods): Promise<EquipmentControlMethods> {
+    const [newMethod] = await db.insert(equipmentControlMethods).values(insertMethod).returning();
+    return newMethod;
+  }
+
+  async updateControlMethod(id: string, updates: Partial<InsertEquipmentControlMethods>): Promise<EquipmentControlMethods | undefined> {
+    const [updatedMethod] = await db.update(equipmentControlMethods)
+      .set(updates)
+      .where(eq(equipmentControlMethods.id, id))
+      .returning();
+    return updatedMethod || undefined;
+  }
+
+  async deleteControlMethod(id: string): Promise<boolean> {
+    const result = await db.delete(equipmentControlMethods).where(eq(equipmentControlMethods.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
   }
 }
 
