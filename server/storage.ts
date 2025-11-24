@@ -46,6 +46,8 @@ export interface IStorage {
   getProcessWithSteps(id: string): Promise<(ProcessDef & { steps: ProcessStep[] }) | undefined>;
   createProcess(insertProcess: InsertProcessDef): Promise<ProcessDef>;
   createProcessWithSteps(insertProcess: InsertProcessDef, steps: InsertProcessStep[]): Promise<ProcessDef & { steps: ProcessStep[] }>;
+  updateProcess(id: string, updates: Partial<InsertProcessDef>): Promise<ProcessDef | undefined>;
+  deleteProcess(id: string): Promise<boolean>;
   
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
@@ -131,6 +133,20 @@ export class DatabaseStorage implements IStorage {
     }
     
     return { ...newProcess, steps: [] };
+  }
+
+  async updateProcess(id: string, updates: Partial<InsertProcessDef>): Promise<ProcessDef | undefined> {
+    const [updatedProcess] = await db.update(processDef)
+      .set(updates)
+      .where(eq(processDef.id, id))
+      .returning();
+    return updatedProcess || undefined;
+  }
+
+  async deleteProcess(id: string): Promise<boolean> {
+    const result = await db.delete(processDef)
+      .where(eq(processDef.id, id));
+    return true;
   }
 
   async getPFMEAsByPartId(partId: string): Promise<PFMEA[]> {
