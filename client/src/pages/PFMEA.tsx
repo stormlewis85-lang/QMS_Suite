@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { FileText, Plus, Search, Filter, AlertTriangle, CheckCircle } from "lucide-react";
+import { FileText, Plus, Loader2, ChevronLeft, AlertTriangle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge, APBadge } from "@/components/StatusBadge";
 import {
   Table,
@@ -13,22 +13,50 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Part, PFMEA, PFMEARow } from "@shared/schema";
 
-//todo: remove mock functionality
-const mockPFMEAs = [
-  { id: 1, part: "WHL-2024-001", process: "Wheel Assembly", rev: "A", status: "effective" as const, highAP: 3, mediumAP: 8, lowAP: 12 },
-  { id: 2, part: "BRK-2024-007", process: "Brake Caliper", rev: "C", status: "review" as const, highAP: 1, mediumAP: 5, lowAP: 15 },
-  { id: 3, part: "ENG-2024-012", process: "Engine Mount", rev: "B", status: "draft" as const, highAP: 0, mediumAP: 4, lowAP: 8 },
-  { id: 4, part: "SUS-2024-004", process: "Suspension Arm", rev: "A", status: "effective" as const, highAP: 2, mediumAP: 7, lowAP: 14 },
-];
+type PFMEAWithRows = PFMEA & { rows: PFMEARow[] };
 
 export default function PFMEA() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [selectedPfmeaId, setSelectedPfmeaId] = useState<string | null>(null);
 
-  const filteredPFMEAs = mockPFMEAs.filter(pfmea => 
-    pfmea.part.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    pfmea.process.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const { data: parts = [], isLoading: partsLoading } = useQuery<Part[]>({
+    queryKey: ["/api/parts"],
+  });
+
+  const { data: pfmeas = [], isLoading: pfmeasLoading } = useQuery<PFMEA[]>({
+    queryKey: ["/api/pfmea", selectedPartId],
+    enabled: !!selectedPartId,
+    queryFn: async () => {
+      const res = await fetch(`/api/pfmea?partId=${selectedPartId}`);
+      if (!res.ok) throw new Error("Failed to fetch PFMEAs");
+      return res.json();
+    },
+  });
+
+  const { data: pfmeaDetail, isLoading: pfmeaDetailLoading } = useQuery<PFMEAWithRows>({
+    queryKey: ["/api/pfmea", selectedPfmeaId, "detail"],
+    enabled: !!selectedPfmeaId,
+    queryFn: async () => {
+      const res = await fetch(`/api/pfmea/${selectedPfmeaId}`);
+      if (!res.ok) throw new Error("Failed to fetch PFMEA details");
+      return res.json();
+    },
+  });
+
+  const selectedPart = parts.find(p => p.id === selectedPartId);
+
+  if (selectedPfmeaId && pfmeaDetail) {
+    return <PFMEADetailView pfmea={pfmeaDetail} part={selectedPart!} onBack={() => setSelectedPfmeaId(null)} loading={pfmeaDetailLoading} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -45,128 +73,216 @@ export default function PFMEA() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Select Part</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {partsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            <Select value={selectedPartId || ""} onValueChange={setSelectedPartId}>
+              <SelectTrigger data-testid="select-part">
+                <SelectValue placeholder="Choose a part..." />
+              </SelectTrigger>
+              <SelectContent>
+                {parts.map((part) => (
+                  <SelectItem key={part.id} value={part.id}>
+                    {part.partNumber} - {part.partName} ({part.customer})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </CardContent>
+      </Card>
+
+      {selectedPartId && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">PFMEAs for {selectedPart?.partNumber}</CardTitle>
+            <Button data-testid="button-generate-pfmea">
+              <Plus className="h-4 w-4 mr-2" />
+              Generate PFMEA
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {pfmeasLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : pfmeas.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No PFMEAs found for this part. Click "Generate PFMEA" to create one.
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Revision</TableHead>
+                      <TableHead>Document No.</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Effective From</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pfmeas.map((pfmea) => (
+                      <TableRow key={pfmea.id} className="hover-elevate" data-testid={`row-pfmea-${pfmea.id}`}>
+                        <TableCell className="font-mono font-medium">{pfmea.rev}</TableCell>
+                        <TableCell className="font-mono">{pfmea.docNo || "-"}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={pfmea.status} />
+                        </TableCell>
+                        <TableCell>
+                          {pfmea.effectiveFrom ? new Date(pfmea.effectiveFrom).toLocaleDateString() : "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedPfmeaId(pfmea.id)}
+                            data-testid={`button-view-pfmea-${pfmea.id}`}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function PFMEADetailView({ pfmea, part, onBack, loading }: {
+  pfmea: PFMEAWithRows;
+  part: Part;
+  onBack: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="outline" size="sm" onClick={onBack} data-testid="button-back">
+          <ChevronLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold">
+            PFMEA: {part.partNumber} Rev {pfmea.rev}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {part.partName} - {part.customer}
+          </p>
+        </div>
+        <StatusBadge status={pfmea.status} />
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total PFMEAs</p>
-                <p className="text-3xl font-bold mt-1">{mockPFMEAs.length}</p>
-              </div>
-              <FileText className="h-8 w-8 text-muted-foreground" />
-            </div>
+            <p className="text-sm text-muted-foreground">Document No.</p>
+            <p className="text-lg font-semibold mt-1">{pfmea.docNo || "N/A"}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">High Priority</p>
-                <p className="text-3xl font-bold mt-1 text-destructive">
-                  {mockPFMEAs.reduce((sum, p) => sum + p.highAP, 0)}
-                </p>
-              </div>
-              <AlertTriangle className="h-8 w-8 text-destructive" />
-            </div>
+            <p className="text-sm text-muted-foreground">Effective From</p>
+            <p className="text-lg font-semibold mt-1">
+              {pfmea.effectiveFrom ? new Date(pfmea.effectiveFrom).toLocaleDateString() : "N/A"}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Medium Priority</p>
-                <p className="text-3xl font-bold mt-1 text-chart-5">
-                  {mockPFMEAs.reduce((sum, p) => sum + p.mediumAP, 0)}
-                </p>
-              </div>
-              <Filter className="h-8 w-8 text-chart-5" />
-            </div>
+            <p className="text-sm text-muted-foreground">Total Rows</p>
+            <p className="text-lg font-semibold mt-1">{pfmea.rows.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Low Priority</p>
-                <p className="text-3xl font-bold mt-1 text-chart-4">
-                  {mockPFMEAs.reduce((sum, p) => sum + p.lowAP, 0)}
-                </p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-chart-4" />
-            </div>
+            <p className="text-sm text-muted-foreground">High AP Items</p>
+            <p className="text-lg font-semibold mt-1 text-destructive">
+              {pfmea.rows.filter(r => parseInt(r.ap) >= 100).length}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search PFMEAs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-                data-testid="input-search-pfmea"
-              />
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">FMEA Rows</CardTitle>
+          <Button data-testid="button-add-row">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Row
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
             </div>
-          </div>
-
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-semibold">Part Number</TableHead>
-                  <TableHead className="font-semibold">Process</TableHead>
-                  <TableHead className="font-semibold">Rev</TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold text-center">High AP</TableHead>
-                  <TableHead className="font-semibold text-center">Med AP</TableHead>
-                  <TableHead className="font-semibold text-center">Low AP</TableHead>
-                  <TableHead className="w-24 text-right font-semibold">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPFMEAs.map((pfmea) => (
-                  <TableRow key={pfmea.id} className="hover-elevate" data-testid={`row-pfmea-${pfmea.id}`}>
-                    <TableCell className="font-mono font-medium">{pfmea.part}</TableCell>
-                    <TableCell>{pfmea.process}</TableCell>
-                    <TableCell className="font-mono">{pfmea.rev}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={pfmea.status} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {pfmea.highAP > 0 ? (
-                        <Badge variant="destructive" className="font-mono">{pfmea.highAP}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {pfmea.mediumAP > 0 ? (
-                        <Badge className="bg-chart-5 text-white font-mono">{pfmea.mediumAP}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {pfmea.lowAP > 0 ? (
-                        <Badge className="bg-chart-4 text-white font-mono">{pfmea.lowAP}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" data-testid={`button-view-${pfmea.id}`}>
-                        View
-                      </Button>
-                    </TableCell>
+          ) : pfmea.rows.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No FMEA rows yet. Click "Add Row" to create one.
+            </div>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-24">Step</TableHead>
+                    <TableHead className="min-w-36">Function</TableHead>
+                    <TableHead className="min-w-36">Failure Mode</TableHead>
+                    <TableHead className="min-w-36">Effect</TableHead>
+                    <TableHead className="min-w-12 text-center">S</TableHead>
+                    <TableHead className="min-w-36">Cause</TableHead>
+                    <TableHead className="min-w-12 text-center">O</TableHead>
+                    <TableHead className="min-w-12 text-center">D</TableHead>
+                    <TableHead className="min-w-16 text-center">AP</TableHead>
+                    <TableHead className="min-w-24">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {pfmea.rows.map((row) => (
+                    <TableRow key={row.id} className="hover-elevate" data-testid={`row-fmea-${row.id}`}>
+                      <TableCell className="font-mono text-sm">{row.stepRef}</TableCell>
+                      <TableCell className="text-sm">{row.function}</TableCell>
+                      <TableCell className="text-sm">{row.failureMode}</TableCell>
+                      <TableCell className="text-sm">{row.effect}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="font-mono">{row.severity}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">{row.cause}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="font-mono">{row.occurrence}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="font-mono">{row.detection}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <APBadge ap={row.ap} />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" data-testid={`button-edit-row-${row.id}`}>
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
