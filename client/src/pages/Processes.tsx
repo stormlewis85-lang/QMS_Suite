@@ -73,8 +73,8 @@ function NewProcessDialog() {
         title: "Process created",
         description: "The process definition has been successfully created.",
       });
-      setOpen(false);
       form.reset();
+      setOpen(false);
     },
     onError: (error: Error) => {
       toast({

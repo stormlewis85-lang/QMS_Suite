@@ -63,8 +63,8 @@ function NewPartDialog() {
         title: "Part created",
         description: "The part has been successfully created.",
       });
-      setOpen(false);
       form.reset();
+      setOpen(false);
     },
     onError: (error: Error) => {
       toast({
