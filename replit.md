@@ -82,6 +82,19 @@ This application enables quality engineers and process owners to manage:
 - `POST /api/control-plans/:id/rows` - Create new control plan row
 - `PATCH /api/control-plan-rows/:id` - Update control plan row
 
+**Equipment Library:**
+- `GET /api/equipment` - Get all equipment
+- `GET /api/equipment/:id` - Get equipment with error-proofing controls and control methods
+- `POST /api/equipment` - Create new equipment
+- `PATCH /api/equipment/:id` - Update equipment
+- `DELETE /api/equipment/:id` - Delete equipment
+- `POST /api/equipment/:id/error-proofing` - Create error-proofing control
+- `PATCH /api/equipment-error-proofing/:id` - Update error-proofing control
+- `DELETE /api/equipment-error-proofing/:id` - Delete error-proofing control
+- `POST /api/equipment/:id/control-methods` - Create control method
+- `PATCH /api/equipment-control-methods/:id` - Update control method
+- `DELETE /api/equipment-control-methods/:id` - Delete control method
+
 ## Development
 
 ### Setup
@@ -98,6 +111,11 @@ The seed script creates:
 - 1 Control Plan for Wheel Assembly (Production) with 3 control characteristic rows
 - AIAG-VDA 2019 rating scales
 - Measurement equipment with calibration tracking
+- 4 equipment items with comprehensive error-proofing and control methods:
+  - Engel Injection Press 200T (4 error-proofing controls, 4 control methods)
+  - Engel Injection Press 350T
+  - Branson Ultrasonic Welder (3 error-proofing controls, 3 control methods)
+  - Fanuc Robot M-20iA (3 error-proofing controls, 3 control methods)
 
 ## Standards Compliance
 
@@ -113,6 +131,33 @@ The seed script creates:
 - Change management with approvals
 
 ## Recent Changes
+
+**2025-11-24 (Equipment Library)**: Equipment Library feature implemented
+- Added comprehensive Equipment Library feature for managing manufacturing equipment
+- **Database schema extensions:**
+  - equipment_library table: equipment records (name, type, manufacturer, model, serial number, location, status, specifications)
+  - equipment_error_proofing table: error-proofing controls (prevention/detection types, failure modes addressed, suggested detection ratings)
+  - equipment_control_methods table: control methods (characteristic type, measurement systems, sample size, frequency, acceptance criteria)
+  - Added equipmentIds column to process_step table for linking equipment to process steps
+- **Backend implementation:**
+  - Full CRUD storage operations for all equipment entities
+  - RESTful API routes for equipment, error-proofing controls, and control methods
+  - Equipment types supported: injection_press, ultrasonic_welder, hot_plate_welder, robot, conveyor, test_station
+- **Seed data:**
+  - 4 equipment items: 2 Engel injection presses (200T, 350T), Branson ultrasonic welder, Fanuc robot
+  - Comprehensive error-proofing controls (prevention and detection types)
+  - Detailed control methods with measurement systems and acceptance criteria
+- **Equipment Library page (/equipment):**
+  - Table view of all equipment with search functionality
+  - New Equipment dialog with type selection and full form validation
+  - Equipment details dialog showing error-proofing controls and control methods
+  - View/Edit/Delete actions for equipment management
+  - Status badges (active, maintenance, retired)
+  - Integration with sidebar navigation
+- **Next steps:**
+  - Add CRUD dialogs for managing error-proofing controls and control methods
+  - Implement equipment assignment to process steps
+  - Auto-populate PFMEA and Control Plan rows from equipment controls
 
 **2025-11-24 (Final)**: Generate PFMEA and Generate Control Plan dialogs completed
 - Implemented comprehensive document generation dialogs with:

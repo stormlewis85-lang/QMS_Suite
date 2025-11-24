@@ -1,4 +1,4 @@
-import { Home, Package, Layers, FileText, BookOpen, Settings, ChevronRight } from "lucide-react";
+import { Home, Package, Layers, FileText, BookOpen, Settings2, Settings, ChevronRight } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -20,6 +20,7 @@ const navigationItems = [
   { title: "Processes", url: "/processes", icon: Layers },
   { title: "PFMEA", url: "/pfmea", icon: FileText },
   { title: "Control Plans", url: "/control-plans", icon: BookOpen },
+  { title: "Equipment", url: "/equipment", icon: Settings2 },
 ];
 
 const settingsItems = [

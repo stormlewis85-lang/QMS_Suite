@@ -1,5 +1,5 @@
 import { db } from '../server/db';
-import { part, processDef, processStep, fmeaTemplateRow, controlTemplateRow, gageLibrary, ratingScale, calibrationLink, pfmea, pfmeaRow, controlPlan, controlPlanRow } from '@shared/schema';
+import { part, processDef, processStep, fmeaTemplateRow, controlTemplateRow, gageLibrary, ratingScale, calibrationLink, pfmea, pfmeaRow, controlPlan, controlPlanRow, equipmentLibrary, equipmentErrorProofing, equipmentControlMethods } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 const AIAG_VDA_SEVERITY = [
@@ -283,6 +283,286 @@ async function seed() {
             },
           ]).onConflictDoNothing();
         }
+      }
+
+      console.log('  → Creating equipment library...');
+      
+      const [engelPress200] = await tx.insert(equipmentLibrary).values({
+        name: 'Engel Injection Press 200T',
+        type: 'injection_press',
+        manufacturer: 'Engel',
+        model: 'e-victory 200/50',
+        serialNumber: 'EP-200-2024-001',
+        location: 'Molding Cell A',
+        status: 'active',
+        specifications: {
+          clampForce: '200 tons',
+          shotSize: '250 grams',
+          injectionPressure: '2200 bar',
+          heatingZones: 5,
+        },
+      }).returning().onConflictDoNothing();
+
+      const [engelPress350] = await tx.insert(equipmentLibrary).values({
+        name: 'Engel Injection Press 350T',
+        type: 'injection_press',
+        manufacturer: 'Engel',
+        model: 'e-victory 350/100',
+        serialNumber: 'EP-350-2024-002',
+        location: 'Molding Cell B',
+        status: 'active',
+        specifications: {
+          clampForce: '350 tons',
+          shotSize: '500 grams',
+          injectionPressure: '2400 bar',
+          heatingZones: 6,
+        },
+      }).returning().onConflictDoNothing();
+
+      const [bransonWelder] = await tx.insert(equipmentLibrary).values({
+        name: 'Branson Ultrasonic Welder',
+        type: 'ultrasonic_welder',
+        manufacturer: 'Branson',
+        model: 'DCX 2000',
+        serialNumber: 'BW-2000-2024-001',
+        location: 'Assembly Station 3',
+        status: 'active',
+        specifications: {
+          frequency: '20 kHz',
+          power: '2000 W',
+          amplitude: '50-150 µm',
+          weldArea: '100x100 mm',
+        },
+      }).returning().onConflictDoNothing();
+
+      const [fanucRobot] = await tx.insert(equipmentLibrary).values({
+        name: 'Fanuc Robot M-20iA',
+        type: 'robot',
+        manufacturer: 'Fanuc',
+        model: 'M-20iA/35M',
+        serialNumber: 'FR-20-2024-001',
+        location: 'Assembly Cell 1',
+        status: 'active',
+        specifications: {
+          payload: '35 kg',
+          reach: '1811 mm',
+          repeatability: '±0.08 mm',
+          axes: 6,
+        },
+      }).returning().onConflictDoNothing();
+
+      if (engelPress200) {
+        await tx.insert(equipmentErrorProofing).values([
+          {
+            equipmentId: engelPress200.id,
+            name: 'Cavity pressure monitoring',
+            controlType: 'prevention',
+            description: 'Real-time cavity pressure monitoring with adaptive fill control. Triggers auto-adjustment if pressure < 90% target.',
+            failureModesAddressed: ['Short shot', 'Incomplete fill', 'Underpacking'],
+            suggestedDetectionRating: null,
+          },
+          {
+            equipmentId: engelPress200.id,
+            name: 'Clamp force monitoring',
+            controlType: 'prevention',
+            description: 'Mold protection system with clamp force sensor. Machine stops if force deviation > 5% from setpoint.',
+            failureModesAddressed: ['Flash', 'Mold damage', 'Parting line defects'],
+            suggestedDetectionRating: null,
+          },
+          {
+            equipmentId: engelPress200.id,
+            name: 'Vision inspection system',
+            controlType: 'detection',
+            description: 'Automated vision inspection of first piece and periodic samples for contamination and surface defects.',
+            failureModesAddressed: ['Contamination', 'Foreign material', 'Surface defects'],
+            suggestedDetectionRating: 2,
+          },
+          {
+            equipmentId: engelPress200.id,
+            name: 'In-mold dimensional sensors',
+            controlType: 'detection',
+            description: 'Real-time measurement of critical dimensions using in-mold sensors. Parts flagged if outside ±0.1mm tolerance.',
+            failureModesAddressed: ['Dimensional out-of-spec', 'Warpage', 'Shrinkage'],
+            suggestedDetectionRating: 3,
+          },
+        ]).onConflictDoNothing();
+
+        await tx.insert(equipmentControlMethods).values([
+          {
+            equipmentId: engelPress200.id,
+            characteristicType: 'process',
+            characteristicName: 'Cavity pressure peak',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Pressure transducer',
+            sampleSize: 'Every shot',
+            frequency: 'Continuous',
+            acceptanceCriteria: '750-850 bar',
+            reactionPlan: 'Auto-adjust hold pressure within tolerance; alert if >3 consecutive OOT',
+          },
+          {
+            equipmentId: engelPress200.id,
+            characteristicType: 'process',
+            characteristicName: 'Melt temperature',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Thermocouple (barrel zone 4)',
+            sampleSize: 'Every shot',
+            frequency: 'Continuous',
+            acceptanceCriteria: '235-245°C',
+            reactionPlan: 'Stop machine if >250°C or <230°C; verify heater bands',
+          },
+          {
+            equipmentId: engelPress200.id,
+            characteristicType: 'process',
+            characteristicName: 'Cycle time',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Machine controller timer',
+            sampleSize: 'Every shot',
+            frequency: 'Continuous',
+            acceptanceCriteria: '42-48 sec',
+            reactionPlan: 'Trend monitoring; investigate if >50 sec (cooling issue)',
+          },
+          {
+            equipmentId: engelPress200.id,
+            characteristicType: 'product',
+            characteristicName: 'Part weight',
+            controlMethod: 'X̄-R Chart',
+            measurementSystem: 'Digital scale',
+            sampleSize: '5 parts/hour',
+            frequency: 'Hourly',
+            acceptanceCriteria: '123-127 g',
+            reactionPlan: 'Adjust shot size if trend shows drift; verify material dried properly',
+          },
+        ]).onConflictDoNothing();
+      }
+
+      if (bransonWelder) {
+        await tx.insert(equipmentErrorProofing).values([
+          {
+            equipmentId: bransonWelder.id,
+            name: 'Weld energy monitoring',
+            controlType: 'prevention',
+            description: 'Energy monitoring with adaptive weld algorithm. Machine rejects if weld energy < 95% or >105% target.',
+            failureModesAddressed: ['Weak weld', 'Insufficient bond strength', 'Cold weld'],
+            suggestedDetectionRating: null,
+          },
+          {
+            equipmentId: bransonWelder.id,
+            name: 'Collapse distance monitoring',
+            controlType: 'prevention',
+            description: 'Collapse distance monitoring with hard stops. Auto-stop if collapse > 2.5mm (excessive melt).',
+            failureModesAddressed: ['Part damage', 'Over-welding', 'Melt-through'],
+            suggestedDetectionRating: null,
+          },
+          {
+            equipmentId: bransonWelder.id,
+            name: 'Vision position verification',
+            controlType: 'detection',
+            description: 'Vision system pre-weld position verification. Weld blocked if position deviation > 0.5mm.',
+            failureModesAddressed: ['Misalignment', 'Part positioning error'],
+            suggestedDetectionRating: 2,
+          },
+        ]).onConflictDoNothing();
+
+        await tx.insert(equipmentControlMethods).values([
+          {
+            equipmentId: bransonWelder.id,
+            characteristicType: 'process',
+            characteristicName: 'Weld energy',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Integrated energy meter',
+            sampleSize: 'Every weld',
+            frequency: 'Continuous',
+            acceptanceCriteria: '1100-1300 J',
+            reactionPlan: 'Auto-flag if OOT; destructive test next 3 welds; adjust amplitude if trend',
+          },
+          {
+            equipmentId: bransonWelder.id,
+            characteristicType: 'process',
+            characteristicName: 'Weld time',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Controller timer',
+            sampleSize: 'Every weld',
+            frequency: 'Continuous',
+            acceptanceCriteria: '1.5-2.1 sec',
+            reactionPlan: 'Monitor trend; if >2.5 sec, check horn condition',
+          },
+          {
+            equipmentId: bransonWelder.id,
+            characteristicType: 'process',
+            characteristicName: 'Collapse distance',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Linear encoder',
+            sampleSize: 'Every weld',
+            frequency: 'Continuous',
+            acceptanceCriteria: '1.7-2.3 mm',
+            reactionPlan: 'Part flagged for peel test if <1.5mm or >2.5mm',
+          },
+        ]).onConflictDoNothing();
+      }
+
+      if (fanucRobot) {
+        await tx.insert(equipmentErrorProofing).values([
+          {
+            equipmentId: fanucRobot.id,
+            name: 'Gripper force monitoring',
+            controlType: 'prevention',
+            description: 'Vacuum/gripper force sensor with real-time monitoring. Robot stops if force < 80% target or vacuum < -70 kPa.',
+            failureModesAddressed: ['Part drop', 'Loss of vacuum', 'Gripper failure'],
+            suggestedDetectionRating: null,
+          },
+          {
+            equipmentId: fanucRobot.id,
+            name: 'Vision-guided placement',
+            controlType: 'prevention',
+            description: 'Vision-guided placement with position feedback. Placement rejected if deviation > 0.5mm from taught point.',
+            failureModesAddressed: ['Incorrect placement', 'Position error'],
+            suggestedDetectionRating: null,
+          },
+          {
+            equipmentId: fanucRobot.id,
+            name: 'Torque monitoring',
+            controlType: 'detection',
+            description: 'Torque monitoring on all axes with soft limits. E-stop if torque > 90% max or position error > 5mm.',
+            failureModesAddressed: ['Collision', 'Obstruction', 'Path interference'],
+            suggestedDetectionRating: 1,
+          },
+        ]).onConflictDoNothing();
+
+        await tx.insert(equipmentControlMethods).values([
+          {
+            equipmentId: fanucRobot.id,
+            characteristicType: 'process',
+            characteristicName: 'Gripper vacuum',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Vacuum sensor',
+            sampleSize: 'Every pick',
+            frequency: 'Continuous',
+            acceptanceCriteria: '-75 to -95 kPa',
+            reactionPlan: 'Alert if <-70 kPa; check cups for wear; replace if damaged',
+          },
+          {
+            equipmentId: fanucRobot.id,
+            characteristicType: 'process',
+            characteristicName: 'Cycle time',
+            controlMethod: 'Automatic 100%',
+            measurementSystem: 'Controller timer',
+            sampleSize: 'Every cycle',
+            frequency: 'Continuous',
+            acceptanceCriteria: '10-14 sec',
+            reactionPlan: 'Monitor trend; if >15 sec, check for path obstructions or axis slowdown',
+          },
+          {
+            equipmentId: fanucRobot.id,
+            characteristicType: 'process',
+            characteristicName: 'Position repeatability',
+            controlMethod: 'X̄-R Chart',
+            measurementSystem: 'Taught point verification',
+            sampleSize: '10 placements',
+            frequency: 'Daily',
+            acceptanceCriteria: 'All within ±0.08 mm',
+            reactionPlan: 'Re-teach positions if any >0.10mm; check arm backlash',
+          },
+        ]).onConflictDoNothing();
       }
     });
 
