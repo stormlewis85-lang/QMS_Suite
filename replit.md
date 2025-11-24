@@ -114,6 +114,17 @@ The seed script creates:
 
 ## Recent Changes
 
+**2025-11-24 (Night)**: Settings page implemented
+- Created comprehensive Settings page with configuration sections:
+  - Company Information: Company name, location, IATF 16949 certificate number
+  - Rating Scale Configuration: AIAG-VDA 2019 standard, AP thresholds (high ≥100, medium ≥50)
+  - Notifications: Toggle notifications and email digests for PFMEA updates
+  - User Preferences: Default dashboard view, auto-save settings
+- Added /settings route to App.tsx router
+- Follows enterprise design patterns with shadcn/ui Cards, Inputs, Switches
+- Toast notifications on save
+- End-to-end Playwright test passed: verified page loads, form inputs, toggles, navigation
+
 **2025-11-24 (Late Evening)**: PFMEA and Control Plan editing dialogs completed
 - Built comprehensive editing dialogs for PFMEA rows and Control Plan characteristics
   - PFMEA dialog: Step Ref, Function, Requirement, Failure Mode, Effect, Severity, Cause, Occurrence, Detection, Notes, CSR Symbol
