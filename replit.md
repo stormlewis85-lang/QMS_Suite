@@ -114,6 +114,26 @@ The seed script creates:
 
 ## Recent Changes
 
+**2025-11-24 (Late Evening)**: PFMEA and Control Plan editing dialogs completed
+- Built comprehensive editing dialogs for PFMEA rows and Control Plan characteristics
+  - PFMEA dialog: Step Ref, Function, Requirement, Failure Mode, Effect, Severity, Cause, Occurrence, Detection, Notes, CSR Symbol
+  - Control Plan dialog: Char ID, Name, Type, Target, Tolerance, Measurement System, Gage Details, Sample Size, Frequency, Control Method, Acceptance Criteria, Reaction Plan, CSR Symbol
+  - Real-time AP calculation display in PFMEA dialog (Severity × (Occurrence + Detection))
+  - AP badge with color-coded levels (high ≥100, medium 50-99, low <50)
+- Implemented full CRUD operations:
+  - Create mode: POST to /api/pfmea/:id/rows and /api/control-plans/:id/rows
+  - Edit mode: PATCH to /api/pfmea-rows/:id and /api/control-plan-rows/:id
+  - Proper form reset when switching between create/edit modes
+  - Cache invalidation for immediate table updates
+  - Toast notifications for success/error states
+- Fixed critical bugs:
+  - apiRequest signature: Changed from `apiRequest(url, { method, body })` to `apiRequest(method, url, data)`
+  - Form reset logic: useEffect now properly loads existing row data when editing
+- End-to-end Playwright tests passed for complete CRUD workflows:
+  - PFMEA row creation with AP=50, editing with AP recalculation to 70
+  - Control Plan characteristic creation (C-040), editing with field updates
+  - Verified form validation, cache invalidation, and data persistence
+
 **2025-11-24 (Evening)**: PFMEA and Control Plans pages completed
 - Extended backend APIs: GET /api/pfmea/:id and GET /api/control-plans/:id with all rows
 - Added CRUD endpoints for PFMEA and Control Plan rows (POST/PATCH)
