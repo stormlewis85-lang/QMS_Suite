@@ -114,6 +114,23 @@ The seed script creates:
 
 ## Recent Changes
 
+**2025-11-24 (Final)**: Generate PFMEA and Generate Control Plan dialogs completed
+- Implemented comprehensive document generation dialogs with:
+  - Schema-based validation using insertPfmeaSchema and insertControlPlanSchema
+  - Client-side duplicate prevention checking existing revisions before API call
+  - Proper error handling with descriptive toast messages ("Duplicate revision - PFMEA with revision X already exists")
+  - Dialog remains open on error for user to correct revision
+  - Form reset with empty string defaults (not null) to prevent controlled/uncontrolled warnings
+  - Auto-close dialog if part selection changes to prevent stale data issues
+- POST endpoints for document creation: /api/pfmea and /api/control-plans
+- Cache invalidation after successful creation
+- Success/error toast notifications
+- End-to-end Playwright tests passed:
+  - Attempted duplicate PFMEA Rev A → error toast, dialog stays open
+  - Corrected to Rev F → success, document created and appears in list
+  - Same for Control Plans
+  - All behaviors verified working correctly
+
 **2025-11-24 (Late Night)**: Action buttons implemented across all pages
 - Fixed all non-functional action buttons across Parts, Processes, PFMEA, and Control Plans pages
 - **Parts page actions:**

@@ -411,12 +411,12 @@ function GeneratePFMEADialog({
     },
   });
 
-  // Close dialog and reset form if part changes while dialog is open
+  // Close dialog if part changes while dialog is open (prevents stale data)
   useEffect(() => {
     if (open) {
-      form.reset({ rev: "A", basis: "", docNo: "" });
+      onOpenChange(false);
     }
-  }, [partId, open, form]);
+  }, [partId]);
 
   const createMutation = useMutation({
     mutationFn: async (values: GeneratePFMEAFormValues) => {

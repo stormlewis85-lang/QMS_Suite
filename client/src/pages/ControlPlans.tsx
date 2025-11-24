@@ -428,12 +428,12 @@ function GenerateControlPlanDialog({
     },
   });
 
-  // Reset form if part changes while dialog is open
+  // Close dialog if part changes while dialog is open (prevents stale data)
   useEffect(() => {
     if (open) {
-      form.reset({ rev: "A", type: "Production", docNo: "", processOwner: "" });
+      onOpenChange(false);
     }
-  }, [partId, open, form]);
+  }, [partId]);
 
   const createMutation = useMutation({
     mutationFn: async (values: GenerateControlPlanFormValues) => {
