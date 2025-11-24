@@ -31,6 +31,7 @@ export const processStep = pgTable('process_step', {
   name: text('name').notNull(),
   area: text('area').notNull(),
   equipment: jsonb('equipment').$type<{ name: string; model?: string; settings?: Record<string, any> }[]>(),
+  equipmentIds: jsonb('equipment_ids').$type<string[]>().default([]), // Array of equipment library IDs
   branchTo: text('branch_to'),
   reworkTo: text('rework_to'),
 }, (table) => ({
@@ -102,6 +103,49 @@ export const ratingScale = pgTable('rating_scale', {
 }, (table) => ({
   versionKindIdx: uniqueIndex('rating_scale_version_kind_idx').on(table.version, table.kind),
 }));
+
+// Equipment Library Tables
+export const equipmentLibrary = pgTable('equipment_library', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: text('type').notNull(), // 'injection_press', 'ultrasonic_welder', 'hot_plate_welder', 'robot', 'conveyor', 'test_station'
+  name: text('name').notNull().unique(), // 'Engel 200T #1', 'Branson Welder #3'
+  manufacturer: text('manufacturer'), // 'Engel', 'Branson', 'Fanuc'
+  model: text('model'), // 'Victory 200', 'M-710iC'
+  tonnage: integer('tonnage'), // For presses: 200, 500, 1000, etc.
+  serialNumber: text('serial_number'),
+  location: text('location'), // 'Plant 1 - Cell 3'
+  status: text('status').notNull().default('active'), // 'active', 'maintenance', 'retired'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const equipmentErrorProofing = pgTable('equipment_error_proofing', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  equipmentId: uuid('equipment_id').notNull().references(() => equipmentLibrary.id, { onDelete: 'cascade' }),
+  controlType: text('control_type').notNull(), // 'prevention' or 'detection'
+  name: text('name').notNull(), // 'Cavity pressure monitoring'
+  description: text('description'), // Detailed description of how control works
+  failureModesAddressed: jsonb('failure_modes_addressed').$type<string[]>().default([]), // ['Short shot', 'Voids', 'Flash']
+  suggestedDetectionRating: integer('suggested_detection_rating'), // 3-7 typical, null for prevention
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const equipmentControlMethods = pgTable('equipment_control_methods', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  equipmentId: uuid('equipment_id').notNull().references(() => equipmentLibrary.id, { onDelete: 'cascade' }),
+  characteristicType: text('characteristic_type').notNull(), // 'product' or 'process'
+  characteristicName: text('characteristic_name').notNull(), // 'Shot weight', 'Weld energy', 'Cavity pressure'
+  controlMethod: text('control_method').notNull(), // 'Automatic 100%', 'X̄-R Chart', 'Attribute check'
+  measurementSystem: text('measurement_system'), // 'Integrated scale', 'Pressure transducer'
+  sampleSize: text('sample_size'), // '100%', '5 pc', '1 pc'
+  frequency: text('frequency'), // 'Continuous', 'Every cycle', '1/hour'
+  acceptanceCriteria: text('acceptance_criteria'), // '±2g', 'Within limits'
+  reactionPlan: text('reaction_plan'), // 'Auto-reject to quarantine', 'Alarm - stop process'
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
 
 // Part Tables
 export const part = pgTable('part', {
@@ -315,6 +359,25 @@ export const controlPlanRowRelations = relations(controlPlanRow, ({ one }) => ({
   }),
 }));
 
+export const equipmentLibraryRelations = relations(equipmentLibrary, ({ many }) => ({
+  errorProofingControls: many(equipmentErrorProofing),
+  controlMethods: many(equipmentControlMethods),
+}));
+
+export const equipmentErrorProofingRelations = relations(equipmentErrorProofing, ({ one }) => ({
+  equipment: one(equipmentLibrary, {
+    fields: [equipmentErrorProofing.equipmentId],
+    references: [equipmentLibrary.id],
+  }),
+}));
+
+export const equipmentControlMethodsRelations = relations(equipmentControlMethods, ({ one }) => ({
+  equipment: one(equipmentLibrary, {
+    fields: [equipmentControlMethods.equipmentId],
+    references: [equipmentLibrary.id],
+  }),
+}));
+
 // Insert schemas
 export const insertPartSchema = createInsertSchema(part).omit({ id: true });
 export const insertProcessDefSchema = createInsertSchema(processDef).omit({ id: true, createdAt: true });
@@ -329,6 +392,9 @@ export const insertPartProcessMapSchema = createInsertSchema(partProcessMap).omi
 export const insertGageLibrarySchema = createInsertSchema(gageLibrary).omit({ id: true });
 export const insertRatingScaleSchema = createInsertSchema(ratingScale).omit({ id: true });
 export const insertCalibrationLinkSchema = createInsertSchema(calibrationLink).omit({ id: true });
+export const insertEquipmentLibrarySchema = createInsertSchema(equipmentLibrary).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEquipmentErrorProofingSchema = createInsertSchema(equipmentErrorProofing).omit({ id: true, createdAt: true });
+export const insertEquipmentControlMethodsSchema = createInsertSchema(equipmentControlMethods).omit({ id: true, createdAt: true });
 
 // Types
 export type Part = typeof part.$inferSelect;
@@ -357,3 +423,9 @@ export type PartProcessMap = typeof partProcessMap.$inferSelect;
 export type InsertPartProcessMap = z.infer<typeof insertPartProcessMapSchema>;
 export type CalibrationLink = typeof calibrationLink.$inferSelect;
 export type InsertCalibrationLink = z.infer<typeof insertCalibrationLinkSchema>;
+export type EquipmentLibrary = typeof equipmentLibrary.$inferSelect;
+export type InsertEquipmentLibrary = z.infer<typeof insertEquipmentLibrarySchema>;
+export type EquipmentErrorProofing = typeof equipmentErrorProofing.$inferSelect;
+export type InsertEquipmentErrorProofing = z.infer<typeof insertEquipmentErrorProofingSchema>;
+export type EquipmentControlMethods = typeof equipmentControlMethods.$inferSelect;
+export type InsertEquipmentControlMethods = z.infer<typeof insertEquipmentControlMethodsSchema>;

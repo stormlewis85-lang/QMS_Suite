@@ -1,0 +1,1702 @@
+Add an Equipment Library with Error-Proofing Controls to the existing PFMEA Suite. This feature allows users to define presses and other equipment with their associated error-proofing controls and control methods. When equipment is assigned to a process step, those controls automatically populate in both PFMEA templates AND Control Plans.
+
+## Database Schema Additions
+
+Add these new tables to the existing Drizzle schema:
+
+### 1. Equipment Library Table
+```typescript
+export const equipmentLibrary = pgTable('equipment_library', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: text('type').notNull(), // 'injection_press', 'ultrasonic_welder', 'hot_plate_welder', 'robot', 'conveyor', 'test_station'
+  name: text('name').notNull().unique(), // 'Engel 200T #1', 'Branson Welder #3'
+  manufacturer: text('manufacturer'), // 'Engel', 'Branson', 'Fanuc'
+  model: text('model'), // 'Victory 200', 'M-710iC'
+  tonnage: integer('tonnage'), // For presses: 200, 500, 1000, etc.
+  serialNumber: text('serial_number'),
+  location: text('location'), // 'Plant 1 - Cell 3'
+  status: text('status').notNull().default('active'), // 'active', 'maintenance', 'retired'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+```
+
+### 2. Equipment Error-Proofing Controls Table (for PFMEA)
+```typescript
+export const equipmentErrorProofing = pgTable('equipment_error_proofing', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  equipmentId: uuid('equipment_id').notNull().references(() => equipmentLibrary.id, { onDelete: 'cascade' }),
+  controlType: text('control_type').notNull(), // 'prevention' or 'detection'
+  name: text('name').notNull(), // 'Cavity pressure monitoring'
+  description: text('description'), // Detailed description of how control works
+  failureModesAddressed: jsonb('failure_modes_addressed').$type<string[]>().default([]), // ['Short shot', 'Voids', 'Flash']
+  suggestedDetectionRating: integer('suggested_detection_rating'), // 3-7 typical, null for prevention
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+```
+
+### 3. Equipment Control Methods Table (for Control Plan)
+```typescript
+export const equipmentControlMethods = pgTable('equipment_control_methods', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  equipmentId: uuid('equipment_id').notNull().references(() => equipmentLibrary.id, { onDelete: 'cascade' }),
+  characteristicType: text('characteristic_type').notNull(), // 'product' or 'process'
+  characteristicName: text('characteristic_name').notNull(), // 'Shot weight', 'Weld energy', 'Cavity pressure'
+  controlMethod: text('control_method').notNull(), // 'Automatic 100%', 'X̄-R Chart', 'Attribute check'
+  measurementSystem: text('measurement_system'), // 'Integrated scale', 'Pressure transducer'
+  sampleSize: text('sample_size'), // '100%', '5 pc', '1 pc'
+  frequency: text('frequency'), // 'Continuous', 'Every cycle', '1/hour'
+  acceptanceCriteria: text('acceptance_criteria'), // '±2g', 'Within limits'
+  reactionPlan: text('reaction_plan'), // 'Auto-reject to quarantine', 'Alarm - stop process'
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+```
+
+### 4. Add Relations
+```typescript
+export const equipmentLibraryRelations = relations(equipmentLibrary, ({ many }) => ({
+  errorProofingControls: many(equipmentErrorProofing),
+  controlMethods: many(equipmentControlMethods),
+}));
+
+export const equipmentErrorProofingRelations = relations(equipmentErrorProofing, ({ one }) => ({
+  equipment: one(equipmentLibrary, {
+    fields: [equipmentErrorProofing.equipmentId],
+    references: [equipmentLibrary.id],
+  }),
+}));
+
+export const equipmentControlMethodsRelations = relations(equipmentControlMethods, ({ one }) => ({
+  equipment: one(equipmentLibrary, {
+    fields: [equipmentControlMethods.equipmentId],
+    references: [equipmentLibrary.id],
+  }),
+}));
+```
+
+### 5. Update Process Step Table
+Add this column to the existing process_step table:
+```typescript
+equipmentIds: jsonb('equipment_ids').$type<string[]>().default([]), // Array of equipment library IDs
+```
+
+## Seed Data
+
+Add comprehensive seed data for injection molding and welding equipment:
+```typescript
+async function seedEquipment() {
+  // ============================================
+  // EQUIPMENT LIBRARY
+  // ============================================
+  
+  const [engel200, engel500, arburg320, bransonWelder, fanucRobot] = await db.insert(equipmentLibrary).values([
+    {
+      type: 'injection_press',
+      name: 'Engel 200T #1',
+      manufacturer: 'Engel',
+      model: 'Victory 200',
+      tonnage: 200,
+      location: 'Plant 1 - Cell 1',
+      status: 'active',
+    },
+    {
+      type: 'injection_press',
+      name: 'Engel 500T #1',
+      manufacturer: 'Engel',
+      model: 'Duo 500',
+      tonnage: 500,
+      location: 'Plant 1 - Cell 2',
+      status: 'active',
+    },
+    {
+      type: 'injection_press',
+      name: 'Arburg 320T #1',
+      manufacturer: 'Arburg',
+      model: 'Allrounder 520A',
+      tonnage: 320,
+      location: 'Plant 1 - Cell 3',
+      status: 'active',
+    },
+    {
+      type: 'ultrasonic_welder',
+      name: 'Branson Ultrasonic #1',
+      manufacturer: 'Branson',
+      model: '2000X',
+      location: 'Plant 1 - Assembly',
+      status: 'active',
+    },
+    {
+      type: 'robot',
+      name: 'Fanuc Robot #1',
+      manufacturer: 'Fanuc',
+      model: 'M-710iC/50',
+      location: 'Plant 1 - Cell 1',
+      status: 'active',
+    },
+  ]).returning();
+
+  // ============================================
+  // ERROR-PROOFING CONTROLS FOR ENGEL 200T (PFMEA)
+  // ============================================
+  
+  await db.insert(equipmentErrorProofing).values([
+    // PREVENTION CONTROLS
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Cavity pressure monitoring',
+      description: 'In-mold pressure sensor monitors fill and pack pressure in real-time. Process stops if pressure falls outside limits.',
+      failureModesAddressed: ['Short shot', 'Voids', 'Sink marks'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Pack/hold pressure control',
+      description: 'Closed-loop control of pack pressure with automatic adjustment.',
+      failureModesAddressed: ['Short shot', 'Sink marks', 'Dimensional variation'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Barrel temperature control',
+      description: 'Multi-zone barrel heating with PID control and alarms for over/under temperature.',
+      failureModesAddressed: ['Material degradation', 'Burns', 'Incomplete melt', 'Contamination'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Mold temperature control',
+      description: 'Thermolator with closed-loop temperature control and flow monitoring.',
+      failureModesAddressed: ['Warpage', 'Incomplete fill', 'Surface defects', 'Dimensional variation'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Screw position monitoring',
+      description: 'Linear transducer monitors screw position to ensure consistent shot size.',
+      failureModesAddressed: ['Shot size variation', 'Short shot', 'Flash'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Cushion monitoring',
+      description: 'Verifies minimum cushion maintained at end of pack phase.',
+      failureModesAddressed: ['Short shot', 'Inconsistent packing', 'Voids'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Cycle time interlock',
+      description: 'Process alarm if cycle time exceeds limits, prevents over-cure or extended cooling.',
+      failureModesAddressed: ['Over-packing', 'Thermal degradation', 'Cycle drift'],
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'prevention',
+      name: 'Clamp force monitoring',
+      description: 'Monitors clamp tonnage to prevent flash and ensure proper mold sealing.',
+      failureModesAddressed: ['Flash', 'Mold damage', 'Part thickness variation'],
+      isActive: true,
+    },
+    // DETECTION CONTROLS
+    {
+      equipmentId: engel200.id,
+      controlType: 'detection',
+      name: 'Part presence sensor (in-mold)',
+      description: 'Proximity sensor confirms part ejected before mold close.',
+      failureModesAddressed: ['Part stuck in mold', 'Mold damage', 'Robot crash'],
+      suggestedDetectionRating: 3,
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'detection',
+      name: 'Robot extraction confirmation',
+      description: 'Robot gripper sensor confirms part pickup before retract.',
+      failureModesAddressed: ['Part not extracted', 'Part dropped', 'Mold damage'],
+      suggestedDetectionRating: 3,
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'detection',
+      name: 'Shot weight monitoring',
+      description: 'Integrated scale weighs each shot, auto-rejects out-of-spec parts.',
+      failureModesAddressed: ['Short shot', 'Flash', 'Material variation'],
+      suggestedDetectionRating: 4,
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'detection',
+      name: 'Vision system - surface inspection',
+      description: 'Camera inspects part surface for defects, auto-diverts NOK parts.',
+      failureModesAddressed: ['Surface defects', 'Flash', 'Contamination', 'Color variation', 'Short shot'],
+      suggestedDetectionRating: 4,
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'detection',
+      name: 'Cycle time alarm',
+      description: 'HMI alarm and data logging when cycle exceeds limits.',
+      failureModesAddressed: ['Process drift', 'Equipment malfunction'],
+      suggestedDetectionRating: 6,
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      controlType: 'detection',
+      name: 'Gate vestige sensor',
+      description: 'Sensor verifies gate is properly trimmed/degated.',
+      failureModesAddressed: ['Gate vestige high', 'Incomplete degate'],
+      suggestedDetectionRating: 4,
+      isActive: true,
+    },
+  ]);
+
+  // ============================================
+  // ERROR-PROOFING CONTROLS FOR BRANSON WELDER (PFMEA)
+  // ============================================
+  
+  await db.insert(equipmentErrorProofing).values([
+    // PREVENTION CONTROLS
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'prevention',
+      name: 'Weld energy control',
+      description: 'Closed-loop energy mode ensures consistent weld regardless of part variation.',
+      failureModesAddressed: ['Weak weld', 'Overweld', 'Inconsistent bond'],
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'prevention',
+      name: 'Amplitude control',
+      description: 'Precise amplitude control with automatic adjustment for horn wear.',
+      failureModesAddressed: ['Weak weld', 'Part marking', 'Horn damage'],
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'prevention',
+      name: 'Collapse distance monitoring',
+      description: 'Monitors weld collapse to ensure proper joint formation.',
+      failureModesAddressed: ['Incomplete weld', 'Part damage', 'Dimensional issues'],
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'prevention',
+      name: 'Force control',
+      description: 'Pneumatic pressure regulation ensures consistent weld force.',
+      failureModesAddressed: ['Weak weld', 'Part crush', 'Inconsistent bond'],
+      isActive: true,
+    },
+    // DETECTION CONTROLS
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'detection',
+      name: 'Weld signature analysis',
+      description: 'Real-time analysis of power, energy, and collapse curves vs. known-good reference.',
+      failureModesAddressed: ['Weak weld', 'Part variation', 'Process drift'],
+      suggestedDetectionRating: 4,
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'detection',
+      name: 'Leak test station',
+      description: 'Inline pressure decay test verifies weld integrity.',
+      failureModesAddressed: ['Leak', 'Incomplete weld', 'Porosity'],
+      suggestedDetectionRating: 3,
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'detection',
+      name: 'Part nest sensors',
+      description: 'Proximity sensors confirm proper part seating before weld cycle.',
+      failureModesAddressed: ['Misaligned weld', 'Part damage', 'Incomplete weld'],
+      suggestedDetectionRating: 3,
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      controlType: 'detection',
+      name: 'Height measurement',
+      description: 'Post-weld height check verifies proper collapse.',
+      failureModesAddressed: ['Overweld', 'Underweld', 'Dimensional out of spec'],
+      suggestedDetectionRating: 4,
+      isActive: true,
+    },
+  ]);
+
+  // ============================================
+  // ERROR-PROOFING CONTROLS FOR FANUC ROBOT (PFMEA)
+  // ============================================
+  
+  await db.insert(equipmentErrorProofing).values([
+    {
+      equipmentId: fanucRobot.id,
+      controlType: 'prevention',
+      name: 'Path monitoring',
+      description: 'Robot controller monitors actual vs programmed path, faults on deviation.',
+      failureModesAddressed: ['Collision', 'Incorrect placement', 'Dropped part'],
+      isActive: true,
+    },
+    {
+      equipmentId: fanucRobot.id,
+      controlType: 'prevention',
+      name: 'Servo torque limits',
+      description: 'Configurable torque limits prevent damage from unexpected contact.',
+      failureModesAddressed: ['Collision', 'Part damage', 'Fixture damage'],
+      isActive: true,
+    },
+    {
+      equipmentId: fanucRobot.id,
+      controlType: 'detection',
+      name: 'Gripper part-present sensor',
+      description: 'Confirms part is gripped before robot movement.',
+      failureModesAddressed: ['Dropped part', 'Missing part', 'Cycle fault'],
+      suggestedDetectionRating: 3,
+      isActive: true,
+    },
+    {
+      equipmentId: fanucRobot.id,
+      controlType: 'detection',
+      name: 'Vacuum level monitoring',
+      description: 'For vacuum grippers, monitors vacuum level during transport.',
+      failureModesAddressed: ['Dropped part', 'Part shift during transport'],
+      suggestedDetectionRating: 4,
+      isActive: true,
+    },
+  ]);
+
+  // ============================================
+  // CONTROL METHODS FOR ENGEL 200T (CONTROL PLAN)
+  // ============================================
+  
+  await db.insert(equipmentControlMethods).values([
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'process',
+      characteristicName: 'Shot weight',
+      controlMethod: 'Automatic 100% - Integrated scale',
+      measurementSystem: 'Mettler Toledo ICS Scale',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Target ±2g',
+      reactionPlan: 'Auto-reject to quarantine bin, alarm after 3 consecutive rejects',
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'process',
+      characteristicName: 'Cavity pressure',
+      controlMethod: 'Automatic 100% - Process monitoring',
+      measurementSystem: 'Kistler ComoNeo',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Peak pressure within validated window',
+      reactionPlan: 'Auto-segregate suspect parts, notify technician',
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'process',
+      characteristicName: 'Cycle time',
+      controlMethod: 'Automatic 100% - Machine monitoring',
+      measurementSystem: 'Press controller',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Target ±5%',
+      reactionPlan: 'Alarm if exceeded, log deviation',
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'process',
+      characteristicName: 'Barrel temperatures',
+      controlMethod: 'Automatic 100% - Zone monitoring',
+      measurementSystem: 'Integrated thermocouples',
+      sampleSize: '100%',
+      frequency: 'Continuous',
+      acceptanceCriteria: 'Setpoint ±5°C per zone',
+      reactionPlan: 'Alarm, auto-stop if >10°C deviation',
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'process',
+      characteristicName: 'Mold temperature',
+      controlMethod: 'Automatic 100% - Thermolator monitoring',
+      measurementSystem: 'Integrated RTD sensors',
+      sampleSize: '100%',
+      frequency: 'Continuous',
+      acceptanceCriteria: 'Setpoint ±3°C',
+      reactionPlan: 'Alarm, verify water flow',
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'process',
+      characteristicName: 'Cushion position',
+      controlMethod: 'Automatic 100% - Position monitoring',
+      measurementSystem: 'Linear transducer',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Min cushion maintained',
+      reactionPlan: 'Alarm, check material feed',
+      isActive: true,
+    },
+    {
+      equipmentId: engel200.id,
+      characteristicType: 'product',
+      characteristicName: 'Part presence verification',
+      controlMethod: 'Automatic 100% - Sensor verification',
+      measurementSystem: 'Proximity sensor array',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Part detected = OK',
+      reactionPlan: 'Cycle interrupt, operator alert',
+      isActive: true,
+    },
+  ]);
+
+  // ============================================
+  // CONTROL METHODS FOR BRANSON WELDER (CONTROL PLAN)
+  // ============================================
+  
+  await db.insert(equipmentControlMethods).values([
+    {
+      equipmentId: bransonWelder.id,
+      characteristicType: 'process',
+      characteristicName: 'Weld energy',
+      controlMethod: 'Automatic 100% - Energy mode control',
+      measurementSystem: 'Branson DCX controller',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Target ±10%',
+      reactionPlan: 'Auto-reject, alarm after 3 rejects',
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      characteristicType: 'process',
+      characteristicName: 'Collapse distance',
+      controlMethod: 'Automatic 100% - Distance monitoring',
+      measurementSystem: 'Linear encoder',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Target ±0.1mm',
+      reactionPlan: 'Auto-reject if out of limits',
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      characteristicType: 'process',
+      characteristicName: 'Weld time',
+      controlMethod: 'Automatic 100% - Time monitoring',
+      measurementSystem: 'Controller timer',
+      sampleSize: '100%',
+      frequency: 'Every cycle',
+      acceptanceCriteria: 'Within validated window',
+      reactionPlan: 'Flag for review if trending',
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      characteristicType: 'product',
+      characteristicName: 'Weld integrity (leak test)',
+      controlMethod: 'Automatic 100% - Pressure decay test',
+      measurementSystem: 'Cincinnati Test Systems',
+      sampleSize: '100%',
+      frequency: 'Every part',
+      acceptanceCriteria: 'Decay <0.5 psi in 5 sec',
+      reactionPlan: 'Auto-reject to NOK bin',
+      isActive: true,
+    },
+    {
+      equipmentId: bransonWelder.id,
+      characteristicType: 'product',
+      characteristicName: 'Post-weld height',
+      controlMethod: 'Automatic 100% - LVDT measurement',
+      measurementSystem: 'Marposs gauge',
+      sampleSize: '100%',
+      frequency: 'Every part',
+      acceptanceCriteria: 'Nominal ±0.15mm',
+      reactionPlan: 'Auto-reject, adjust if trending',
+      isActive: true,
+    },
+  ]);
+
+  console.log('✅ Equipment library seeded successfully');
+  console.log(`   - ${5} equipment items`);
+  console.log(`   - Error-proofing controls for PFMEA`);
+  console.log(`   - Control methods for Control Plan`);
+}
+```
+
+## API Endpoints (tRPC Router)
+
+Create a comprehensive equipment router:
+```typescript
+// Create new file: routers/equipment.ts (or add to existing router structure)
+
+import { z } from 'zod';
+import { router, publicProcedure } from '../trpc';
+import { db } from '../db';
+import { equipmentLibrary, equipmentErrorProofing, equipmentControlMethods } from '../db/schema';
+import { eq, and, inArray, asc } from 'drizzle-orm';
+
+export const equipmentRouter = router({
+  // ============================================
+  // EQUIPMENT CRUD
+  // ============================================
+  
+  // List all equipment with optional filtering
+  list: publicProcedure
+    .input(z.object({
+      type: z.string().optional(),
+      status: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const conditions = [];
+      if (input?.type) conditions.push(eq(equipmentLibrary.type, input.type));
+      if (input?.status) conditions.push(eq(equipmentLibrary.status, input.status));
+      
+      const equipment = await db.query.equipmentLibrary.findMany({
+        where: conditions.length > 0 ? and(...conditions) : undefined,
+        with: {
+          errorProofingControls: true,
+          controlMethods: true,
+        },
+        orderBy: [asc(equipmentLibrary.type), asc(equipmentLibrary.name)],
+      });
+      return equipment;
+    }),
+
+  // Get single equipment with all controls
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      return db.query.equipmentLibrary.findFirst({
+        where: eq(equipmentLibrary.id, input.id),
+        with: {
+          errorProofingControls: true,
+          controlMethods: true,
+        },
+      });
+    }),
+
+  // Create new equipment
+  create: publicProcedure
+    .input(z.object({
+      type: z.string(),
+      name: z.string(),
+      manufacturer: z.string().optional(),
+      model: z.string().optional(),
+      tonnage: z.number().optional(),
+      serialNumber: z.string().optional(),
+      location: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [equipment] = await db.insert(equipmentLibrary).values(input).returning();
+      return equipment;
+    }),
+
+  // Update equipment
+  update: publicProcedure
+    .input(z.object({
+      id: z.string(),
+      type: z.string().optional(),
+      name: z.string().optional(),
+      manufacturer: z.string().optional(),
+      model: z.string().optional(),
+      tonnage: z.number().optional(),
+      serialNumber: z.string().optional(),
+      location: z.string().optional(),
+      status: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      const [equipment] = await db.update(equipmentLibrary)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(equipmentLibrary.id, id))
+        .returning();
+      return equipment;
+    }),
+
+  // Delete equipment
+  delete: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.delete(equipmentLibrary).where(eq(equipmentLibrary.id, input.id));
+      return { success: true };
+    }),
+
+  // ============================================
+  // ERROR-PROOFING CONTROLS (PFMEA)
+  // ============================================
+  
+  // Get controls for multiple equipment IDs (for PFMEA generation)
+  getControlsForEquipment: publicProcedure
+    .input(z.object({ equipmentIds: z.array(z.string()) }))
+    .query(async ({ input }) => {
+      if (input.equipmentIds.length === 0) {
+        return { prevention: [], detection: [] };
+      }
+      
+      const controls = await db.query.equipmentErrorProofing.findMany({
+        where: and(
+          inArray(equipmentErrorProofing.equipmentId, input.equipmentIds),
+          eq(equipmentErrorProofing.isActive, true)
+        ),
+        with: {
+          equipment: true,
+        },
+      });
+      
+      return {
+        prevention: controls.filter(c => c.controlType === 'prevention'),
+        detection: controls.filter(c => c.controlType === 'detection'),
+      };
+    }),
+
+  // Add error-proofing control to equipment
+  addErrorProofingControl: publicProcedure
+    .input(z.object({
+      equipmentId: z.string(),
+      controlType: z.enum(['prevention', 'detection']),
+      name: z.string(),
+      description: z.string().optional(),
+      failureModesAddressed: z.array(z.string()).optional(),
+      suggestedDetectionRating: z.number().min(1).max(10).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [control] = await db.insert(equipmentErrorProofing).values(input).returning();
+      return control;
+    }),
+
+  // Update error-proofing control
+  updateErrorProofingControl: publicProcedure
+    .input(z.object({
+      id: z.string(),
+      controlType: z.enum(['prevention', 'detection']).optional(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      failureModesAddressed: z.array(z.string()).optional(),
+      suggestedDetectionRating: z.number().min(1).max(10).nullable().optional(),
+      isActive: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      const [control] = await db.update(equipmentErrorProofing)
+        .set(data)
+        .where(eq(equipmentErrorProofing.id, id))
+        .returning();
+      return control;
+    }),
+
+  // Delete error-proofing control
+  deleteErrorProofingControl: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.delete(equipmentErrorProofing).where(eq(equipmentErrorProofing.id, input.id));
+      return { success: true };
+    }),
+
+  // ============================================
+  // CONTROL METHODS (CONTROL PLAN)
+  // ============================================
+  
+  // Get control methods for equipment
+  getControlMethods: publicProcedure
+    .input(z.object({ equipmentIds: z.array(z.string()) }))
+    .query(async ({ input }) => {
+      if (input.equipmentIds.length === 0) return [];
+      
+      return db.query.equipmentControlMethods.findMany({
+        where: and(
+          inArray(equipmentControlMethods.equipmentId, input.equipmentIds),
+          eq(equipmentControlMethods.isActive, true)
+        ),
+        with: {
+          equipment: true,
+        },
+      });
+    }),
+
+  // Add control method
+  addControlMethod: publicProcedure
+    .input(z.object({
+      equipmentId: z.string(),
+      characteristicType: z.enum(['product', 'process']),
+      characteristicName: z.string(),
+      controlMethod: z.string(),
+      measurementSystem: z.string().optional(),
+      sampleSize: z.string().optional(),
+      frequency: z.string().optional(),
+      acceptanceCriteria: z.string().optional(),
+      reactionPlan: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [method] = await db.insert(equipmentControlMethods).values(input).returning();
+      return method;
+    }),
+
+  // Update control method
+  updateControlMethod: publicProcedure
+    .input(z.object({
+      id: z.string(),
+      characteristicType: z.enum(['product', 'process']).optional(),
+      characteristicName: z.string().optional(),
+      controlMethod: z.string().optional(),
+      measurementSystem: z.string().optional(),
+      sampleSize: z.string().optional(),
+      frequency: z.string().optional(),
+      acceptanceCriteria: z.string().optional(),
+      reactionPlan: z.string().optional(),
+      isActive: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      const [method] = await db.update(equipmentControlMethods)
+        .set(data)
+        .where(eq(equipmentControlMethods.id, id))
+        .returning();
+      return method;
+    }),
+
+  // Delete control method
+  deleteControlMethod: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.delete(equipmentControlMethods).where(eq(equipmentControlMethods.id, input.id));
+      return { success: true };
+    }),
+
+  // ============================================
+  // UTILITY ENDPOINTS
+  // ============================================
+  
+  // Get equipment types for dropdown
+  getTypes: publicProcedure.query(async () => {
+    return [
+      { value: 'injection_press', label: 'Injection Press' },
+      { value: 'ultrasonic_welder', label: 'Ultrasonic Welder' },
+      { value: 'hot_plate_welder', label: 'Hot Plate Welder' },
+      { value: 'vibration_welder', label: 'Vibration Welder' },
+      { value: 'spin_welder', label: 'Spin Welder' },
+      { value: 'laser_welder', label: 'Laser Welder' },
+      { value: 'robot', label: 'Robot' },
+      { value: 'conveyor', label: 'Conveyor' },
+      { value: 'test_station', label: 'Test Station' },
+      { value: 'assembly_fixture', label: 'Assembly Fixture' },
+      { value: 'paint_booth', label: 'Paint Booth' },
+      { value: 'oven', label: 'Oven/Furnace' },
+      { value: 'cnc', label: 'CNC Machine' },
+      { value: 'press_hydraulic', label: 'Hydraulic Press' },
+      { value: 'grinder', label: 'Grinder' },
+    ];
+  }),
+
+  // Get common failure modes for autocomplete
+  getCommonFailureModes: publicProcedure.query(async () => {
+    return [
+      'Short shot', 'Flash', 'Sink marks', 'Voids', 'Warpage',
+      'Burns', 'Material degradation', 'Contamination', 'Color variation',
+      'Surface defects', 'Dimensional variation', 'Incomplete fill',
+      'Weak weld', 'Incomplete weld', 'Overweld', 'Leak',
+      'Part stuck in mold', 'Mold damage', 'Part dropped',
+      'Misaligned', 'Missing part', 'Wrong part', 'Damaged part',
+    ];
+  }),
+
+  // Get statistics
+  getStats: publicProcedure.query(async () => {
+    const equipment = await db.query.equipmentLibrary.findMany();
+    const controls = await db.query.equipmentErrorProofing.findMany();
+    const methods = await db.query.equipmentControlMethods.findMany();
+    
+    return {
+      totalEquipment: equipment.length,
+      activeEquipment: equipment.filter(e => e.status === 'active').length,
+      totalControls: controls.length,
+      preventionControls: controls.filter(c => c.controlType === 'prevention').length,
+      detectionControls: controls.filter(c => c.controlType === 'detection').length,
+      totalControlMethods: methods.length,
+    };
+  }),
+});
+```
+
+Don't forget to add the equipment router to your main app router:
+```typescript
+// In your main router file
+import { equipmentRouter } from './equipment';
+
+export const appRouter = router({
+  // ... existing routers
+  equipment: equipmentRouter,
+});
+```
+
+## Update PFMEA Generator Service
+
+Modify the PFMEA generator to auto-populate controls from equipment:
+```typescript
+// Update pfmea-generator.ts or the service that generates PFMEAs
+
+import { db } from '../db';
+import { pfmea, pfmeaRow, fmeaTemplateRow, processStep, equipmentErrorProofing } from '../db/schema';
+import { eq, inArray, and } from 'drizzle-orm';
+import { APCalculator } from '../shared/ap-calculator';
+
+export class PFMEAGenerator {
+  constructor(private apCalculator: APCalculator) {}
+
+  async generateFromTemplates(
+    partId: string,
+    processDefIds: string[],
+    rev: string
+  ) {
+    // Get all template rows for selected processes
+    const templateRows = await db.query.fmeaTemplateRow.findMany({
+      where: inArray(fmeaTemplateRow.processDefId, processDefIds),
+      with: {
+        step: true,
+      },
+    });
+
+    // Get all process steps to find equipment assignments
+    const steps = await db.query.processStep.findMany({
+      where: inArray(processStep.processDefId, processDefIds),
+    });
+
+    // Collect all equipment IDs from steps
+    const allEquipmentIds = steps
+      .flatMap(step => (step.equipmentIds as string[]) || [])
+      .filter(Boolean);
+
+    // Get error-proofing controls for all equipment
+    let equipmentControls = { prevention: [], detection: [] };
+    if (allEquipmentIds.length > 0) {
+      const controls = await db.query.equipmentErrorProofing.findMany({
+        where: and(
+          inArray(equipmentErrorProofing.equipmentId, allEquipmentIds),
+          eq(equipmentErrorProofing.isActive, true)
+        ),
+        with: { equipment: true },
+      });
+      
+      equipmentControls = {
+        prevention: controls.filter(c => c.controlType === 'prevention'),
+        detection: controls.filter(c => c.controlType === 'detection'),
+      };
+    }
+
+    // Create PFMEA header
+    const [newPfmea] = await db.insert(pfmea).values({
+      partId,
+      rev,
+      status: 'draft',
+      basis: 'AIAG-VDA 2019',
+    }).returning();
+
+    // Create PFMEA rows with auto-populated controls
+    const pfmeaRows = [];
+    
+    for (const template of templateRows) {
+      // Find equipment for this step
+      const step = steps.find(s => s.id === template.stepId);
+      const stepEquipmentIds = (step?.equipmentIds as string[]) || [];
+      
+      // Helper function to check if failure modes match
+      const failureModeMatches = (controlFailureModes: string[], templateFailureMode: string) => {
+        const normalizedTemplate = templateFailureMode.toLowerCase();
+        return controlFailureModes.some(fm => {
+          const normalizedFm = fm.toLowerCase();
+          return normalizedFm.includes(normalizedTemplate) || 
+                 normalizedTemplate.includes(normalizedFm) ||
+                 // Handle common variations
+                 (normalizedFm.includes('short') && normalizedTemplate.includes('short')) ||
+                 (normalizedFm.includes('flash') && normalizedTemplate.includes('flash')) ||
+                 (normalizedFm.includes('weld') && normalizedTemplate.includes('weld')) ||
+                 (normalizedFm.includes('leak') && normalizedTemplate.includes('leak'));
+        });
+      };
+      
+      // Get controls that match this step's equipment AND address this failure mode
+      const matchingPreventionControls = equipmentControls.prevention
+        .filter(c => 
+          stepEquipmentIds.includes(c.equipmentId) &&
+          failureModeMatches(c.failureModesAddressed || [], template.failureMode)
+        )
+        .map(c => `${c.name} (${c.equipment.name})`);
+
+      const matchingDetectionControls = equipmentControls.detection
+        .filter(c => 
+          stepEquipmentIds.includes(c.equipmentId) &&
+          failureModeMatches(c.failureModesAddressed || [], template.failureMode)
+        );
+
+      // Merge template controls with equipment controls (avoid duplicates)
+      const existingPrevention = new Set((template.preventionControls as string[]) || []);
+      const existingDetection = new Set((template.detectionControls as string[]) || []);
+      
+      const allPreventionControls = [
+        ...existingPrevention,
+        ...matchingPreventionControls.filter(c => !existingPrevention.has(c)),
+      ];
+      
+      const allDetectionControls = [
+        ...existingDetection,
+        ...matchingDetectionControls
+          .map(c => `${c.name} (${c.equipment.name})`)
+          .filter(c => !existingDetection.has(c)),
+      ];
+
+      // Calculate suggested detection rating based on equipment controls
+      const equipmentDetectionRatings = matchingDetectionControls
+        .filter(c => c.suggestedDetectionRating)
+        .map(c => c.suggestedDetectionRating as number);
+      
+      // Use lowest (best) detection rating from equipment, or template default
+      const suggestedDetection = equipmentDetectionRatings.length > 0
+        ? Math.min(...equipmentDetectionRatings, template.detection)
+        : template.detection;
+
+      // Calculate AP
+      const ap = this.apCalculator.calculate(
+        template.severity,
+        template.occurrence,
+        suggestedDetection
+      );
+
+      // Build notes about auto-populated controls
+      const autoPopulatedNotes = [];
+      if (matchingPreventionControls.length > 0) {
+        autoPopulatedNotes.push(`Prevention controls from equipment: ${matchingPreventionControls.length}`);
+      }
+      if (matchingDetectionControls.length > 0) {
+        autoPopulatedNotes.push(`Detection controls from equipment: ${matchingDetectionControls.length}`);
+      }
+      if (suggestedDetection < template.detection) {
+        autoPopulatedNotes.push(`Detection improved from ${template.detection} to ${suggestedDetection} based on equipment controls`);
+      }
+
+      const [row] = await db.insert(pfmeaRow).values({
+        pfmeaId: newPfmea.id,
+        parentTemplateRowId: template.id,
+        stepRef: template.step?.name || 'Unknown',
+        function: template.function,
+        requirement: template.requirement,
+        failureMode: template.failureMode,
+        effect: template.effect,
+        severity: template.severity,
+        cause: template.cause,
+        occurrence: template.occurrence,
+        preventionControls: allPreventionControls,
+        detectionControls: allDetectionControls,
+        detection: suggestedDetection,
+        ap: ap.ap,
+        specialFlag: template.specialFlag,
+        csrSymbol: template.csrSymbol,
+        notes: autoPopulatedNotes.length > 0 
+          ? (template.notes ? `${template.notes}\n\n` : '') + autoPopulatedNotes.join('; ')
+          : template.notes,
+      }).returning();
+
+      pfmeaRows.push(row);
+    }
+
+    return { pfmea: newPfmea, rows: pfmeaRows };
+  }
+}
+```
+
+## Update Control Plan Generator Service
+
+Modify the Control Plan generator to include equipment-based control methods:
+```typescript
+// Update control-plan-generator.ts
+
+import { db } from '../db';
+import { controlPlan, controlPlanRow, pfmeaRow, pfmea, partProcessMap, processStep, equipmentControlMethods } from '../db/schema';
+import { eq, inArray, and } from 'drizzle-orm';
+
+export class ControlPlanGenerator {
+  async generateFromPFMEA(
+    partId: string,
+    pfmeaId: string,
+    rev: string
+  ) {
+    // Get PFMEA rows with template info
+    const pfmeaRows = await db.query.pfmeaRow.findMany({
+      where: eq(pfmeaRow.pfmeaId, pfmeaId),
+      with: {
+        parentTemplate: {
+          with: {
+            controlRows: true,
+            step: true,
+          },
+        },
+      },
+    });
+
+    // Get process maps to find all process definitions
+    const processMaps = await db.query.partProcessMap.findMany({
+      where: eq(partProcessMap.partId, partId),
+    });
+    
+    const processDefIds = processMaps.map(pm => pm.processDefId);
+    
+    // Get all process steps to find equipment assignments
+    const steps = await db.query.processStep.findMany({
+      where: inArray(processStep.processDefId, processDefIds),
+    });
+
+    // Collect all equipment IDs
+    const allEquipmentIds = steps
+      .flatMap(step => (step.equipmentIds as string[]) || [])
+      .filter(Boolean);
+
+    // Get equipment control methods
+    let equipmentMethods: any[] = [];
+    if (allEquipmentIds.length > 0) {
+      equipmentMethods = await db.query.equipmentControlMethods.findMany({
+        where: and(
+          inArray(equipmentControlMethods.equipmentId, allEquipmentIds),
+          eq(equipmentControlMethods.isActive, true)
+        ),
+        with: { equipment: true },
+      });
+    }
+
+    // Create Control Plan header
+    const [newControlPlan] = await db.insert(controlPlan).values({
+      partId,
+      rev,
+      type: 'Production',
+      status: 'draft',
+    }).returning();
+
+    const cpRows = [];
+    let charIdCounter = 1;
+    const addedCharacteristics = new Set<string>();
+
+    // ============================================
+    // PART 1: Add rows from PFMEA/templates
+    // ============================================
+    
+    for (const fmeaRowData of pfmeaRows) {
+      if (!fmeaRowData.parentTemplate?.controlRows) continue;
+
+      for (const template of fmeaRowData.parentTemplate.controlRows) {
+        // Find equipment for this step
+        const step = steps.find(s => s.id === fmeaRowData.parentTemplate?.step?.id);
+        const stepEquipmentIds = (step?.equipmentIds as string[]) || [];
+        
+        // Check if equipment has a control method that enhances this characteristic
+        const matchingEquipmentMethod = equipmentMethods.find(ecm =>
+          stepEquipmentIds.includes(ecm.equipmentId) &&
+          (ecm.characteristicName.toLowerCase().includes(template.characteristicName.toLowerCase()) ||
+           template.characteristicName.toLowerCase().includes(ecm.characteristicName.toLowerCase()))
+        );
+
+        const charId = template.charId || `C-${String(charIdCounter++).padStart(3, '0')}`;
+        
+        const [row] = await db.insert(controlPlanRow).values({
+          controlPlanId: newControlPlan.id,
+          sourcePfmeaRowId: fmeaRowData.id,
+          parentControlTemplateRowId: template.id,
+          charId,
+          characteristicName: template.characteristicName,
+          type: template.type,
+          target: template.target,
+          tolerance: template.tolerance,
+          specialFlag: template.specialFlag,
+          csrSymbol: template.csrSymbol,
+          // Use equipment method if available, otherwise template defaults
+          measurementSystem: matchingEquipmentMethod?.measurementSystem || template.measurementSystem,
+          gageDetails: template.gageDetails,
+          sampleSize: matchingEquipmentMethod?.sampleSize || template.defaultSampleSize,
+          frequency: matchingEquipmentMethod?.frequency || template.defaultFrequency,
+          controlMethod: matchingEquipmentMethod 
+            ? `${matchingEquipmentMethod.controlMethod} (${matchingEquipmentMethod.equipment.name})`
+            : template.controlMethod,
+          acceptanceCriteria: template.acceptanceCriteria,
+          reactionPlan: matchingEquipmentMethod?.reactionPlan || template.reactionPlan,
+        }).returning();
+
+        cpRows.push(row);
+        addedCharacteristics.add(template.characteristicName.toLowerCase());
+      }
+    }
+
+    // ============================================
+    // PART 2: Add equipment-based process parameters
+    // These are monitored by equipment but may not be in templates
+    // ============================================
+    
+    for (const ecm of equipmentMethods) {
+      // Skip if already added via template matching
+      if (addedCharacteristics.has(ecm.characteristicName.toLowerCase())) continue;
+      
+      // Find which step this equipment belongs to
+      const equipmentStep = steps.find(s => 
+        ((s.equipmentIds as string[]) || []).includes(ecm.equipmentId)
+      );
+      
+      if (!equipmentStep) continue;
+
+      const charId = `P-${String(charIdCounter++).padStart(3, '0')}`; // P for Process parameter
+
+      const [row] = await db.insert(controlPlanRow).values({
+        controlPlanId: newControlPlan.id,
+        sourcePfmeaRowId: null,
+        parentControlTemplateRowId: null,
+        charId,
+        characteristicName: `${ecm.characteristicName} (${ecm.equipment.name})`,
+        type: ecm.characteristicType === 'product' ? 'Product' : 'Process',
+        target: null,
+        tolerance: null,
+        specialFlag: false,
+        csrSymbol: null,
+        measurementSystem: ecm.measurementSystem,
+        gageDetails: ecm.equipment.name,
+        sampleSize: ecm.sampleSize,
+        frequency: ecm.frequency,
+        controlMethod: ecm.controlMethod,
+        acceptanceCriteria: ecm.acceptanceCriteria,
+        reactionPlan: ecm.reactionPlan,
+        notes: 'Auto-generated from equipment control method',
+      }).returning();
+
+      cpRows.push(row);
+      addedCharacteristics.add(ecm.characteristicName.toLowerCase());
+    }
+
+    return { controlPlan: newControlPlan, rows: cpRows };
+  }
+}
+```
+
+## UI Pages
+
+### 1. Equipment Library Page (/equipment or /app/equipment/page.tsx)
+```tsx
+'use client';
+
+import { trpc } from '../trpc';
+import { useState } from 'react';
+import Link from 'next/link';
+
+export default function EquipmentPage() {
+  const { data: equipment, isLoading, refetch } = trpc.equipment.list.useQuery();
+  const { data: stats } = trpc.equipment.getStats.useQuery();
+  const { data: types } = trpc.equipment.getTypes.useQuery();
+  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
+  const [filterType, setFilterType] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'errorProofing' | 'controlMethods'>('errorProofing');
+
+  const filteredEquipment = equipment?.filter(eq => 
+    !filterType || eq.type === filterType
+  );
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-8">
+        <div className="animate-pulse">Loading equipment library...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-8">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Equipment Library</h1>
+          <p className="text-gray-500">Manage equipment and their error-proofing controls</p>
+        </div>
+        <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+          + Add Equipment
+        </button>
+      </div>
+
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-2xl font-bold">{stats.totalEquipment}</p>
+            <p className="text-sm text-gray-500">Total Equipment</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-2xl font-bold text-green-600">{stats.activeEquipment}</p>
+            <p className="text-sm text-gray-500">Active</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-2xl font-bold text-green-700">{stats.preventionControls}</p>
+            <p className="text-sm text-gray-500">Prevention Controls</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-2xl font-bold text-blue-600">{stats.detectionControls}</p>
+            <p className="text-sm text-gray-500">Detection Controls</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <p className="text-2xl font-bold text-purple-600">{stats.totalControlMethods}</p>
+            <p className="text-sm text-gray-500">Control Methods</p>
+          </div>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="mb-4">
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="border rounded px-3 py-2"
+        >
+          <option value="">All Equipment Types</option>
+          {types?.map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {/* Equipment List */}
+        <div className="md:col-span-1 space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
+          {filteredEquipment?.map((eq) => (
+            <div
+              key={eq.id}
+              onClick={() => setSelectedEquipment(eq)}
+              className={`p-4 bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition-all ${
+                selectedEquipment?.id === eq.id ? 'ring-2 ring-blue-500' : ''
+              }`}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-semibold">{eq.name}</h3>
+                  <p className="text-sm text-gray-500">
+                    {eq.manufacturer} {eq.model}
+                  </p>
+                  {eq.tonnage && (
+                    <p className="text-sm text-gray-500">{eq.tonnage}T</p>
+                  )}
+                </div>
+                <span className={`px-2 py-1 text-xs rounded ${
+                  eq.status === 'active' 
+                    ? 'bg-green-100 text-green-800' 
+                    : eq.status === 'maintenance'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {eq.status}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">{eq.location}</p>
+              <div className="flex gap-2 mt-2">
+                <span className="text-xs text-green-600">
+                  {eq.errorProofingControls?.filter((c: any) => c.controlType === 'prevention').length || 0} prevention
+                </span>
+                <span className="text-xs text-blue-600">
+                  {eq.errorProofingControls?.filter((c: any) => c.controlType === 'detection').length || 0} detection
+                </span>
+                <span className="text-xs text-purple-600">
+                  {eq.controlMethods?.length || 0} CP methods
+                </span>
+              </div>
+            </div>
+          ))}
+          
+          {filteredEquipment?.length === 0 && (
+            <div className="text-center text-gray-500 py-8">
+              No equipment found
+            </div>
+          )}
+        </div>
+
+        {/* Equipment Details & Controls */}
+        <div className="md:col-span-2">
+          {selectedEquipment ? (
+            <div className="bg-white rounded-lg shadow">
+              {/* Equipment Header */}
+              <div className="p-6 border-b">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-bold">{selectedEquipment.name}</h2>
+                    <p className="text-gray-500">
+                      {selectedEquipment.manufacturer} {selectedEquipment.model}
+                      {selectedEquipment.tonnage && ` - ${selectedEquipment.tonnage}T`}
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {selectedEquipment.location}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="text-blue-600 hover:underline text-sm">Edit</button>
+                    <button className="text-red-600 hover:underline text-sm">Delete</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="border-b">
+                <div className="flex">
+                  <button
+                    onClick={() => setActiveTab('errorProofing')}
+                    className={`px-6 py-3 font-medium ${
+                      activeTab === 'errorProofing'
+                        ? 'border-b-2 border-blue-500 text-blue-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Error-Proofing (PFMEA)
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('controlMethods')}
+                    className={`px-6 py-3 font-medium ${
+                      activeTab === 'controlMethods'
+                        ? 'border-b-2 border-purple-500 text-purple-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Control Methods (CP)
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 max-h-[calc(100vh-450px)] overflow-y-auto">
+                {activeTab === 'errorProofing' ? (
+                  <>
+                    {/* Prevention Controls */}
+                    <div className="mb-8">
+                      <h3 className="text-lg font-semibold mb-3 text-green-700 flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                        Prevention Controls
+                        <span className="text-sm font-normal text-gray-500">
+                          ({selectedEquipment.errorProofingControls?.filter((c: any) => c.controlType === 'prevention').length || 0})
+                        </span>
+                      </h3>
+                      <div className="space-y-3">
+                        {selectedEquipment.errorProofingControls
+                          ?.filter((c: any) => c.controlType === 'prevention')
+                          .map((control: any) => (
+                            <div key={control.id} className="p-4 bg-green-50 rounded-lg border border-green-200">
+                              <div className="flex justify-between items-start">
+                                <span className="font-medium">{control.name}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  control.isActive ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
+                                }`}>
+                                  {control.isActive ? 'Active' : 'Inactive'}
+                                </span>
+                              </div>
+                              {control.description && (
+                                <p className="text-sm text-gray-600 mt-2">{control.description}</p>
+                              )}
+                              {control.failureModesAddressed?.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-3">
+                                  <span className="text-xs text-gray-500">Addresses:</span>
+                                  {control.failureModesAddressed.map((fm: string, i: number) => (
+                                    <span key={i} className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded">
+                                      {fm}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                      <button className="mt-3 text-green-600 hover:text-green-800 text-sm">
+                        + Add Prevention Control
+                      </button>
+                    </div>
+
+                    {/* Detection Controls */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3 text-blue-700 flex items-center gap-2">
+                        <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                        Detection Controls
+                        <span className="text-sm font-normal text-gray-500">
+                          ({selectedEquipment.errorProofingControls?.filter((c: any) => c.controlType === 'detection').length || 0})
+                        </span>
+                      </h3>
+                      <div className="space-y-3">
+                        {selectedEquipment.errorProofingControls
+                          ?.filter((c: any) => c.controlType === 'detection')
+                          .map((control: any) => (
+                            <div key={control.id} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="flex justify-between items-start">
+                                <span className="font-medium">{control.name}</span>
+                                <div className="flex items-center gap-2">
+                                  {control.suggestedDetectionRating && (
+                                    <span className="px-2 py-0.5 bg-blue-200 text-blue-800 text-xs rounded font-mono">
+                                      D={control.suggestedDetectionRating}
+                                    </span>
+                                  )}
+                                  <span className={`text-xs px-2 py-0.5 rounded ${
+                                    control.isActive ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-600'
+                                  }`}>
+                                    {control.isActive ? 'Active' : 'Inactive'}
+                                  </span>
+                                </div>
+                              </div>
+                              {control.description && (
+                                <p className="text-sm text-gray-600 mt-2">{control.description}</p>
+                              )}
+                              {control.failureModesAddressed?.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-3">
+                                  <span className="text-xs text-gray-500">Detects:</span>
+                                  {control.failureModesAddressed.map((fm: string, i: number) => (
+                                    <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
+                                      {fm}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                      <button className="mt-3 text-blue-600 hover:text-blue-800 text-sm">
+                        + Add Detection Control
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* Control Methods Tab */
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-purple-700">Control Plan Methods</h3>
+                        <p className="text-sm text-gray-500">
+                          These auto-populate into Control Plans when this equipment is assigned
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Characteristic</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Control Method</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sample / Freq</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reaction Plan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {selectedEquipment.controlMethods?.map((cm: any) => (
+                            <tr key={cm.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <span className="font-medium">{cm.characteristicName}</span>
+                                {cm.measurementSystem && (
+                                  <p className="text-xs text-gray-500">{cm.measurementSystem}</p>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded text-xs ${
+                                  cm.characteristicType === 'product' 
+                                    ? 'bg-blue-100 text-blue-800' 
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {cm.characteristicType}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm">{cm.controlMethod}</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">
+                                {cm.sampleSize} / {cm.frequency}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" title={cm.reactionPlan}>
+                                {cm.reactionPlan}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    {(!selectedEquipment.controlMethods || selectedEquipment.controlMethods.length === 0) && (
+                      <div className="text-center text-gray-500 py-8">
+                        No control methods defined
+                      </div>
+                    )}
+                    
+                    <button className="mt-4 px-4 py-2 border border-purple-300 text-purple-700 rounded hover:bg-purple-50">
+                      + Add Control Method
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-lg p-12 text-center text-gray-500 h-full flex items-center justify-center">
+              <div>
+                <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                </svg>
+                <p>Select equipment to view details</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### 2. Update Process Step Editor Component
+
+Add equipment selection to the process step editor:
+```tsx
+// Component for selecting equipment when editing a process step
+
+interface EquipmentSelectorProps {
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}
+
+function EquipmentSelector({ selectedIds, onChange }: EquipmentSelectorProps) {
+  const { data: equipment } = trpc.equipment.list.useQuery({ status: 'active' });
+  const { data: types } = trpc.equipment.getTypes.useQuery();
+  
+  // Group equipment by type
+  const grouped = equipment?.reduce((acc: Record<string, any[]>, eq) => {
+    if (!acc[eq.type]) acc[eq.type] = [];
+    acc[eq.type].push(eq);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  const getTypeLabel = (type: string) => {
+    return types?.find(t => t.value === type)?.label || type;
+  };
+
+  return (
+    <div className="space-y-4">
+      <label className="block text-sm font-medium text-gray-700">
+        Equipment Assigned to This Step
+      </label>
+      <p className="text-xs text-gray-500 mb-2">
+        Error-proofing controls from selected equipment will auto-populate in PFMEA and Control Plan
+      </p>
+      
+      <div className="border rounded-lg max-h-64 overflow-y-auto">
+        {Object.entries(grouped || {}).map(([type, items]) => (
+          <div key={type} className="border-b last:border-b-0">
+            <div className="bg-gray-50 px-3 py-2">
+              <p className="text-xs font-medium text-gray-600 uppercase">
+                {getTypeLabel(type)}
+              </p>
+            </div>
+            <div className="p-2 space-y-1">
+              {items.map((eq: any) => (
+                <label 
+                  key={eq.id} 
+                  className="flex items-center gap-3 p-2 hover:bg-blue-50 rounded cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(eq.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onChange([...selectedIds, eq.id]);
+                      } else {
+                        onChange(selectedIds.filter(id => id !== eq.id));
+                      }
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium">{eq.name}</span>
+                    {eq.tonnage && (
+                      <span className="text-gray-500 ml-1">({eq.tonnage}T)</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {(eq.errorProofingControls?.length || 0) + (eq.controlMethods?.length || 0)} controls
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {selectedIds.length > 0 && (
+        <div className="text-sm text-blue-600">
+          {selectedIds.length} equipment selected
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Navigation Update
+
+Add Equipment Library to the main navigation menu:
+```tsx
+// In your layout.tsx or navigation component, add:
+
+<Link 
+  href="/equipment" 
+  className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+>
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+  </svg>
+  Equipment Library
+</Link>
+```
+
+## Summary of All Changes
+
+### Database:
+1. `equipment_library` - Equipment master data (presses, welders, robots, etc.)
+2. `equipment_error_proofing` - Prevention/detection controls for PFMEA
+3. `equipment_control_methods` - Control methods for Control Plan
+4. Updated `process_step` with `equipmentIds` array
+
+### API:
+- New `equipment` router with full CRUD for equipment, controls, and methods
+- Utility endpoints for types, failure modes, and statistics
+
+### Services:
+- Updated `PFMEAGenerator` to auto-populate controls from assigned equipment
+- Updated `ControlPlanGenerator` to add equipment control methods
+
+### UI:
+- New `/equipment` page for managing equipment library
+- Equipment selector component for process step editor
+- Tabs for error-proofing controls vs control methods
+
+### Seed Data:
+- Engel 200T injection press with 14 error-proofing controls and 7 control methods
+- Branson ultrasonic welder with 8 error-proofing controls and 5 control methods
+- Fanuc robot with 4 error-proofing controls
+- Additional presses (Engel 500T, Arburg 320T)
+
+### Flow:
+1. User creates/manages equipment in Equipment Library
+2. User adds error-proofing controls (prevention/detection) → flows to PFMEA
+3. User adds control methods → flows to Control Plan
+4. User assigns equipment to process steps
+5. When generating PFMEA: controls auto-populate based on failure mode matching
+6. When generating Control Plan: control methods auto-populate as process parameters
