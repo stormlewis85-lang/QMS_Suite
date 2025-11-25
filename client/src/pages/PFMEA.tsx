@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { FileText, Plus, Loader2, ChevronLeft, AlertTriangle } from "lucide-react";
+import { FileText, Plus, Loader2, ChevronLeft, AlertTriangle, Library, Search, Filter } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -41,8 +42,159 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Part, PFMEA, PFMEARow, InsertPFMEA } from "@shared/schema";
+import type { Part, PFMEA, PFMEARow, InsertPFMEA, FailureModesLibrary, FailureModeCategory } from "@shared/schema";
 import { insertPfmeaSchema } from "@shared/schema";
+
+const CATEGORIES: { value: FailureModeCategory; label: string }[] = [
+  { value: 'dimensional', label: 'Dimensional' },
+  { value: 'visual', label: 'Visual' },
+  { value: 'functional', label: 'Functional' },
+  { value: 'assembly', label: 'Assembly' },
+  { value: 'material', label: 'Material' },
+  { value: 'process', label: 'Process' },
+  { value: 'contamination', label: 'Contamination' },
+  { value: 'environmental', label: 'Environmental' },
+];
+
+const CATEGORY_COLORS: Record<FailureModeCategory, string> = {
+  dimensional: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  visual: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  functional: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  assembly: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+  material: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  process: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+  contamination: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  environmental: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+};
+
+function BrowseCatalogDialog({
+  open,
+  onOpenChange,
+  onAdopt,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAdopt: (failureMode: FailureModesLibrary) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  const { data: failureModes = [], isLoading } = useQuery<FailureModesLibrary[]>({
+    queryKey: ["/api/failure-modes", categoryFilter !== "all" ? categoryFilter : null, searchQuery],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (categoryFilter !== "all") params.append("category", categoryFilter);
+      if (searchQuery) params.append("search", searchQuery);
+      const url = `/api/failure-modes${params.toString() ? `?${params}` : ""}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch failure modes");
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const handleAdopt = (fm: FailureModesLibrary) => {
+    onAdopt(fm);
+    onOpenChange(false);
+    apiRequest("POST", `/api/failure-modes/${fm.id}/adopt`);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[85vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Library className="h-5 w-5" />
+            Browse Failure Modes Catalog
+          </DialogTitle>
+          <DialogDescription>
+            Select a failure mode from the catalog to auto-fill FMEA row fields
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search failure modes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              data-testid="catalog-search"
+            />
+          </div>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-[180px]" data-testid="catalog-category-filter">
+              <Filter className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="Filter by category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" data-testid="catalog-filter-all">All Categories</SelectItem>
+              {CATEGORIES.map(cat => (
+                <SelectItem key={cat.value} value={cat.value} data-testid={`catalog-filter-${cat.value}`}>
+                  {cat.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="overflow-y-auto max-h-[50vh] border rounded-md">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : failureModes.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No failure modes match your search.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Failure Mode</TableHead>
+                  <TableHead className="hidden md:table-cell">Effect</TableHead>
+                  <TableHead className="hidden lg:table-cell">S/O</TableHead>
+                  <TableHead className="w-[100px]">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {failureModes.map((fm) => (
+                  <TableRow key={fm.id} data-testid={`catalog-row-${fm.id}`}>
+                    <TableCell>
+                      <Badge className={CATEGORY_COLORS[fm.category]}>
+                        {fm.category}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{fm.failureMode}</TableCell>
+                    <TableCell className="hidden md:table-cell max-w-xs truncate">
+                      {fm.genericEffect}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {fm.defaultSeverity && fm.defaultOccurrence 
+                        ? `${fm.defaultSeverity}/${fm.defaultOccurrence}` 
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        onClick={() => handleAdopt(fm)}
+                        data-testid={`button-adopt-${fm.id}`}
+                      >
+                        Adopt
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type PFMEAWithRows = PFMEA & { rows: PFMEARow[] };
 
@@ -76,6 +228,7 @@ function PFMEARowDialog({
 }) {
   const { toast } = useToast();
   const isEdit = !!row;
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   const form = useForm<PFMEARowFormValues>({
     resolver: zodResolver(pfmeaRowFormSchema),
@@ -155,6 +308,18 @@ function PFMEARowDialog({
 
   const watchedValues = form.watch(["severity", "occurrence", "detection"]);
   const calculatedAP = Number(watchedValues[0]) * (Number(watchedValues[1]) + Number(watchedValues[2]));
+
+  const handleAdoptFromCatalog = (fm: FailureModesLibrary) => {
+    form.setValue("failureMode", fm.failureMode);
+    form.setValue("effect", fm.genericEffect);
+    form.setValue("cause", (fm.typicalCauses || []).join("; "));
+    if (fm.defaultSeverity) form.setValue("severity", fm.defaultSeverity);
+    if (fm.defaultOccurrence) form.setValue("occurrence", fm.defaultOccurrence);
+    toast({
+      title: "Failure mode adopted",
+      description: `"${fm.failureMode}" has been applied to the form.`,
+    });
+  };
 
   useEffect(() => {
     if (open && row) {
@@ -246,7 +411,19 @@ function PFMEARowDialog({
               name="failureMode"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Failure Mode</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Failure Mode</FormLabel>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCatalogOpen(true)}
+                      data-testid="button-browse-catalog"
+                    >
+                      <Library className="h-4 w-4 mr-1" />
+                      Browse Catalog
+                    </Button>
+                  </div>
                   <FormControl>
                     <Textarea {...field} placeholder="How might the process fail to perform this function?" data-testid="input-failure-mode" />
                   </FormControl>
@@ -378,6 +555,12 @@ function PFMEARowDialog({
           </form>
         </Form>
       </DialogContent>
+
+      <BrowseCatalogDialog
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        onAdopt={handleAdoptFromCatalog}
+      />
     </Dialog>
   );
 }
