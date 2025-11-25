@@ -14,7 +14,11 @@ import {
   insertEquipmentControlMethodsSchema,
   insertFailureModesLibrarySchema,
   insertFmeaTemplateCatalogLinkSchema,
+  insertControlsLibrarySchema,
+  insertControlPairingsSchema,
   type FailureModeCategory,
+  type ControlType,
+  type ControlEffectiveness,
 } from "@shared/schema";
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
@@ -603,6 +607,154 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching catalog links:", error);
       res.status(500).json({ error: "Failed to fetch catalog links" });
+    }
+  });
+
+  // Controls Library API
+  app.get("/api/controls-library", async (req, res) => {
+    try {
+      const { type, effectiveness, search, status } = req.query;
+      const filters: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string } = {};
+      
+      if (type && typeof type === 'string') {
+        filters.type = type as ControlType;
+      }
+      if (effectiveness && typeof effectiveness === 'string') {
+        filters.effectiveness = effectiveness as ControlEffectiveness;
+      }
+      if (search && typeof search === 'string') {
+        filters.search = search;
+      }
+      if (status && typeof status === 'string') {
+        filters.status = status;
+      }
+      
+      const controls = await storage.getAllControls(
+        Object.keys(filters).length > 0 ? filters : undefined
+      );
+      res.json(controls);
+    } catch (error) {
+      console.error("Error fetching controls:", error);
+      res.status(500).json({ error: "Failed to fetch controls" });
+    }
+  });
+
+  app.get("/api/controls-library/:id", async (req, res) => {
+    try {
+      const control = await storage.getControlById(req.params.id);
+      if (!control) {
+        return res.status(404).json({ error: "Control not found" });
+      }
+      res.json(control);
+    } catch (error) {
+      console.error("Error fetching control:", error);
+      res.status(500).json({ error: "Failed to fetch control" });
+    }
+  });
+
+  app.post("/api/controls-library", async (req, res) => {
+    try {
+      const validatedData = insertControlsLibrarySchema.parse(req.body);
+      const newControl = await storage.createControl(validatedData);
+      res.status(201).json(newControl);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating control:", error);
+      res.status(500).json({ error: "Failed to create control" });
+    }
+  });
+
+  app.patch("/api/controls-library/:id", async (req, res) => {
+    try {
+      const updates = insertControlsLibrarySchema.partial().parse(req.body);
+      const updatedControl = await storage.updateControl(req.params.id, updates);
+      if (!updatedControl) {
+        return res.status(404).json({ error: "Control not found" });
+      }
+      res.json(updatedControl);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating control:", error);
+      res.status(500).json({ error: "Failed to update control" });
+    }
+  });
+
+  app.delete("/api/controls-library/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteControl(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Control not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting control:", error);
+      res.status(500).json({ error: "Failed to delete control" });
+    }
+  });
+
+  // Update last used timestamp when adopting a control
+  app.post("/api/controls-library/:id/adopt", async (req, res) => {
+    try {
+      await storage.updateControlLastUsed(req.params.id);
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error updating control last used:", error);
+      res.status(500).json({ error: "Failed to update control" });
+    }
+  });
+
+  // Control Pairings API (for smart suggestions)
+  app.get("/api/control-pairings", async (req, res) => {
+    try {
+      const pairings = await storage.getAllControlPairings();
+      res.json(pairings);
+    } catch (error) {
+      console.error("Error fetching control pairings:", error);
+      res.status(500).json({ error: "Failed to fetch control pairings" });
+    }
+  });
+
+  app.get("/api/control-pairings/by-failure-mode/:failureModeId", async (req, res) => {
+    try {
+      const pairings = await storage.getControlPairingsByFailureModeId(req.params.failureModeId);
+      res.json(pairings);
+    } catch (error) {
+      console.error("Error fetching control pairings:", error);
+      res.status(500).json({ error: "Failed to fetch control pairings" });
+    }
+  });
+
+  app.post("/api/control-pairings", async (req, res) => {
+    try {
+      const validatedData = insertControlPairingsSchema.parse(req.body);
+      const newPairing = await storage.createControlPairing(validatedData);
+      res.status(201).json(newPairing);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating control pairing:", error);
+      res.status(500).json({ error: "Failed to create control pairing" });
+    }
+  });
+
+  app.delete("/api/control-pairings/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteControlPairing(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Control pairing not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting control pairing:", error);
+      res.status(500).json({ error: "Failed to delete control pairing" });
     }
   });
 
