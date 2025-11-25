@@ -701,10 +701,10 @@ async function seed() {
               preventionControls: ['Process validation (DOE or scientific molding approach)', 'Pack pressure monitoring', 'Process parameter lock-out', 'Mold cooling temperature control', 'Preventive maintenance schedule'],
               detectionControls: ['First-piece inspection (all dimensions)', 'In-process sampling per control plan', 'CMM/gage R&R verified measurement', 'SPC with Cpk ≥ 1.33 target'],
               detection: 4,
-              ap: 'H',
+              ap: 'M',
               specialFlag: true,
               csrSymbol: 'Ⓢ',
-              notes: 'Critical dimension - requires SPC and capability study',
+              notes: 'Critical dimension - requires SPC and capability study. AP=M per S×(O+D)=64.',
             },
             {
               processDefId: injectionMoldingComplete.id,
