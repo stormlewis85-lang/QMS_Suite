@@ -12,6 +12,9 @@ import {
   insertEquipmentLibrarySchema,
   insertEquipmentErrorProofingSchema,
   insertEquipmentControlMethodsSchema,
+  insertFailureModesLibrarySchema,
+  insertFmeaTemplateCatalogLinkSchema,
+  type FailureModeCategory,
 } from "@shared/schema";
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
@@ -468,6 +471,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting control method:", error);
       res.status(500).json({ error: "Failed to delete control method" });
+    }
+  });
+
+  // Failure Modes Library API
+  app.get("/api/failure-modes", async (req, res) => {
+    try {
+      const { category, search, status } = req.query;
+      const filters: { category?: FailureModeCategory; search?: string; status?: string } = {};
+      
+      if (category && typeof category === 'string') {
+        filters.category = category as FailureModeCategory;
+      }
+      if (search && typeof search === 'string') {
+        filters.search = search;
+      }
+      if (status && typeof status === 'string') {
+        filters.status = status;
+      }
+      
+      const failureModes = await storage.getAllFailureModes(
+        Object.keys(filters).length > 0 ? filters : undefined
+      );
+      res.json(failureModes);
+    } catch (error) {
+      console.error("Error fetching failure modes:", error);
+      res.status(500).json({ error: "Failed to fetch failure modes" });
+    }
+  });
+
+  app.get("/api/failure-modes/:id", async (req, res) => {
+    try {
+      const failureMode = await storage.getFailureModeById(req.params.id);
+      if (!failureMode) {
+        return res.status(404).json({ error: "Failure mode not found" });
+      }
+      res.json(failureMode);
+    } catch (error) {
+      console.error("Error fetching failure mode:", error);
+      res.status(500).json({ error: "Failed to fetch failure mode" });
+    }
+  });
+
+  app.post("/api/failure-modes", async (req, res) => {
+    try {
+      const validatedData = insertFailureModesLibrarySchema.parse(req.body);
+      const newFailureMode = await storage.createFailureMode(validatedData);
+      res.status(201).json(newFailureMode);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating failure mode:", error);
+      res.status(500).json({ error: "Failed to create failure mode" });
+    }
+  });
+
+  app.patch("/api/failure-modes/:id", async (req, res) => {
+    try {
+      const updates = insertFailureModesLibrarySchema.partial().parse(req.body);
+      const updatedFailureMode = await storage.updateFailureMode(req.params.id, updates);
+      if (!updatedFailureMode) {
+        return res.status(404).json({ error: "Failure mode not found" });
+      }
+      res.json(updatedFailureMode);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating failure mode:", error);
+      res.status(500).json({ error: "Failed to update failure mode" });
+    }
+  });
+
+  app.delete("/api/failure-modes/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteFailureMode(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Failure mode not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting failure mode:", error);
+      res.status(500).json({ error: "Failed to delete failure mode" });
+    }
+  });
+
+  // Update last used timestamp when adopting
+  app.post("/api/failure-modes/:id/adopt", async (req, res) => {
+    try {
+      await storage.updateFailureModeLastUsed(req.params.id);
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error updating failure mode last used:", error);
+      res.status(500).json({ error: "Failed to update failure mode" });
+    }
+  });
+
+  // Catalog Links API
+  app.post("/api/catalog-links", async (req, res) => {
+    try {
+      const validatedData = insertFmeaTemplateCatalogLinkSchema.parse(req.body);
+      const newLink = await storage.createCatalogLink(validatedData);
+      res.status(201).json(newLink);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating catalog link:", error);
+      res.status(500).json({ error: "Failed to create catalog link" });
+    }
+  });
+
+  app.get("/api/catalog-links/by-template/:templateRowId", async (req, res) => {
+    try {
+      const links = await storage.getCatalogLinksByTemplateRowId(req.params.templateRowId);
+      res.json(links);
+    } catch (error) {
+      console.error("Error fetching catalog links:", error);
+      res.status(500).json({ error: "Failed to fetch catalog links" });
+    }
+  });
+
+  app.get("/api/catalog-links/by-catalog/:catalogItemId", async (req, res) => {
+    try {
+      const links = await storage.getCatalogLinksByCatalogItemId(req.params.catalogItemId);
+      res.json(links);
+    } catch (error) {
+      console.error("Error fetching catalog links:", error);
+      res.status(500).json({ error: "Failed to fetch catalog links" });
     }
   });
 

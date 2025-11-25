@@ -10,6 +10,8 @@ import {
   equipmentLibrary,
   equipmentErrorProofing,
   equipmentControlMethods,
+  failureModesLibrary,
+  fmeaTemplateCatalogLink,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -30,9 +32,14 @@ import {
   type InsertEquipmentErrorProofing,
   type EquipmentControlMethods,
   type InsertEquipmentControlMethods,
+  type FailureModesLibrary,
+  type InsertFailureModesLibrary,
+  type FmeaTemplateCatalogLink,
+  type InsertFmeaTemplateCatalogLink,
+  type FailureModeCategory,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Parts
@@ -75,6 +82,19 @@ export interface IStorage {
   createControlMethod(insertMethod: InsertEquipmentControlMethods): Promise<EquipmentControlMethods>;
   updateControlMethod(id: string, updates: Partial<InsertEquipmentControlMethods>): Promise<EquipmentControlMethods | undefined>;
   deleteControlMethod(id: string): Promise<boolean>;
+  
+  // Failure Modes Library
+  getAllFailureModes(filters?: { category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]>;
+  getFailureModeById(id: string): Promise<FailureModesLibrary | undefined>;
+  createFailureMode(insertFailureMode: InsertFailureModesLibrary): Promise<FailureModesLibrary>;
+  updateFailureMode(id: string, updates: Partial<InsertFailureModesLibrary>): Promise<FailureModesLibrary | undefined>;
+  deleteFailureMode(id: string): Promise<boolean>;
+  updateFailureModeLastUsed(id: string): Promise<void>;
+  
+  // Catalog Links
+  createCatalogLink(insertLink: InsertFmeaTemplateCatalogLink): Promise<FmeaTemplateCatalogLink>;
+  getCatalogLinksByTemplateRowId(templateRowId: string): Promise<FmeaTemplateCatalogLink[]>;
+  getCatalogLinksByCatalogItemId(catalogItemId: string): Promise<FmeaTemplateCatalogLink[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -276,6 +296,83 @@ export class DatabaseStorage implements IStorage {
   async deleteControlMethod(id: string): Promise<boolean> {
     const result = await db.delete(equipmentControlMethods).where(eq(equipmentControlMethods.id, id));
     return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  // Failure Modes Library
+  async getAllFailureModes(filters?: { category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]> {
+    const conditions = [];
+    
+    if (filters?.category) {
+      conditions.push(eq(failureModesLibrary.category, filters.category));
+    }
+    
+    if (filters?.status) {
+      conditions.push(eq(failureModesLibrary.status, filters.status));
+    }
+    
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      conditions.push(
+        or(
+          ilike(failureModesLibrary.failureMode, searchTerm),
+          ilike(failureModesLibrary.genericEffect, searchTerm)
+        )
+      );
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(failureModesLibrary)
+        .where(and(...conditions))
+        .orderBy(failureModesLibrary.category, failureModesLibrary.failureMode);
+    }
+    
+    return await db.select().from(failureModesLibrary)
+      .orderBy(failureModesLibrary.category, failureModesLibrary.failureMode);
+  }
+
+  async getFailureModeById(id: string): Promise<FailureModesLibrary | undefined> {
+    const [result] = await db.select().from(failureModesLibrary).where(eq(failureModesLibrary.id, id));
+    return result || undefined;
+  }
+
+  async createFailureMode(insertFailureMode: InsertFailureModesLibrary): Promise<FailureModesLibrary> {
+    const [newFailureMode] = await db.insert(failureModesLibrary).values(insertFailureMode).returning();
+    return newFailureMode;
+  }
+
+  async updateFailureMode(id: string, updates: Partial<InsertFailureModesLibrary>): Promise<FailureModesLibrary | undefined> {
+    const [updatedFailureMode] = await db.update(failureModesLibrary)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(failureModesLibrary.id, id))
+      .returning();
+    return updatedFailureMode || undefined;
+  }
+
+  async deleteFailureMode(id: string): Promise<boolean> {
+    const result = await db.delete(failureModesLibrary).where(eq(failureModesLibrary.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async updateFailureModeLastUsed(id: string): Promise<void> {
+    await db.update(failureModesLibrary)
+      .set({ lastUsed: new Date() })
+      .where(eq(failureModesLibrary.id, id));
+  }
+
+  // Catalog Links
+  async createCatalogLink(insertLink: InsertFmeaTemplateCatalogLink): Promise<FmeaTemplateCatalogLink> {
+    const [newLink] = await db.insert(fmeaTemplateCatalogLink).values(insertLink).returning();
+    return newLink;
+  }
+
+  async getCatalogLinksByTemplateRowId(templateRowId: string): Promise<FmeaTemplateCatalogLink[]> {
+    return await db.select().from(fmeaTemplateCatalogLink)
+      .where(eq(fmeaTemplateCatalogLink.templateRowId, templateRowId));
+  }
+
+  async getCatalogLinksByCatalogItemId(catalogItemId: string): Promise<FmeaTemplateCatalogLink[]> {
+    return await db.select().from(fmeaTemplateCatalogLink)
+      .where(eq(fmeaTemplateCatalogLink.catalogItemId, catalogItemId));
   }
 }
 

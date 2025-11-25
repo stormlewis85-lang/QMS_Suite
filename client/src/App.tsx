@@ -12,6 +12,7 @@ import Processes from "@/pages/Processes";
 import PFMEA from "@/pages/PFMEA";
 import ControlPlans from "@/pages/ControlPlans";
 import Equipment from "@/pages/Equipment";
+import FailureModes from "@/pages/FailureModes";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/pfmea" component={PFMEA} />
       <Route path="/control-plans" component={ControlPlans} />
       <Route path="/equipment" component={Equipment} />
+      <Route path="/failure-modes" component={FailureModes} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

@@ -1,6 +1,533 @@
 import { db } from '../server/db';
-import { part, processDef, processStep, fmeaTemplateRow, controlTemplateRow, gageLibrary, ratingScale, calibrationLink, pfmea, pfmeaRow, controlPlan, controlPlanRow, equipmentLibrary, equipmentErrorProofing, equipmentControlMethods } from '@shared/schema';
+import { part, processDef, processStep, fmeaTemplateRow, controlTemplateRow, gageLibrary, ratingScale, calibrationLink, pfmea, pfmeaRow, controlPlan, controlPlanRow, equipmentLibrary, equipmentErrorProofing, equipmentControlMethods, failureModesLibrary } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+
+// Comprehensive Automotive Failure Modes Catalog
+const AUTOMOTIVE_FAILURE_MODES = [
+  // INJECTION MOLDING - DIMENSIONAL
+  {
+    category: 'dimensional' as const,
+    failureMode: 'Short shot',
+    genericEffect: 'Incomplete part geometry, fit/function failure',
+    typicalCauses: [
+      'Insufficient pack pressure',
+      'Low melt temperature',
+      'Insufficient shot size',
+      'Restricted gate/runner',
+      'Premature gate freeze-off',
+      'Venting inadequate'
+    ],
+    applicableProcesses: ['Injection Molding', 'Insert Molding', 'Overmolding'],
+    defaultSeverity: 8,
+    defaultOccurrence: 4,
+    tags: ['molding', 'dimensional', 'critical'],
+    industryStandard: 'AIAG-VDA 2019',
+    status: 'active',
+  },
+  {
+    category: 'dimensional' as const,
+    failureMode: 'Flash/burr',
+    genericEffect: 'Excess material requiring trim, potential fit issues',
+    typicalCauses: [
+      'Excessive injection pressure',
+      'Worn mold parting line',
+      'Insufficient clamp tonnage',
+      'Mold alignment issue',
+      'Foreign material on parting line'
+    ],
+    applicableProcesses: ['Injection Molding', 'Compression Molding'],
+    defaultSeverity: 5,
+    defaultOccurrence: 5,
+    tags: ['molding', 'dimensional', 'trim'],
+    status: 'active',
+  },
+  {
+    category: 'dimensional' as const,
+    failureMode: 'Sink marks',
+    genericEffect: 'Surface depression, cosmetic defect',
+    typicalCauses: [
+      'Insufficient pack pressure',
+      'Insufficient pack time',
+      'Heavy wall section design',
+      'Gate location suboptimal',
+      'Early gate freeze-off'
+    ],
+    applicableProcesses: ['Injection Molding'],
+    defaultSeverity: 6,
+    defaultOccurrence: 4,
+    tags: ['molding', 'cosmetic'],
+    status: 'active',
+  },
+  {
+    category: 'dimensional' as const,
+    failureMode: 'Warpage/distortion',
+    genericEffect: 'Part out of flatness specification, fit failure',
+    typicalCauses: [
+      'Uneven cooling',
+      'High residual stress',
+      'Non-uniform wall thickness',
+      'Improper ejection',
+      'Material orientation issues'
+    ],
+    applicableProcesses: ['Injection Molding', 'Thermoforming'],
+    defaultSeverity: 7,
+    defaultOccurrence: 5,
+    tags: ['molding', 'dimensional'],
+    status: 'active',
+  },
+  {
+    category: 'dimensional' as const,
+    failureMode: 'Dimension out of tolerance',
+    genericEffect: 'Part does not meet print specification',
+    typicalCauses: [
+      'Tool wear',
+      'Machine drift',
+      'Setup error',
+      'Temperature variation',
+      'Workholding inadequate',
+      'Measurement error'
+    ],
+    applicableProcesses: ['Machining', 'Drilling', 'Trimming', 'Routing', 'Injection Molding'],
+    defaultSeverity: 7,
+    defaultOccurrence: 4,
+    tags: ['machining', 'dimensional'],
+    status: 'active',
+  },
+
+  // VISUAL DEFECTS
+  {
+    category: 'visual' as const,
+    failureMode: 'Flow lines/weld lines',
+    genericEffect: 'Visible lines on surface, potential weak points',
+    typicalCauses: [
+      'Low melt temperature',
+      'Low mold temperature',
+      'Slow injection speed',
+      'Gate location suboptimal',
+      'Multiple flow fronts meeting'
+    ],
+    applicableProcesses: ['Injection Molding'],
+    defaultSeverity: 4,
+    defaultOccurrence: 6,
+    tags: ['molding', 'cosmetic'],
+    status: 'active',
+  },
+  {
+    category: 'visual' as const,
+    failureMode: 'Surface contamination',
+    genericEffect: 'Foreign material embedded in part surface',
+    typicalCauses: [
+      'Airborne contamination',
+      'Material handling issue',
+      'Unclean mold surface',
+      'Degraded material',
+      'Cross-contamination from previous run'
+    ],
+    applicableProcesses: ['All processes'],
+    defaultSeverity: 5,
+    defaultOccurrence: 3,
+    tags: ['contamination', 'cosmetic'],
+    status: 'active',
+  },
+  {
+    category: 'visual' as const,
+    failureMode: 'Orange peel/poor surface finish',
+    genericEffect: 'Cosmetic defect, customer dissatisfaction',
+    typicalCauses: [
+      'Spray pressure too high',
+      'Material viscosity incorrect',
+      'Application temperature wrong',
+      'Surface preparation inadequate',
+      'Flash-off time insufficient'
+    ],
+    applicableProcesses: ['Painting', 'Powder Coating'],
+    defaultSeverity: 4,
+    defaultOccurrence: 5,
+    tags: ['coating', 'cosmetic'],
+    status: 'active',
+  },
+  {
+    category: 'visual' as const,
+    failureMode: 'Color variation/mismatch',
+    genericEffect: 'Parts do not match color standard, customer rejection',
+    typicalCauses: [
+      'Color lot variation',
+      'Incorrect let-down ratio',
+      'Temperature variation affecting color',
+      'Material degradation',
+      'Mixing with regrind'
+    ],
+    applicableProcesses: ['Injection Molding', 'Painting'],
+    defaultSeverity: 5,
+    defaultOccurrence: 4,
+    tags: ['molding', 'cosmetic', 'color'],
+    status: 'active',
+  },
+
+  // ASSEMBLY DEFECTS
+  {
+    category: 'assembly' as const,
+    failureMode: 'Incomplete weld',
+    genericEffect: 'Joint strength below specification, potential leak',
+    typicalCauses: [
+      'Insufficient weld time',
+      'Low amplitude setting',
+      'Part misalignment',
+      'Contaminated joint surface',
+      'Fixture/nest worn or damaged'
+    ],
+    applicableProcesses: ['Ultrasonic Weld', 'Vibration Weld', 'Spin Weld'],
+    defaultSeverity: 9,
+    defaultOccurrence: 3,
+    tags: ['welding', 'safety', 'critical'],
+    industryStandard: 'Customer CSR',
+    status: 'active',
+  },
+  {
+    category: 'assembly' as const,
+    failureMode: 'Component missing',
+    genericEffect: 'Incomplete assembly, function failure',
+    typicalCauses: [
+      'Operator error',
+      'Feeder malfunction',
+      'Part shortage in workstation',
+      'Double-feed from previous cycle',
+      'Vision system failure'
+    ],
+    applicableProcesses: ['Manual Assembly', 'Automated Assembly'],
+    defaultSeverity: 9,
+    defaultOccurrence: 2,
+    tags: ['assembly', 'safety'],
+    status: 'active',
+  },
+  {
+    category: 'assembly' as const,
+    failureMode: 'Incorrect component installed',
+    genericEffect: 'Wrong variant assembled, function failure',
+    typicalCauses: [
+      'Mixed parts in bin',
+      'Operator confusion',
+      'Inadequate visual differentiation',
+      'Work instruction unclear',
+      'Verification system bypassed'
+    ],
+    applicableProcesses: ['Manual Assembly', 'Automated Assembly'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['assembly', 'mix-up'],
+    status: 'active',
+  },
+  {
+    category: 'assembly' as const,
+    failureMode: 'Incorrect torque',
+    genericEffect: 'Fastener loosening or stripping, function/safety failure',
+    typicalCauses: [
+      'Tool not calibrated',
+      'Wrong torque setting',
+      'Cross-threaded fastener',
+      'Contaminated threads',
+      'Wrong fastener grade'
+    ],
+    applicableProcesses: ['Fastener Assembly', 'Final Assembly'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['assembly', 'fastener', 'safety'],
+    industryStandard: 'AIAG-VDA 2019',
+    status: 'active',
+  },
+  {
+    category: 'assembly' as const,
+    failureMode: 'Parts reversed/backwards',
+    genericEffect: 'Assembly will not function, customer line down',
+    typicalCauses: [
+      'Part symmetry allows incorrect orientation',
+      'Operator error',
+      'Fixture does not prevent incorrect loading',
+      'Work instruction unclear',
+      'Poka-yoke bypassed'
+    ],
+    applicableProcesses: ['Manual Assembly', 'Automated Assembly'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['assembly', 'orientation'],
+    status: 'active',
+  },
+
+  // MATERIAL DEFECTS
+  {
+    category: 'material' as const,
+    failureMode: 'Material degradation',
+    genericEffect: 'Reduced mechanical properties, brittle parts',
+    typicalCauses: [
+      'Excessive drying temperature',
+      'Excessive drying time',
+      'Multiple regrind cycles',
+      'Contaminated regrind',
+      'Material expired/moisture absorbed'
+    ],
+    applicableProcesses: ['Injection Molding', 'Extrusion'],
+    defaultSeverity: 8,
+    defaultOccurrence: 2,
+    tags: ['material', 'property'],
+    status: 'active',
+  },
+  {
+    category: 'material' as const,
+    failureMode: 'Wrong material used',
+    genericEffect: 'Part properties do not meet specification',
+    typicalCauses: [
+      'Material mis-labeled',
+      'Operator loaded wrong hopper',
+      'Supplier shipped wrong grade',
+      'Material verification not performed',
+      'Mix-up during changeover'
+    ],
+    applicableProcesses: ['All processes'],
+    defaultSeverity: 9,
+    defaultOccurrence: 1,
+    tags: ['material', 'mix-up', 'critical'],
+    status: 'active',
+  },
+  {
+    category: 'material' as const,
+    failureMode: 'Material contamination',
+    genericEffect: 'Foreign material in part, property or cosmetic failure',
+    typicalCauses: [
+      'Unclean material handling',
+      'Cross-contamination between materials',
+      'Airborne debris',
+      'Degraded material in system'
+    ],
+    applicableProcesses: ['Injection Molding', 'Extrusion'],
+    defaultSeverity: 6,
+    defaultOccurrence: 3,
+    tags: ['material', 'contamination'],
+    status: 'active',
+  },
+
+  // PROCESS DEFECTS
+  {
+    category: 'process' as const,
+    failureMode: 'Burr/sharp edge',
+    genericEffect: 'Cut hazard, fit interference',
+    typicalCauses: [
+      'Dull cutting tool',
+      'Excessive feed rate',
+      'Tool path not optimized',
+      'Deburring operation skipped',
+      'Material properties variation'
+    ],
+    applicableProcesses: ['Machining', 'Trimming', 'Degate', 'Punching'],
+    defaultSeverity: 6,
+    defaultOccurrence: 5,
+    tags: ['machining', 'safety'],
+    status: 'active',
+  },
+  {
+    category: 'process' as const,
+    failureMode: 'Defect escapes inspection',
+    genericEffect: 'Nonconforming part shipped to customer',
+    typicalCauses: [
+      'Inspector fatigue',
+      'Inadequate lighting',
+      'Inspection criteria unclear',
+      'Gage R&R inadequate',
+      'Sampling plan insufficient',
+      'Automated inspection bypassed'
+    ],
+    applicableProcesses: ['Visual Inspection', 'Dimensional Inspection', 'Functional Test'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['inspection', 'detection'],
+    status: 'active',
+  },
+  {
+    category: 'process' as const,
+    failureMode: 'Coating thickness out of spec',
+    genericEffect: 'Insufficient corrosion protection or adhesion',
+    typicalCauses: [
+      'Application pressure variation',
+      'Gun distance incorrect',
+      'Material viscosity variation',
+      'Spray pattern overlap insufficient',
+      'Booth temperature/humidity out of range'
+    ],
+    applicableProcesses: ['Painting', 'Powder Coating', 'E-Coating'],
+    defaultSeverity: 7,
+    defaultOccurrence: 4,
+    tags: ['coating', 'dimensional'],
+    status: 'active',
+  },
+  {
+    category: 'process' as const,
+    failureMode: 'Heat treatment incorrect',
+    genericEffect: 'Material properties not meeting specification',
+    typicalCauses: [
+      'Temperature out of specification',
+      'Time at temperature incorrect',
+      'Cooling rate incorrect',
+      'Thermocouple failure',
+      'Load placement in furnace incorrect'
+    ],
+    applicableProcesses: ['Heat Treatment', 'Annealing', 'Hardening'],
+    defaultSeverity: 9,
+    defaultOccurrence: 2,
+    tags: ['heat-treat', 'property', 'critical'],
+    industryStandard: 'CQI-9',
+    status: 'active',
+  },
+
+  // CONTAMINATION
+  {
+    category: 'contamination' as const,
+    failureMode: 'Damage during handling',
+    genericEffect: 'Scratch, dent, or crack in finished part',
+    typicalCauses: [
+      'Improper packaging',
+      'Parts stacked without dunnage',
+      'Rough handling',
+      'Container design inadequate',
+      'Drop during transfer'
+    ],
+    applicableProcesses: ['Packing', 'Material Handling', 'Shipping'],
+    defaultSeverity: 5,
+    defaultOccurrence: 4,
+    tags: ['handling', 'cosmetic'],
+    status: 'active',
+  },
+  {
+    category: 'contamination' as const,
+    failureMode: 'Oil/grease contamination',
+    genericEffect: 'Adhesion failure, cosmetic defect',
+    typicalCauses: [
+      'Equipment leaking',
+      'Improper glove use',
+      'Mold release overuse',
+      'Cleaning solvent residue'
+    ],
+    applicableProcesses: ['All processes'],
+    defaultSeverity: 5,
+    defaultOccurrence: 3,
+    tags: ['contamination', 'cleanliness'],
+    status: 'active',
+  },
+  {
+    category: 'contamination' as const,
+    failureMode: 'Particulate contamination',
+    genericEffect: 'Surface defects, functional failures in clean assemblies',
+    typicalCauses: [
+      'Airborne particles',
+      'Packaging material shedding',
+      'Operator not following clean procedures',
+      'Inadequate cleanroom controls'
+    ],
+    applicableProcesses: ['Clean Assembly', 'Electronics Assembly'],
+    defaultSeverity: 7,
+    defaultOccurrence: 3,
+    tags: ['contamination', 'cleanliness', 'critical'],
+    status: 'active',
+  },
+
+  // FUNCTIONAL
+  {
+    category: 'functional' as const,
+    failureMode: 'Leak at seal interface',
+    genericEffect: 'Fluid leakage, customer concern, warranty claim',
+    typicalCauses: [
+      'Seal dimension out of tolerance',
+      'Seal surface finish inadequate',
+      'Contamination on sealing surface',
+      'Assembly force insufficient',
+      'Seal material incompatible with fluid'
+    ],
+    applicableProcesses: ['Assembly', 'Ultrasonic Weld', 'Adhesive Bonding'],
+    defaultSeverity: 9,
+    defaultOccurrence: 2,
+    tags: ['functional', 'leak', 'critical'],
+    industryStandard: 'Customer CSR',
+    status: 'active',
+  },
+  {
+    category: 'functional' as const,
+    failureMode: 'Electrical connection failure',
+    genericEffect: 'Circuit intermittent or open, function failure',
+    typicalCauses: [
+      'Terminal not fully seated',
+      'Wire crimp inadequate',
+      'Contamination on contacts',
+      'Wrong wire gauge',
+      'Connector damage during assembly'
+    ],
+    applicableProcesses: ['Wire Harness Assembly', 'Electronics Assembly'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['electrical', 'functional', 'critical'],
+    status: 'active',
+  },
+  {
+    category: 'functional' as const,
+    failureMode: 'Actuation force out of specification',
+    genericEffect: 'User feel unacceptable, button/lever hard or easy to operate',
+    typicalCauses: [
+      'Spring rate variation',
+      'Friction from contamination',
+      'Dimensional variation in mechanism',
+      'Lubricant missing or excessive'
+    ],
+    applicableProcesses: ['Assembly', 'Mechanism Assembly'],
+    defaultSeverity: 6,
+    defaultOccurrence: 4,
+    tags: ['functional', 'haptics'],
+    status: 'active',
+  },
+
+  // ENVIRONMENTAL
+  {
+    category: 'environmental' as const,
+    failureMode: 'UV degradation',
+    genericEffect: 'Part discoloration, brittleness over time',
+    typicalCauses: [
+      'UV stabilizer missing or insufficient',
+      'Wrong material grade for exterior use',
+      'Extended outdoor exposure during storage'
+    ],
+    applicableProcesses: ['Injection Molding', 'Extrusion'],
+    defaultSeverity: 6,
+    defaultOccurrence: 2,
+    tags: ['environmental', 'durability'],
+    status: 'active',
+  },
+  {
+    category: 'environmental' as const,
+    failureMode: 'Chemical attack/degradation',
+    genericEffect: 'Part swelling, cracking, or dissolution',
+    typicalCauses: [
+      'Material not compatible with fluid',
+      'Exposure to unexpected chemical',
+      'Concentration higher than design basis'
+    ],
+    applicableProcesses: ['All processes'],
+    defaultSeverity: 8,
+    defaultOccurrence: 2,
+    tags: ['environmental', 'chemical', 'critical'],
+    status: 'active',
+  },
+  {
+    category: 'environmental' as const,
+    failureMode: 'Thermal expansion mismatch',
+    genericEffect: 'Fit issues, stress cracking at temperature extremes',
+    typicalCauses: [
+      'Dissimilar materials with different CTE',
+      'Design does not accommodate thermal growth',
+      'Operating temperature exceeds design range'
+    ],
+    applicableProcesses: ['Assembly', 'Multi-material Assembly'],
+    defaultSeverity: 7,
+    defaultOccurrence: 3,
+    tags: ['environmental', 'thermal'],
+    status: 'active',
+  },
+];
 
 const AIAG_VDA_SEVERITY = [
   { rating: 10, description: 'Hazardous - without warning', criteria: 'Very high severity with no warning' },
@@ -995,6 +1522,13 @@ async function seed() {
 
         console.log('  → Plastic Injection Molding PFMEA created with 5 steps and 22 FMEA rows');
       }
+
+      // Seed Failure Modes Library
+      console.log('  → Creating Failure Modes Library...');
+      for (const fm of AUTOMOTIVE_FAILURE_MODES) {
+        await tx.insert(failureModesLibrary).values(fm).onConflictDoNothing();
+      }
+      console.log(`  → Seeded ${AUTOMOTIVE_FAILURE_MODES.length} failure modes`);
     });
 
     console.log('✅ Seed complete!');

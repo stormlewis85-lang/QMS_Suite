@@ -7,6 +7,16 @@ import { z } from 'zod';
 export const statusEnum = pgEnum('status', ['draft', 'review', 'effective', 'superseded', 'obsolete']);
 export const changeStatusEnum = pgEnum('change_status', ['draft', 'impact_analysis', 'auto_review', 'pending_signatures', 'effective', 'cancelled']);
 export const roleEnum = pgEnum('role', ['library_maintainer', 'part_engineer', 'qe', 'process_owner', 'quality_manager', 'auditor']);
+export const failureModeCategoryEnum = pgEnum('failure_mode_category', [
+  'dimensional',
+  'visual',
+  'functional',
+  'assembly',
+  'material',
+  'process',
+  'contamination',
+  'environmental'
+]);
 
 // Process Library Tables
 export const processDef = pgTable('process_def', {
@@ -146,6 +156,39 @@ export const equipmentControlMethods = pgTable('equipment_control_methods', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+// Failure Modes Library Tables
+export const failureModesLibrary = pgTable('failure_modes_library', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  category: failureModeCategoryEnum('category').notNull(),
+  failureMode: text('failure_mode').notNull(),
+  genericEffect: text('generic_effect').notNull(),
+  typicalCauses: jsonb('typical_causes').$type<string[]>().notNull().default([]),
+  industryStandard: text('industry_standard'), // 'AIAG-VDA 2019', 'Customer CSR', etc.
+  applicableProcesses: jsonb('applicable_processes').$type<string[]>().default([]),
+  defaultSeverity: integer('default_severity'),
+  defaultOccurrence: integer('default_occurrence'),
+  tags: jsonb('tags').$type<string[]>().default([]),
+  status: text('status').notNull().default('active'), // 'active' or 'deprecated'
+  lastUsed: timestamp('last_used'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  categoryIdx: index('failure_modes_category_idx').on(table.category),
+  statusIdx: index('failure_modes_status_idx').on(table.status),
+}));
+
+// Link table for tracking which catalog items are used in FMEA templates
+export const fmeaTemplateCatalogLink = pgTable('fmea_template_catalog_link', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  templateRowId: uuid('template_row_id').notNull().references(() => fmeaTemplateRow.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => failureModesLibrary.id, { onDelete: 'cascade' }),
+  customized: boolean('customized').notNull().default(false), // Did user modify from catalog?
+  adoptedAt: timestamp('adopted_at').notNull().defaultNow(),
+}, (table) => ({
+  templateRowIdx: index('fmea_catalog_link_template_idx').on(table.templateRowId),
+  catalogItemIdx: index('fmea_catalog_link_catalog_idx').on(table.catalogItemId),
+}));
 
 // Part Tables
 export const part = pgTable('part', {
@@ -378,6 +421,21 @@ export const equipmentControlMethodsRelations = relations(equipmentControlMethod
   }),
 }));
 
+export const failureModesLibraryRelations = relations(failureModesLibrary, ({ many }) => ({
+  catalogLinks: many(fmeaTemplateCatalogLink),
+}));
+
+export const fmeaTemplateCatalogLinkRelations = relations(fmeaTemplateCatalogLink, ({ one }) => ({
+  templateRow: one(fmeaTemplateRow, {
+    fields: [fmeaTemplateCatalogLink.templateRowId],
+    references: [fmeaTemplateRow.id],
+  }),
+  catalogItem: one(failureModesLibrary, {
+    fields: [fmeaTemplateCatalogLink.catalogItemId],
+    references: [failureModesLibrary.id],
+  }),
+}));
+
 // Insert schemas
 export const insertPartSchema = createInsertSchema(part).omit({ id: true });
 export const insertProcessDefSchema = createInsertSchema(processDef).omit({ id: true, createdAt: true });
@@ -395,6 +453,8 @@ export const insertCalibrationLinkSchema = createInsertSchema(calibrationLink).o
 export const insertEquipmentLibrarySchema = createInsertSchema(equipmentLibrary).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEquipmentErrorProofingSchema = createInsertSchema(equipmentErrorProofing).omit({ id: true, createdAt: true });
 export const insertEquipmentControlMethodsSchema = createInsertSchema(equipmentControlMethods).omit({ id: true, createdAt: true });
+export const insertFailureModesLibrarySchema = createInsertSchema(failureModesLibrary).omit({ id: true, createdAt: true, updatedAt: true, lastUsed: true });
+export const insertFmeaTemplateCatalogLinkSchema = createInsertSchema(fmeaTemplateCatalogLink).omit({ id: true, adoptedAt: true });
 
 // Types
 export type Part = typeof part.$inferSelect;
@@ -429,3 +489,10 @@ export type EquipmentErrorProofing = typeof equipmentErrorProofing.$inferSelect;
 export type InsertEquipmentErrorProofing = z.infer<typeof insertEquipmentErrorProofingSchema>;
 export type EquipmentControlMethods = typeof equipmentControlMethods.$inferSelect;
 export type InsertEquipmentControlMethods = z.infer<typeof insertEquipmentControlMethodsSchema>;
+export type FailureModesLibrary = typeof failureModesLibrary.$inferSelect;
+export type InsertFailureModesLibrary = z.infer<typeof insertFailureModesLibrarySchema>;
+export type FmeaTemplateCatalogLink = typeof fmeaTemplateCatalogLink.$inferSelect;
+export type InsertFmeaTemplateCatalogLink = z.infer<typeof insertFmeaTemplateCatalogLinkSchema>;
+
+// Category type for Failure Modes Library
+export type FailureModeCategory = 'dimensional' | 'visual' | 'functional' | 'assembly' | 'material' | 'process' | 'contamination' | 'environmental';
