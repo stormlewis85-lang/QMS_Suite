@@ -220,15 +220,16 @@ function PFMEARowDialog({
   onOpenChange,
   pfmeaId,
   row,
+  onOpenCatalog,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pfmeaId: string;
   row?: PFMEARow;
+  onOpenCatalog: (formSetter: (fm: FailureModesLibrary) => void) => void;
 }) {
   const { toast } = useToast();
   const isEdit = !!row;
-  const [catalogOpen, setCatalogOpen] = useState(false);
 
   const form = useForm<PFMEARowFormValues>({
     resolver: zodResolver(pfmeaRowFormSchema),
@@ -309,16 +310,19 @@ function PFMEARowDialog({
   const watchedValues = form.watch(["severity", "occurrence", "detection"]);
   const calculatedAP = Number(watchedValues[0]) * (Number(watchedValues[1]) + Number(watchedValues[2]));
 
-  const handleAdoptFromCatalog = (fm: FailureModesLibrary) => {
-    form.setValue("failureMode", fm.failureMode);
-    form.setValue("effect", fm.genericEffect);
-    form.setValue("cause", (fm.typicalCauses || []).join("; "));
-    if (fm.defaultSeverity) form.setValue("severity", fm.defaultSeverity);
-    if (fm.defaultOccurrence) form.setValue("occurrence", fm.defaultOccurrence);
-    toast({
-      title: "Failure mode adopted",
-      description: `"${fm.failureMode}" has been applied to the form.`,
-    });
+  const handleOpenCatalog = () => {
+    const formSetter = (fm: FailureModesLibrary) => {
+      form.setValue("failureMode", fm.failureMode);
+      form.setValue("effect", fm.genericEffect);
+      form.setValue("cause", (fm.typicalCauses || []).join("; "));
+      if (fm.defaultSeverity) form.setValue("severity", fm.defaultSeverity);
+      if (fm.defaultOccurrence) form.setValue("occurrence", fm.defaultOccurrence);
+      toast({
+        title: "Failure mode adopted",
+        description: `"${fm.failureMode}" has been applied to the form.`,
+      });
+    };
+    onOpenCatalog(formSetter);
   };
 
   useEffect(() => {
@@ -417,7 +421,7 @@ function PFMEARowDialog({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setCatalogOpen(true)}
+                      onClick={handleOpenCatalog}
                       data-testid="button-browse-catalog"
                     >
                       <Library className="h-4 w-4 mr-1" />
@@ -555,12 +559,6 @@ function PFMEARowDialog({
           </form>
         </Form>
       </DialogContent>
-
-      <BrowseCatalogDialog
-        open={catalogOpen}
-        onOpenChange={setCatalogOpen}
-        onAdopt={handleAdoptFromCatalog}
-      />
     </Dialog>
   );
 }
@@ -886,6 +884,8 @@ function PFMEADetailView({ pfmea, part, onBack, loading }: {
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<PFMEARow | undefined>(undefined);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [formSetterRef, setFormSetterRef] = useState<((fm: FailureModesLibrary) => void) | null>(null);
 
   const handleAddRow = () => {
     setEditingRow(undefined);
@@ -895,6 +895,18 @@ function PFMEADetailView({ pfmea, part, onBack, loading }: {
   const handleEditRow = (row: PFMEARow) => {
     setEditingRow(row);
     setDialogOpen(true);
+  };
+
+  const handleOpenCatalog = (formSetter: (fm: FailureModesLibrary) => void) => {
+    setFormSetterRef(() => formSetter);
+    setCatalogOpen(true);
+  };
+
+  const handleAdoptFromCatalog = (fm: FailureModesLibrary) => {
+    if (formSetterRef) {
+      formSetterRef(fm);
+    }
+    setCatalogOpen(false);
   };
 
   if (loading || !pfmea) {
@@ -1033,6 +1045,13 @@ function PFMEADetailView({ pfmea, part, onBack, loading }: {
         onOpenChange={setDialogOpen}
         pfmeaId={pfmea.id}
         row={editingRow}
+        onOpenCatalog={handleOpenCatalog}
+      />
+
+      <BrowseCatalogDialog
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        onAdopt={handleAdoptFromCatalog}
       />
     </div>
   );
