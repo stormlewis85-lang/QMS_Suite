@@ -39,6 +39,9 @@ export const processDef = pgTable('process_def', {
   statusIdx: index('process_def_status_idx').on(table.status),
 }));
 
+// Step type enum for process steps
+export const stepTypeEnum = pgEnum('step_type', ['operation', 'group', 'subprocess_ref']);
+
 export const processStep = pgTable('process_step', {
   id: uuid('id').primaryKey().defaultRandom(),
   processDefId: uuid('process_def_id').notNull().references(() => processDef.id, { onDelete: 'cascade' }),
@@ -46,11 +49,19 @@ export const processStep = pgTable('process_step', {
   name: text('name').notNull(),
   area: text('area').notNull(),
   equipment: jsonb('equipment').$type<{ name: string; model?: string; settings?: Record<string, any> }[]>(),
-  equipmentIds: jsonb('equipment_ids').$type<string[]>().default([]), // Array of equipment library IDs
+  equipmentIds: jsonb('equipment_ids').$type<string[]>().default([]),
   branchTo: text('branch_to'),
   reworkTo: text('rework_to'),
+  // Hybrid subprocess support
+  stepType: stepTypeEnum('step_type').notNull().default('operation'), // 'operation' | 'group' | 'subprocess_ref'
+  parentStepId: uuid('parent_step_id').references((): any => processStep.id, { onDelete: 'cascade' }), // For grouping - which group this step belongs to
+  subprocessRefId: uuid('subprocess_ref_id').references(() => processDef.id, { onDelete: 'set null' }), // For subprocess_ref - links to another process definition
+  subprocessRev: text('subprocess_rev'), // Track which revision of the subprocess is referenced
+  collapsed: boolean('collapsed').default(false), // UI state for groups - whether to show children
 }, (table) => ({
   processDefSeqIdx: uniqueIndex('process_step_def_seq_idx').on(table.processDefId, table.seq),
+  parentStepIdx: index('process_step_parent_idx').on(table.parentStepId),
+  subprocessRefIdx: index('process_step_subprocess_ref_idx').on(table.subprocessRefId),
 }));
 
 export const fmeaTemplateRow = pgTable('fmea_template_row', {
@@ -600,3 +611,4 @@ export type FailureModeCategory = 'dimensional' | 'visual' | 'functional' | 'ass
 export type ControlType = 'prevention' | 'detection';
 export type ControlEffectiveness = 'high' | 'medium' | 'low';
 export type MSAStatus = 'approved' | 'planned' | 'failed' | 'not_required';
+export type StepType = 'operation' | 'group' | 'subprocess_ref';
