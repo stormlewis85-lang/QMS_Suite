@@ -64,6 +64,14 @@ export interface IStorage {
   updateProcess(id: string, updates: Partial<InsertProcessDef>): Promise<ProcessDef | undefined>;
   deleteProcess(id: string): Promise<boolean>;
   
+  // Process Steps
+  createProcessStep(step: InsertProcessStep): Promise<ProcessStep>;
+  updateProcessStep(id: string, updates: Partial<InsertProcessStep>): Promise<ProcessStep | undefined>;
+  deleteProcessStep(id: string): Promise<boolean>;
+  getStepsByProcessId(processDefId: string): Promise<ProcessStep[]>;
+  getChildSteps(parentStepId: string): Promise<ProcessStep[]>;
+  resequenceSteps(processDefId: string): Promise<void>;
+  
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
   getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined>;
@@ -189,6 +197,50 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(processDef)
       .where(eq(processDef.id, id));
     return true;
+  }
+
+  // Individual process step operations
+  async createProcessStep(step: InsertProcessStep): Promise<ProcessStep> {
+    const [newStep] = await db.insert(processStep).values(step).returning();
+    return newStep;
+  }
+
+  async updateProcessStep(id: string, updates: Partial<InsertProcessStep>): Promise<ProcessStep | undefined> {
+    const [updatedStep] = await db.update(processStep)
+      .set(updates)
+      .where(eq(processStep.id, id))
+      .returning();
+    return updatedStep || undefined;
+  }
+
+  async deleteProcessStep(id: string): Promise<boolean> {
+    await db.delete(processStep).where(eq(processStep.id, id));
+    return true;
+  }
+
+  async getStepsByProcessId(processDefId: string): Promise<ProcessStep[]> {
+    return await db.select().from(processStep)
+      .where(eq(processStep.processDefId, processDefId))
+      .orderBy(processStep.seq);
+  }
+
+  // Get child steps for a group
+  async getChildSteps(parentStepId: string): Promise<ProcessStep[]> {
+    return await db.select().from(processStep)
+      .where(eq(processStep.parentStepId, parentStepId))
+      .orderBy(processStep.seq);
+  }
+
+  // Resequence steps after insert/delete
+  async resequenceSteps(processDefId: string): Promise<void> {
+    const steps = await this.getStepsByProcessId(processDefId);
+    for (let i = 0; i < steps.length; i++) {
+      if (steps[i].seq !== i + 1) {
+        await db.update(processStep)
+          .set({ seq: i + 1 })
+          .where(eq(processStep.id, steps[i].id));
+      }
+    }
   }
 
   async getPFMEAsByPartId(partId: string): Promise<PFMEA[]> {

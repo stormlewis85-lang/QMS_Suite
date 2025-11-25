@@ -150,6 +150,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Process Steps API
+  app.get("/api/processes/:processId/steps", async (req, res) => {
+    try {
+      const steps = await storage.getStepsByProcessId(req.params.processId);
+      res.json(steps);
+    } catch (error) {
+      console.error("Error fetching process steps:", error);
+      res.status(500).json({ error: "Failed to fetch process steps" });
+    }
+  });
+
+  app.post("/api/processes/:processId/steps", async (req, res) => {
+    try {
+      const stepData = insertProcessStepSchema.parse({
+        ...req.body,
+        processDefId: req.params.processId,
+      });
+      const newStep = await storage.createProcessStep(stepData);
+      res.status(201).json(newStep);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating process step:", error);
+      res.status(500).json({ error: "Failed to create process step" });
+    }
+  });
+
+  app.patch("/api/processes/:processId/steps/:stepId", async (req, res) => {
+    try {
+      const updates = insertProcessStepSchema.partial().parse(req.body);
+      const updatedStep = await storage.updateProcessStep(req.params.stepId, updates);
+      if (!updatedStep) {
+        return res.status(404).json({ error: "Process step not found" });
+      }
+      res.json(updatedStep);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating process step:", error);
+      res.status(500).json({ error: "Failed to update process step" });
+    }
+  });
+
+  app.delete("/api/processes/:processId/steps/:stepId", async (req, res) => {
+    try {
+      const deleted = await storage.deleteProcessStep(req.params.stepId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Process step not found" });
+      }
+      // Resequence after deletion
+      await storage.resequenceSteps(req.params.processId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting process step:", error);
+      res.status(500).json({ error: "Failed to delete process step" });
+    }
+  });
+
+  // Get child steps of a group
+  app.get("/api/processes/steps/:stepId/children", async (req, res) => {
+    try {
+      const children = await storage.getChildSteps(req.params.stepId);
+      res.json(children);
+    } catch (error) {
+      console.error("Error fetching child steps:", error);
+      res.status(500).json({ error: "Failed to fetch child steps" });
+    }
+  });
+
   // PFMEA API
   app.get("/api/pfmea", async (req, res) => {
     try {
