@@ -167,6 +167,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         processDefId: req.params.processId,
       });
+      
+      // Validate subprocess_ref requires subprocessRefId
+      if (stepData.stepType === 'subprocess_ref' && !stepData.subprocessRefId) {
+        return res.status(400).json({ error: "Subprocess reference steps require a subprocessRefId" });
+      }
+      
+      // Validate parentStepId belongs to same process and is a group
+      if (stepData.parentStepId) {
+        const steps = await storage.getStepsByProcessId(req.params.processId);
+        const parentStep = steps.find(s => s.id === stepData.parentStepId);
+        if (!parentStep) {
+          return res.status(400).json({ error: "Parent step not found in this process" });
+        }
+        if (parentStep.stepType !== 'group') {
+          return res.status(400).json({ error: "Parent step must be a group" });
+        }
+      }
+      
       const newStep = await storage.createProcessStep(stepData);
       res.status(201).json(newStep);
     } catch (error) {
@@ -182,6 +200,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/processes/:processId/steps/:stepId", async (req, res) => {
     try {
       const updates = insertProcessStepSchema.partial().parse(req.body);
+      
+      // Validate subprocess_ref requires subprocessRefId
+      if (updates.stepType === 'subprocess_ref' && updates.subprocessRefId === null) {
+        return res.status(400).json({ error: "Subprocess reference steps require a subprocessRefId" });
+      }
+      
+      // Validate parentStepId belongs to same process and is a group
+      if (updates.parentStepId) {
+        const steps = await storage.getStepsByProcessId(req.params.processId);
+        const parentStep = steps.find(s => s.id === updates.parentStepId);
+        if (!parentStep) {
+          return res.status(400).json({ error: "Parent step not found in this process" });
+        }
+        if (parentStep.stepType !== 'group') {
+          return res.status(400).json({ error: "Parent step must be a group" });
+        }
+        // Prevent circular references (can't parent to self or own children)
+        if (updates.parentStepId === req.params.stepId) {
+          return res.status(400).json({ error: "Step cannot be its own parent" });
+        }
+      }
+      
       const updatedStep = await storage.updateProcessStep(req.params.stepId, updates);
       if (!updatedStep) {
         return res.status(404).json({ error: "Process step not found" });

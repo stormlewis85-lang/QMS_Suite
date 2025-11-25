@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Layers, Plus, Search, Eye, Copy, Edit, Loader2, Trash2 } from "lucide-react";
+import { Layers, Plus, Search, Eye, Copy, Edit, Loader2, Trash2, ChevronRight, ChevronDown, FolderPlus, Link2, GripVertical, ArrowRight } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,7 +13,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -22,6 +21,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import {
   Select,
@@ -34,8 +34,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { ProcessDef, ProcessStep } from "@shared/schema";
-import { insertProcessDefSchema } from "@shared/schema";
+import type { ProcessDef, ProcessStep, StepType } from "@shared/schema";
+import { insertProcessDefSchema, insertProcessStepSchema } from "@shared/schema";
 
 const createProcessFormSchema = insertProcessDefSchema.extend({
   createdBy: z.string().uuid().optional(),
@@ -43,7 +43,18 @@ const createProcessFormSchema = insertProcessDefSchema.extend({
 
 type CreateProcessForm = z.infer<typeof createProcessFormSchema>;
 
-// Process Form Dialog (shared by Create and Edit)
+const STEP_TYPE_LABELS: Record<StepType, string> = {
+  operation: "Operation",
+  group: "Group",
+  subprocess_ref: "Subprocess Reference",
+};
+
+const STEP_TYPE_COLORS: Record<StepType, string> = {
+  operation: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  group: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  subprocess_ref: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+};
+
 function ProcessFormDialog({ 
   process, 
   open, 
@@ -230,89 +241,625 @@ function ProcessFormDialog({
   );
 }
 
-// Process Details Dialog
+const stepFormSchema = z.object({
+  name: z.string().min(1, "Step name is required"),
+  area: z.string().min(1, "Area is required"),
+  stepType: z.enum(["operation", "group", "subprocess_ref"]),
+  parentStepId: z.string().uuid().nullable().optional(),
+  subprocessRefId: z.string().uuid().nullable().optional(),
+  subprocessRev: z.string().nullable().optional(),
+  branchTo: z.string().nullable().optional(),
+  reworkTo: z.string().nullable().optional(),
+});
+
+type StepFormData = z.infer<typeof stepFormSchema>;
+
+function StepFormDialog({
+  processId,
+  step,
+  availableProcesses,
+  availableGroups,
+  open,
+  onOpenChange,
+  nextSeq,
+}: {
+  processId: string;
+  step?: ProcessStep;
+  availableProcesses: ProcessDef[];
+  availableGroups: ProcessStep[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  nextSeq: number;
+}) {
+  const { toast } = useToast();
+  const isEditing = !!step;
+
+  const form = useForm<StepFormData>({
+    resolver: zodResolver(stepFormSchema),
+    defaultValues: {
+      name: "",
+      area: "",
+      stepType: "operation",
+      parentStepId: null,
+      subprocessRefId: null,
+      subprocessRev: null,
+      branchTo: null,
+      reworkTo: null,
+    },
+  });
+
+  const stepType = form.watch("stepType");
+
+  useEffect(() => {
+    if (step && open) {
+      form.reset({
+        name: step.name,
+        area: step.area,
+        stepType: (step.stepType as StepType) || "operation",
+        parentStepId: step.parentStepId || null,
+        subprocessRefId: step.subprocessRefId || null,
+        subprocessRev: step.subprocessRev || null,
+        branchTo: step.branchTo || null,
+        reworkTo: step.reworkTo || null,
+      });
+    } else if (!open) {
+      form.reset({
+        name: "",
+        area: "",
+        stepType: "operation",
+        parentStepId: null,
+        subprocessRefId: null,
+        subprocessRev: null,
+        branchTo: null,
+        reworkTo: null,
+      });
+    }
+  }, [step, open, form]);
+
+  const mutation = useMutation({
+    mutationFn: async (data: StepFormData) => {
+      const payload = {
+        ...data,
+        seq: isEditing ? step.seq : nextSeq,
+        processDefId: processId,
+      };
+      
+      if (isEditing) {
+        const res = await apiRequest("PATCH", `/api/processes/${processId}/steps/${step.id}`, payload);
+        return await res.json() as ProcessStep;
+      } else {
+        const res = await apiRequest("POST", `/api/processes/${processId}/steps`, payload);
+        return await res.json() as ProcessStep;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
+      toast({
+        title: isEditing ? "Step updated" : "Step created",
+        description: `The process step has been successfully ${isEditing ? "updated" : "created"}.`,
+      });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || `Failed to ${isEditing ? "update" : "create"} step`,
+      });
+    },
+  });
+
+  const onSubmit = (data: StepFormData) => {
+    mutation.mutate(data);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[550px]">
+        <DialogHeader>
+          <DialogTitle>{isEditing ? "Edit Step" : "Add New Step"}</DialogTitle>
+          <DialogDescription>
+            {isEditing ? "Update process step details." : "Add a new step to the process."}
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="stepType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Step Type</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-step-type">
+                        <SelectValue placeholder="Select step type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="operation">Operation - A single process step</SelectItem>
+                      <SelectItem value="group">Group - Container for related steps</SelectItem>
+                      <SelectItem value="subprocess_ref">Subprocess Reference - Link to another process</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {stepType === "operation" && "A standard process operation or manufacturing step."}
+                    {stepType === "group" && "A logical grouping that can contain child steps."}
+                    {stepType === "subprocess_ref" && "Links to an existing process definition that can be reused."}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {stepType === "group" ? "Group Name" : stepType === "subprocess_ref" ? "Reference Name" : "Step Name"}
+                  </FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder={stepType === "group" ? "Material Preparation" : stepType === "subprocess_ref" ? "Assembly Subprocess" : "Load Material"} 
+                      {...field} 
+                      data-testid="input-step-name" 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="area"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Area / Location</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Molding Cell 1" {...field} data-testid="input-step-area" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {stepType === "subprocess_ref" && (
+              <FormField
+                control={form.control}
+                name="subprocessRefId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Subprocess Reference</FormLabel>
+                    <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-subprocess-ref">
+                          <SelectValue placeholder="Select a process to reference" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableProcesses.map((proc) => (
+                          <SelectItem key={proc.id} value={proc.id}>
+                            {proc.name} (Rev {proc.rev})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      The referenced process steps will be included in this process.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {stepType !== "group" && availableGroups.length > 0 && (
+              <FormField
+                control={form.control}
+                name="parentStepId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parent Group (Optional)</FormLabel>
+                    <Select value={field.value || "none"} onValueChange={(val) => field.onChange(val === "none" ? null : val)}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-parent-group">
+                          <SelectValue placeholder="No parent group" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">No parent group</SelectItem>
+                        {availableGroups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Optionally nest this step under a group.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={mutation.isPending}
+                data-testid="button-submit-step"
+              >
+                {mutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isEditing ? "Update Step" : "Add Step"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type ProcessWithSteps = ProcessDef & {
   steps: ProcessStep[];
 };
 
+function StepTreeItem({
+  step,
+  steps,
+  level,
+  processId,
+  onEdit,
+  onDelete,
+  expandedGroups,
+  toggleGroup,
+  referencedProcesses,
+}: {
+  step: ProcessStep;
+  steps: ProcessStep[];
+  level: number;
+  processId: string;
+  onEdit: (step: ProcessStep) => void;
+  onDelete: (step: ProcessStep) => void;
+  expandedGroups: Set<string>;
+  toggleGroup: (id: string) => void;
+  referencedProcesses: Map<string, ProcessDef>;
+}) {
+  const isGroup = step.stepType === "group";
+  const isSubprocessRef = step.stepType === "subprocess_ref";
+  const isExpanded = expandedGroups.has(step.id);
+  const childSteps = steps.filter(s => s.parentStepId === step.id);
+  const referencedProcess = isSubprocessRef && step.subprocessRefId ? referencedProcesses.get(step.subprocessRefId) : null;
+
+  return (
+    <div className="space-y-1">
+      <div 
+        className={`flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 ${level > 0 ? "ml-" + (level * 6) : ""}`}
+        style={{ marginLeft: level * 24 }}
+      >
+        {isGroup ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => toggleGroup(step.id)}
+            data-testid={`button-toggle-group-${step.id}`}
+          >
+            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </Button>
+        ) : (
+          <div className="w-6 h-6 flex items-center justify-center">
+            {isSubprocessRef ? (
+              <Link2 className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
+        )}
+        
+        <Badge className={STEP_TYPE_COLORS[step.stepType as StepType]} variant="secondary">
+          {step.seq}
+        </Badge>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{step.name}</span>
+            <Badge variant="outline" className="text-xs">
+              {STEP_TYPE_LABELS[step.stepType as StepType]}
+            </Badge>
+          </div>
+          <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <span>{step.area}</span>
+            {isSubprocessRef && referencedProcess && (
+              <>
+                <ArrowRight className="h-3 w-3" />
+                <span className="text-green-600 dark:text-green-400">
+                  {referencedProcess.name} (Rev {referencedProcess.rev})
+                </span>
+              </>
+            )}
+            {isGroup && childSteps.length > 0 && (
+              <span className="text-purple-600 dark:text-purple-400">
+                {childSteps.length} nested step{childSteps.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onEdit(step)}
+            data-testid={`button-edit-step-${step.id}`}
+          >
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onDelete(step)}
+            data-testid={`button-delete-step-${step.id}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      {isGroup && isExpanded && childSteps.length > 0 && (
+        <div className="border-l-2 border-muted ml-3">
+          {childSteps.map((child) => (
+            <StepTreeItem
+              key={child.id}
+              step={child}
+              steps={steps}
+              level={level + 1}
+              processId={processId}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              expandedGroups={expandedGroups}
+              toggleGroup={toggleGroup}
+              referencedProcesses={referencedProcesses}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProcessDetailsDialog({ 
   process,
+  allProcesses,
   open,
   onOpenChange,
 }: { 
   process: ProcessWithSteps | null;
+  allProcesses: ProcessDef[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  if (!process) return null;
+  const { toast } = useToast();
+  const [addStepOpen, setAddStepOpen] = useState(false);
+  const [editingStep, setEditingStep] = useState<ProcessStep | undefined>();
+  const [editStepOpen, setEditStepOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const { data: freshProcess, refetch } = useQuery<ProcessWithSteps>({
+    queryKey: ["/api/processes", process?.id],
+    enabled: !!process?.id && open,
+  });
+
+  const currentProcess = freshProcess || process;
+
+  const deleteMutation = useMutation({
+    mutationFn: async (stepId: string) => {
+      await apiRequest("DELETE", `/api/processes/${currentProcess?.id}/steps/${stepId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/processes", currentProcess?.id] });
+      refetch();
+      toast({
+        title: "Step deleted",
+        description: "The process step has been removed.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to delete step",
+      });
+    },
+  });
+
+  if (!currentProcess) return null;
+
+  const toggleGroup = (id: string) => {
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedGroups(newExpanded);
+  };
+
+  const handleEditStep = (step: ProcessStep) => {
+    setEditingStep(step);
+    setEditStepOpen(true);
+  };
+
+  const handleDeleteStep = (step: ProcessStep) => {
+    const childCount = currentProcess.steps.filter(s => s.parentStepId === step.id).length;
+    const message = step.stepType === "group" && childCount > 0
+      ? `Delete group "${step.name}" and its ${childCount} nested step(s)? This cannot be undone.`
+      : `Delete step "${step.name}"? This cannot be undone.`;
+    
+    if (confirm(message)) {
+      deleteMutation.mutate(step.id);
+    }
+  };
+
+  const rootSteps = currentProcess.steps.filter(s => !s.parentStepId).sort((a, b) => a.seq - b.seq);
+  const groupSteps = currentProcess.steps.filter(s => s.stepType === "group");
+  const otherProcesses = allProcesses.filter(p => p.id !== currentProcess.id);
+  
+  const referencedProcesses = new Map<string, ProcessDef>();
+  currentProcess.steps.forEach(step => {
+    if (step.stepType === "subprocess_ref" && step.subprocessRefId) {
+      const proc = allProcesses.find(p => p.id === step.subprocessRefId);
+      if (proc) referencedProcesses.set(step.subprocessRefId, proc);
+    }
+  });
+
+  const nextSeq = currentProcess.steps.length > 0 
+    ? Math.max(...currentProcess.steps.map(s => s.seq)) + 1 
+    : 1;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{process.name} (Rev {process.rev})</DialogTitle>
-          <DialogDescription>
-            Process definition details and steps
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[800px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              {currentProcess.name} (Rev {currentProcess.rev})
+            </DialogTitle>
+            <DialogDescription>
+              Process definition details and steps
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Status:</span>
-              <span className="ml-2">
-                <StatusBadge status={process.status} />
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Revision:</span>
-              <span className="ml-2">{process.rev}</span>
-            </div>
-            {process.effectiveFrom && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-muted-foreground">Effective From:</span>
-                <span className="ml-2">{new Date(process.effectiveFrom).toLocaleDateString()}</span>
+                <span className="text-muted-foreground">Status:</span>
+                <span className="ml-2">
+                  <StatusBadge status={currentProcess.status} />
+                </span>
               </div>
-            )}
-            {process.changeNote && (
-              <div className="col-span-2">
-                <span className="text-muted-foreground">Change Note:</span>
-                <span className="ml-2">{process.changeNote}</span>
+              <div>
+                <span className="text-muted-foreground">Revision:</span>
+                <span className="ml-2">{currentProcess.rev}</span>
               </div>
-            )}
-          </div>
+              {currentProcess.effectiveFrom && (
+                <div>
+                  <span className="text-muted-foreground">Effective From:</span>
+                  <span className="ml-2">{new Date(currentProcess.effectiveFrom).toLocaleDateString()}</span>
+                </div>
+              )}
+              {currentProcess.changeNote && (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">Change Note:</span>
+                  <span className="ml-2">{currentProcess.changeNote}</span>
+                </div>
+              )}
+            </div>
 
-          <div className="border-t pt-4">
-            <h4 className="text-sm font-semibold mb-3">Process Steps ({process.steps.length})</h4>
-            {process.steps.length > 0 ? (
-              <div className="space-y-2">
-                {process.steps.map((step) => (
-                  <Card key={step.id} className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-medium text-sm">
-                          Step {step.seq}: {step.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Area: {step.area}
-                        </div>
-                      </div>
-                      {step.equipmentIds && step.equipmentIds.length > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          {step.equipmentIds.length} equipment
-                        </Badge>
-                      )}
-                    </div>
-                  </Card>
-                ))}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold">Process Steps ({currentProcess.steps.length})</h4>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => setAddStepOpen(true)}
+                    data-testid="button-add-step"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Step
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No process steps defined yet.</p>
-            )}
+
+              {currentProcess.steps.length > 0 ? (
+                <div className="space-y-1 border rounded-md p-2">
+                  {rootSteps.map((step) => (
+                    <StepTreeItem
+                      key={step.id}
+                      step={step}
+                      steps={currentProcess.steps}
+                      level={0}
+                      processId={currentProcess.id}
+                      onEdit={handleEditStep}
+                      onDelete={handleDeleteStep}
+                      expandedGroups={expandedGroups}
+                      toggleGroup={toggleGroup}
+                      referencedProcesses={referencedProcesses}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground border rounded-md">
+                  <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No process steps defined yet.</p>
+                  <p className="text-xs mt-1">Click "Add Step" to create your first step.</p>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <Badge className={STEP_TYPE_COLORS.operation} variant="secondary">Op</Badge>
+                  <span className="text-muted-foreground">Operation</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Badge className={STEP_TYPE_COLORS.group} variant="secondary">Grp</Badge>
+                  <span className="text-muted-foreground">Group</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Badge className={STEP_TYPE_COLORS.subprocess_ref} variant="secondary">Ref</Badge>
+                  <span className="text-muted-foreground">Subprocess Reference</span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <StepFormDialog
+        processId={currentProcess.id}
+        availableProcesses={otherProcesses}
+        availableGroups={groupSteps}
+        open={addStepOpen}
+        onOpenChange={(open) => {
+          setAddStepOpen(open);
+          if (!open) refetch();
+        }}
+        nextSeq={nextSeq}
+      />
+
+      <StepFormDialog
+        processId={currentProcess.id}
+        step={editingStep}
+        availableProcesses={otherProcesses}
+        availableGroups={groupSteps.filter(g => g.id !== editingStep?.id)}
+        open={editStepOpen}
+        onOpenChange={(open) => {
+          setEditStepOpen(open);
+          if (!open) {
+            setEditingStep(undefined);
+            refetch();
+          }
+        }}
+        nextSeq={nextSeq}
+      />
+    </>
   );
 }
 
@@ -355,7 +902,6 @@ export default function Processes() {
       if (!res.ok) throw new Error("Failed to fetch process");
       const data = await res.json() as ProcessWithSteps;
       
-      // Create a copy with modified name and new revision
       const copyData = {
         process: {
           name: `${data.name} (Copy)`,
@@ -371,6 +917,10 @@ export default function Processes() {
           equipmentIds: step.equipmentIds,
           branchTo: step.branchTo,
           reworkTo: step.reworkTo,
+          stepType: step.stepType,
+          parentStepId: step.parentStepId,
+          subprocessRefId: step.subprocessRefId,
+          subprocessRev: step.subprocessRev,
         })),
       };
 
@@ -582,7 +1132,6 @@ export default function Processes() {
           </Card>
         )}
 
-        {/* Dialogs */}
         <ProcessFormDialog
           process={undefined}
           open={newProcessOpen}
@@ -602,6 +1151,7 @@ export default function Processes() {
 
         <ProcessDetailsDialog
           process={selectedProcess}
+          allProcesses={processes}
           open={detailsOpen}
           onOpenChange={setDetailsOpen}
         />
