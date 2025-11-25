@@ -13,6 +13,7 @@ import PFMEA from "@/pages/PFMEA";
 import ControlPlans from "@/pages/ControlPlans";
 import Equipment from "@/pages/Equipment";
 import FailureModes from "@/pages/FailureModes";
+import ControlsLibrary from "@/pages/ControlsLibrary";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/control-plans" component={ControlPlans} />
       <Route path="/equipment" component={Equipment} />
       <Route path="/failure-modes" component={FailureModes} />
+      <Route path="/controls-library" component={ControlsLibrary} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
