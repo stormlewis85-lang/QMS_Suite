@@ -18,6 +18,11 @@ export const failureModeCategoryEnum = pgEnum('failure_mode_category', [
   'environmental'
 ]);
 
+// Controls Library Enums
+export const controlTypeEnum = pgEnum('control_type', ['prevention', 'detection']);
+export const controlEffectivenessEnum = pgEnum('control_effectiveness', ['high', 'medium', 'low']);
+export const msaStatusEnum = pgEnum('msa_status', ['approved', 'planned', 'failed', 'not_required']);
+
 // Process Library Tables
 export const processDef = pgTable('process_def', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -188,6 +193,71 @@ export const fmeaTemplateCatalogLink = pgTable('fmea_template_catalog_link', {
 }, (table) => ({
   templateRowIdx: index('fmea_catalog_link_template_idx').on(table.templateRowId),
   catalogItemIdx: index('fmea_catalog_link_catalog_idx').on(table.catalogItemId),
+}));
+
+// Controls Library Tables
+export const controlsLibrary = pgTable('controls_library', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: controlTypeEnum('type').notNull(), // 'prevention' or 'detection'
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  
+  // Effectiveness
+  effectiveness: controlEffectivenessEnum('effectiveness').notNull(),
+  typicalOccurrenceImpact: integer('typical_occurrence_impact'), // For prevention: reduces O by how much?
+  typicalDetectionRating: integer('typical_detection_rating'), // For detection: what D rating?
+  
+  // Implementation details
+  equipmentRequired: jsonb('equipment_required').$type<string[]>().default([]),
+  skillLevelRequired: text('skill_level_required'), // 'operator', 'technician', 'engineer'
+  implementationNotes: text('implementation_notes'),
+  
+  // Measurement system (for detection controls)
+  requiresMSA: boolean('requires_msa').default(false),
+  msaStatus: msaStatusEnum('msa_status').default('not_required'),
+  gageType: text('gage_type'), // 'CMM', 'Micrometer', 'Vision', 'Functional Test', etc.
+  gageDetails: text('gage_details'),
+  measurementResolution: text('measurement_resolution'),
+  
+  // Sampling and frequency
+  defaultSampleSize: text('default_sample_size'),
+  defaultFrequency: text('default_frequency'),
+  controlMethod: text('control_method'), // 'SPC', '100% inspection', 'Sampling', 'Audit'
+  
+  // Acceptance and reaction
+  defaultAcceptanceCriteria: text('default_acceptance_criteria'),
+  defaultReactionPlan: text('default_reaction_plan'),
+  
+  // Categorization
+  applicableProcesses: jsonb('applicable_processes').$type<string[]>().default([]),
+  applicableFailureModes: jsonb('applicable_failure_modes').$type<string[]>().default([]), // Categories or tags
+  tags: jsonb('tags').$type<string[]>().default([]),
+  
+  // Metadata
+  status: text('status').notNull().default('active'),
+  industryStandard: text('industry_standard'),
+  lastUsed: timestamp('last_used'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  typeIdx: index('controls_library_type_idx').on(table.type),
+  effectivenessIdx: index('controls_library_effectiveness_idx').on(table.effectiveness),
+  statusIdx: index('controls_library_status_idx').on(table.status),
+}));
+
+// Link table for recommended control pairings with failure modes
+export const controlPairings = pgTable('control_pairings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  failureModeId: uuid('failure_mode_id').notNull().references(() => failureModesLibrary.id, { onDelete: 'cascade' }),
+  preventionControlId: uuid('prevention_control_id').references(() => controlsLibrary.id, { onDelete: 'set null' }),
+  detectionControlId: uuid('detection_control_id').references(() => controlsLibrary.id, { onDelete: 'set null' }),
+  effectiveness: text('effectiveness').notNull(), // 'recommended', 'required', 'optional'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  failureModeIdx: index('control_pairings_fm_idx').on(table.failureModeId),
+  preventionIdx: index('control_pairings_prevention_idx').on(table.preventionControlId),
+  detectionIdx: index('control_pairings_detection_idx').on(table.detectionControlId),
 }));
 
 // Part Tables
@@ -423,6 +493,7 @@ export const equipmentControlMethodsRelations = relations(equipmentControlMethod
 
 export const failureModesLibraryRelations = relations(failureModesLibrary, ({ many }) => ({
   catalogLinks: many(fmeaTemplateCatalogLink),
+  controlPairings: many(controlPairings),
 }));
 
 export const fmeaTemplateCatalogLinkRelations = relations(fmeaTemplateCatalogLink, ({ one }) => ({
@@ -433,6 +504,28 @@ export const fmeaTemplateCatalogLinkRelations = relations(fmeaTemplateCatalogLin
   catalogItem: one(failureModesLibrary, {
     fields: [fmeaTemplateCatalogLink.catalogItemId],
     references: [failureModesLibrary.id],
+  }),
+}));
+
+export const controlsLibraryRelations = relations(controlsLibrary, ({ many }) => ({
+  preventionPairings: many(controlPairings, { relationName: 'preventionControl' }),
+  detectionPairings: many(controlPairings, { relationName: 'detectionControl' }),
+}));
+
+export const controlPairingsRelations = relations(controlPairings, ({ one }) => ({
+  failureMode: one(failureModesLibrary, {
+    fields: [controlPairings.failureModeId],
+    references: [failureModesLibrary.id],
+  }),
+  preventionControl: one(controlsLibrary, {
+    fields: [controlPairings.preventionControlId],
+    references: [controlsLibrary.id],
+    relationName: 'preventionControl',
+  }),
+  detectionControl: one(controlsLibrary, {
+    fields: [controlPairings.detectionControlId],
+    references: [controlsLibrary.id],
+    relationName: 'detectionControl',
   }),
 }));
 
@@ -455,6 +548,8 @@ export const insertEquipmentErrorProofingSchema = createInsertSchema(equipmentEr
 export const insertEquipmentControlMethodsSchema = createInsertSchema(equipmentControlMethods).omit({ id: true, createdAt: true });
 export const insertFailureModesLibrarySchema = createInsertSchema(failureModesLibrary).omit({ id: true, createdAt: true, updatedAt: true, lastUsed: true });
 export const insertFmeaTemplateCatalogLinkSchema = createInsertSchema(fmeaTemplateCatalogLink).omit({ id: true, adoptedAt: true });
+export const insertControlsLibrarySchema = createInsertSchema(controlsLibrary).omit({ id: true, createdAt: true, updatedAt: true, lastUsed: true });
+export const insertControlPairingsSchema = createInsertSchema(controlPairings).omit({ id: true, createdAt: true });
 
 // Types
 export type Part = typeof part.$inferSelect;
@@ -493,6 +588,15 @@ export type FailureModesLibrary = typeof failureModesLibrary.$inferSelect;
 export type InsertFailureModesLibrary = z.infer<typeof insertFailureModesLibrarySchema>;
 export type FmeaTemplateCatalogLink = typeof fmeaTemplateCatalogLink.$inferSelect;
 export type InsertFmeaTemplateCatalogLink = z.infer<typeof insertFmeaTemplateCatalogLinkSchema>;
+export type ControlsLibrary = typeof controlsLibrary.$inferSelect;
+export type InsertControlsLibrary = z.infer<typeof insertControlsLibrarySchema>;
+export type ControlPairings = typeof controlPairings.$inferSelect;
+export type InsertControlPairings = z.infer<typeof insertControlPairingsSchema>;
 
 // Category type for Failure Modes Library
 export type FailureModeCategory = 'dimensional' | 'visual' | 'functional' | 'assembly' | 'material' | 'process' | 'contamination' | 'environmental';
+
+// Control type enums
+export type ControlType = 'prevention' | 'detection';
+export type ControlEffectiveness = 'high' | 'medium' | 'low';
+export type MSAStatus = 'approved' | 'planned' | 'failed' | 'not_required';

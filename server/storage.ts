@@ -12,6 +12,8 @@ import {
   equipmentControlMethods,
   failureModesLibrary,
   fmeaTemplateCatalogLink,
+  controlsLibrary,
+  controlPairings,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -37,6 +39,12 @@ import {
   type FmeaTemplateCatalogLink,
   type InsertFmeaTemplateCatalogLink,
   type FailureModeCategory,
+  type ControlsLibrary,
+  type InsertControlsLibrary,
+  type ControlPairings,
+  type InsertControlPairings,
+  type ControlType,
+  type ControlEffectiveness,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
@@ -95,6 +103,20 @@ export interface IStorage {
   createCatalogLink(insertLink: InsertFmeaTemplateCatalogLink): Promise<FmeaTemplateCatalogLink>;
   getCatalogLinksByTemplateRowId(templateRowId: string): Promise<FmeaTemplateCatalogLink[]>;
   getCatalogLinksByCatalogItemId(catalogItemId: string): Promise<FmeaTemplateCatalogLink[]>;
+  
+  // Controls Library
+  getAllControls(filters?: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]>;
+  getControlById(id: string): Promise<ControlsLibrary | undefined>;
+  createControl(insertControl: InsertControlsLibrary): Promise<ControlsLibrary>;
+  updateControl(id: string, updates: Partial<InsertControlsLibrary>): Promise<ControlsLibrary | undefined>;
+  deleteControl(id: string): Promise<boolean>;
+  updateControlLastUsed(id: string): Promise<void>;
+  
+  // Control Pairings
+  getAllControlPairings(): Promise<ControlPairings[]>;
+  getControlPairingsByFailureModeId(failureModeId: string): Promise<ControlPairings[]>;
+  createControlPairing(insertPairing: InsertControlPairings): Promise<ControlPairings>;
+  deleteControlPairing(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -373,6 +395,91 @@ export class DatabaseStorage implements IStorage {
   async getCatalogLinksByCatalogItemId(catalogItemId: string): Promise<FmeaTemplateCatalogLink[]> {
     return await db.select().from(fmeaTemplateCatalogLink)
       .where(eq(fmeaTemplateCatalogLink.catalogItemId, catalogItemId));
+  }
+
+  // Controls Library
+  async getAllControls(filters?: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]> {
+    const conditions = [];
+    
+    if (filters?.type) {
+      conditions.push(eq(controlsLibrary.type, filters.type));
+    }
+    
+    if (filters?.effectiveness) {
+      conditions.push(eq(controlsLibrary.effectiveness, filters.effectiveness));
+    }
+    
+    if (filters?.status) {
+      conditions.push(eq(controlsLibrary.status, filters.status));
+    }
+    
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      conditions.push(
+        or(
+          ilike(controlsLibrary.name, searchTerm),
+          ilike(controlsLibrary.description, searchTerm)
+        )
+      );
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(controlsLibrary)
+        .where(and(...conditions))
+        .orderBy(controlsLibrary.type, controlsLibrary.name);
+    }
+    
+    return await db.select().from(controlsLibrary)
+      .orderBy(controlsLibrary.type, controlsLibrary.name);
+  }
+
+  async getControlById(id: string): Promise<ControlsLibrary | undefined> {
+    const [result] = await db.select().from(controlsLibrary).where(eq(controlsLibrary.id, id));
+    return result || undefined;
+  }
+
+  async createControl(insertControl: InsertControlsLibrary): Promise<ControlsLibrary> {
+    const [newControl] = await db.insert(controlsLibrary).values(insertControl).returning();
+    return newControl;
+  }
+
+  async updateControl(id: string, updates: Partial<InsertControlsLibrary>): Promise<ControlsLibrary | undefined> {
+    const [updatedControl] = await db.update(controlsLibrary)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(controlsLibrary.id, id))
+      .returning();
+    return updatedControl || undefined;
+  }
+
+  async deleteControl(id: string): Promise<boolean> {
+    const result = await db.delete(controlsLibrary).where(eq(controlsLibrary.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async updateControlLastUsed(id: string): Promise<void> {
+    await db.update(controlsLibrary)
+      .set({ lastUsed: new Date() })
+      .where(eq(controlsLibrary.id, id));
+  }
+
+  // Control Pairings
+  async getAllControlPairings(): Promise<ControlPairings[]> {
+    return await db.select().from(controlPairings).orderBy(controlPairings.createdAt);
+  }
+
+  async getControlPairingsByFailureModeId(failureModeId: string): Promise<ControlPairings[]> {
+    return await db.select().from(controlPairings)
+      .where(eq(controlPairings.failureModeId, failureModeId));
+  }
+
+  async createControlPairing(insertPairing: InsertControlPairings): Promise<ControlPairings> {
+    const [newPairing] = await db.insert(controlPairings).values(insertPairing).returning();
+    return newPairing;
+  }
+
+  async deleteControlPairing(id: string): Promise<boolean> {
+    const result = await db.delete(controlPairings).where(eq(controlPairings.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
   }
 }
 
