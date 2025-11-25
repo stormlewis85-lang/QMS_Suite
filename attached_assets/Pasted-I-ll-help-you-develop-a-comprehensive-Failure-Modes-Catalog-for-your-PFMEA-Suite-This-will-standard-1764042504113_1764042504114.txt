@@ -1,0 +1,852 @@
+I'll help you develop a comprehensive Failure Modes Catalog for your PFMEA Suite. This will standardize failure modes across your organization and speed up PFMEA creation.
+Failure Modes Catalog - Implementation Plan
+1. Database Schema Extension
+// Add to packages/db/src/schema/index.ts
+
+export const failureModeCategory = pgEnum('failure_mode_category', [
+  'dimensional',
+  'visual',
+  'functional',
+  'assembly',
+  'material',
+  'process',
+  'contamination',
+  'environmental'
+]);
+
+export const failureModesLibrary = pgTable('failure_modes_library', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  category: failureModeCategory('category').notNull(),
+  failureMode: text('failure_mode').notNull(),
+  genericEffect: text('generic_effect').notNull(),
+  typicalCauses: jsonb('typical_causes').$type<string[]>().notNull().default([]),
+  industryStandard: text('industry_standard'), // AIAG, VDA, Customer-specific
+  applicableProcesses: jsonb('applicable_processes').$type<string[]>().default([]),
+  defaultSeverity: integer('default_severity'),
+  defaultOccurrence: integer('default_occurrence'),
+  tags: jsonb('tags').$type<string[]>().default([]),
+  status: text('status').notNull().default('active'), // active/deprecated
+  createdBy: uuid('created_by').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  lastUsed: timestamp('last_used'),
+}, (table) => ({
+  categoryIdx: index('failure_mode_category_idx').on(table.category),
+  tagsIdx: index('failure_mode_tags_idx').on(table.tags),
+}));
+
+// Link table for FMEA templates to catalog
+export const fmeaTemplateCatalogLink = pgTable('fmea_template_catalog_link', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  templateRowId: uuid('template_row_id').notNull().references(() => fmeaTemplateRow.id, { onDelete: 'cascade' }),
+  catalogItemId: uuid('catalog_item_id').notNull().references(() => failureModesLibrary.id),
+  customized: boolean('customized').default(false), // Did user modify from catalog?
+  adoptHistory: jsonb('adopt_history').$type<{ date: string; action: string; user: string }[]>().default([]),
+});
+2. Comprehensive Seed Data for Automotive Manufacturing
+// Add to packages/db/src/seed.ts
+
+const AUTOMOTIVE_FAILURE_MODES = [
+  // INJECTION MOLDING
+  {
+    category: 'dimensional',
+    failureMode: 'Short shot',
+    genericEffect: 'Incomplete part geometry, fit/function failure',
+    typicalCauses: [
+      'Insufficient pack pressure',
+      'Low melt temperature',
+      'Insufficient shot size',
+      'Restricted gate/runner',
+      'Premature gate freeze-off',
+      'Venting inadequate'
+    ],
+    applicableProcesses: ['Injection Molding', 'Insert Molding', 'Overmolding'],
+    defaultSeverity: 8,
+    defaultOccurrence: 4,
+    tags: ['molding', 'dimensional', 'critical'],
+    industryStandard: 'AIAG-VDA 2019'
+  },
+  {
+    category: 'dimensional',
+    failureMode: 'Flash/burr',
+    genericEffect: 'Excess material requiring trim, potential fit issues',
+    typicalCauses: [
+      'Excessive injection pressure',
+      'Worn mold parting line',
+      'Insufficient clamp tonnage',
+      'Mold alignment issue',
+      'Foreign material on parting line'
+    ],
+    applicableProcesses: ['Injection Molding', 'Compression Molding'],
+    defaultSeverity: 5,
+    defaultOccurrence: 5,
+    tags: ['molding', 'dimensional', 'trim'],
+  },
+  {
+    category: 'dimensional',
+    failureMode: 'Sink marks',
+    genericEffect: 'Surface depression, cosmetic defect',
+    typicalCauses: [
+      'Insufficient pack pressure',
+      'Insufficient pack time',
+      'Heavy wall section design',
+      'Gate location suboptimal',
+      'Early gate freeze-off'
+    ],
+    applicableProcesses: ['Injection Molding'],
+    defaultSeverity: 6,
+    defaultOccurrence: 4,
+    tags: ['molding', 'cosmetic'],
+  },
+  {
+    category: 'dimensional',
+    failureMode: 'Warpage/distortion',
+    genericEffect: 'Part out of flatness specification, fit failure',
+    typicalCauses: [
+      'Uneven cooling',
+      'High residual stress',
+      'Non-uniform wall thickness',
+      'Improper ejection',
+      'Material orientation issues'
+    ],
+    applicableProcesses: ['Injection Molding', 'Thermoforming'],
+    defaultSeverity: 7,
+    defaultOccurrence: 5,
+    tags: ['molding', 'dimensional'],
+  },
+  
+  // VISUAL DEFECTS
+  {
+    category: 'visual',
+    failureMode: 'Flow lines/weld lines',
+    genericEffect: 'Visible lines on surface, potential weak points',
+    typicalCauses: [
+      'Low melt temperature',
+      'Low mold temperature',
+      'Slow injection speed',
+      'Gate location suboptimal',
+      'Multiple flow fronts meeting'
+    ],
+    applicableProcesses: ['Injection Molding'],
+    defaultSeverity: 4,
+    defaultOccurrence: 6,
+    tags: ['molding', 'cosmetic'],
+  },
+  {
+    category: 'visual',
+    failureMode: 'Surface contamination',
+    genericEffect: 'Foreign material embedded in part surface',
+    typicalCauses: [
+      'Airborne contamination',
+      'Material handling issue',
+      'Unclean mold surface',
+      'Degraded material',
+      'Cross-contamination from previous run'
+    ],
+    applicableProcesses: ['All processes'],
+    defaultSeverity: 5,
+    defaultOccurrence: 3,
+    tags: ['contamination', 'cosmetic'],
+  },
+  
+  // WELDING/ASSEMBLY
+  {
+    category: 'assembly',
+    failureMode: 'Incomplete weld',
+    genericEffect: 'Joint strength below specification, potential leak',
+    typicalCauses: [
+      'Insufficient weld time',
+      'Low amplitude setting',
+      'Part misalignment',
+      'Contaminated joint surface',
+      'Fixture/nest worn or damaged'
+    ],
+    applicableProcesses: ['Ultrasonic Weld', 'Vibration Weld', 'Spin Weld'],
+    defaultSeverity: 9,
+    defaultOccurrence: 3,
+    tags: ['welding', 'safety', 'critical'],
+    industryStandard: 'Customer CSR'
+  },
+  {
+    category: 'assembly',
+    failureMode: 'Component missing',
+    genericEffect: 'Incomplete assembly, function failure',
+    typicalCauses: [
+      'Operator error',
+      'Feeder malfunction',
+      'Part shortage in workstation',
+      'Double-feed from previous cycle',
+      'Vision system failure'
+    ],
+    applicableProcesses: ['Manual Assembly', 'Automated Assembly'],
+    defaultSeverity: 9,
+    defaultOccurrence: 2,
+    tags: ['assembly', 'safety'],
+  },
+  {
+    category: 'assembly',
+    failureMode: 'Incorrect component installed',
+    genericEffect: 'Wrong variant assembled, function failure',
+    typicalCauses: [
+      'Mixed parts in bin',
+      'Operator confusion',
+      'Inadequate visual differentiation',
+      'Work instruction unclear',
+      'Verification system bypassed'
+    ],
+    applicableProcesses: ['Manual Assembly', 'Automated Assembly'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['assembly', 'mix-up'],
+  },
+  
+  // MATERIAL DEFECTS
+  {
+    category: 'material',
+    failureMode: 'Material degradation',
+    genericEffect: 'Reduced mechanical properties, brittle parts',
+    typicalCauses: [
+      'Excessive drying temperature',
+      'Excessive drying time',
+      'Multiple regrind cycles',
+      'Contaminated regrind',
+      'Material expired/moisture absorbed'
+    ],
+    applicableProcesses: ['Injection Molding', 'Extrusion'],
+    defaultSeverity: 8,
+    defaultOccurrence: 2,
+    tags: ['material', 'property'],
+  },
+  {
+    category: 'material',
+    failureMode: 'Wrong material used',
+    genericEffect: 'Part properties do not meet specification',
+    typicalCauses: [
+      'Material mis-labeled',
+      'Operator loaded wrong hopper',
+      'Supplier shipped wrong grade',
+      'Material verification not performed',
+      'Mix-up during changeover'
+    ],
+    applicableProcesses: ['All processes'],
+    defaultSeverity: 9,
+    defaultOccurrence: 1,
+    tags: ['material', 'mix-up', 'critical'],
+  },
+  
+  // MACHINING/SECONDARY OPS
+  {
+    category: 'process',
+    failureMode: 'Dimension out of tolerance',
+    genericEffect: 'Part does not meet print specification',
+    typicalCauses: [
+      'Tool wear',
+      'Machine drift',
+      'Setup error',
+      'Temperature variation',
+      'Workholding inadequate',
+      'Measurement error'
+    ],
+    applicableProcesses: ['Machining', 'Drilling', 'Trimming', 'Routing'],
+    defaultSeverity: 7,
+    defaultOccurrence: 4,
+    tags: ['machining', 'dimensional'],
+  },
+  {
+    category: 'process',
+    failureMode: 'Burr/sharp edge',
+    genericEffect: 'Cut hazard, fit interference',
+    typicalCauses: [
+      'Dull cutting tool',
+      'Excessive feed rate',
+      'Tool path not optimized',
+      'Deburring operation skipped',
+      'Material properties variation'
+    ],
+    applicableProcesses: ['Machining', 'Trimming', 'Degate', 'Punching'],
+    defaultSeverity: 6,
+    defaultOccurrence: 5,
+    tags: ['machining', 'safety'],
+  },
+  
+  // INSPECTION/HANDLING
+  {
+    category: 'process',
+    failureMode: 'Defect escapes inspection',
+    genericEffect: 'Nonconforming part shipped to customer',
+    typicalCauses: [
+      'Inspector fatigue',
+      'Inadequate lighting',
+      'Inspection criteria unclear',
+      'Gage R&R inadequate',
+      'Sampling plan insufficient',
+      'Automated inspection bypassed'
+    ],
+    applicableProcesses: ['Visual Inspection', 'Dimensional Inspection', 'Functional Test'],
+    defaultSeverity: 8,
+    defaultOccurrence: 3,
+    tags: ['inspection', 'detection'],
+  },
+  {
+    category: 'contamination',
+    failureMode: 'Damage during handling',
+    genericEffect: 'Scratch, dent, or crack in finished part',
+    typicalCauses: [
+      'Improper packaging',
+      'Parts stacked without dunnage',
+      'Rough handling',
+      'Container design inadequate',
+      'Drop during transfer'
+    ],
+    applicableProcesses: ['Packing', 'Material Handling', 'Shipping'],
+    defaultSeverity: 5,
+    defaultOccurrence: 4,
+    tags: ['handling', 'cosmetic'],
+  },
+  
+  // COATING/FINISHING
+  {
+    category: 'process',
+    failureMode: 'Coating thickness out of spec',
+    genericEffect: 'Insufficient corrosion protection or adhesion',
+    typicalCauses: [
+      'Application pressure variation',
+      'Gun distance incorrect',
+      'Material viscosity variation',
+      'Spray pattern overlap insufficient',
+      'Booth temperature/humidity out of range'
+    ],
+    applicableProcesses: ['Painting', 'Powder Coating', 'E-Coating'],
+    defaultSeverity: 7,
+    defaultOccurrence: 4,
+    tags: ['coating', 'dimensional'],
+  },
+  {
+    category: 'visual',
+    failureMode: 'Orange peel/poor surface finish',
+    genericEffect: 'Cosmetic defect, customer dissatisfaction',
+    typicalCauses: [
+      'Spray pressure too high',
+      'Material viscosity incorrect',
+      'Application temperature wrong',
+      'Surface preparation inadequate',
+      'Flash-off time insufficient'
+    ],
+    applicableProcesses: ['Painting', 'Powder Coating'],
+    defaultSeverity: 4,
+    defaultOccurrence: 5,
+    tags: ['coating', 'cosmetic'],
+  },
+  
+  // FUNCTIONAL
+  {
+    category: 'functional',
+    failureMode: 'Leak at seal interface',
+    genericEffect: 'Fluid leakage, customer concern, warranty claim',
+    typicalCauses: [
+      'Seal dimension out of tolerance',
+      'Seal surface finish inadequate',
+      'Contamination on sealing surface',
+      'Assembly force insufficient',
+      'Seal material incompatible with fluid'
+    ],
+    applicableProcesses: ['Assembly', 'Ultrasonic Weld', 'Adhesive Bonding'],
+    defaultSeverity: 9,
+    defaultOccurrence: 2,
+    tags: ['functional', 'leak', 'critical'],
+    industryStandard: 'Customer CSR'
+  },
+];
+
+// In seed.ts, add this section:
+async function seedFailureModesLibrary() {
+  console.log('🔧 Seeding Failure Modes Library...');
+  
+  for (const fm of AUTOMOTIVE_FAILURE_MODES) {
+    await db.insert(schema.failureModesLibrary).values({
+      ...fm,
+      createdBy: seedUserId,
+    });
+  }
+  
+  console.log(`✅ Seeded ${AUTOMOTIVE_FAILURE_MODES.length} failure modes`);
+}
+3. API Router
+// packages/api/src/routers/failure-modes-library.ts
+
+import { z } from 'zod';
+import { router, publicProcedure, protectedProcedure } from '../trpc.js';
+import { db, failureModesLibrary } from '@pfmea/db';
+import { eq, like, and, inArray } from 'drizzle-orm';
+
+export const failureModesRouter = router({
+  list: publicProcedure
+    .input(z.object({
+      category: z.enum(['dimensional', 'visual', 'functional', 'assembly', 'material', 'process', 'contamination', 'environmental']).optional(),
+      search: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      applicableProcess: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const conditions = [];
+      
+      if (input.category) {
+        conditions.push(eq(failureModesLibrary.category, input.category));
+      }
+      
+      if (input.search) {
+        conditions.push(
+          like(failureModesLibrary.failureMode, `%${input.search}%`)
+        );
+      }
+      
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
+      
+      let modes = await db.query.failureModesLibrary.findMany({
+        where,
+        orderBy: (fm, { desc }) => [desc(fm.lastUsed), desc(fm.createdAt)],
+      });
+      
+      // Filter by tags (JSON field)
+      if (input.tags && input.tags.length > 0) {
+        modes = modes.filter(fm => 
+          input.tags!.some(tag => (fm.tags as string[]).includes(tag))
+        );
+      }
+      
+      // Filter by applicable process (JSON field)
+      if (input.applicableProcess) {
+        modes = modes.filter(fm => 
+          (fm.applicableProcesses as string[]).includes(input.applicableProcess!)
+        );
+      }
+      
+      return modes;
+    }),
+
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      return db.query.failureModesLibrary.findFirst({
+        where: eq(failureModesLibrary.id, input.id),
+      });
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      category: z.enum(['dimensional', 'visual', 'functional', 'assembly', 'material', 'process', 'contamination', 'environmental']),
+      failureMode: z.string().min(3),
+      genericEffect: z.string().min(3),
+      typicalCauses: z.array(z.string()),
+      applicableProcesses: z.array(z.string()).optional(),
+      defaultSeverity: z.number().min(1).max(10).optional(),
+      defaultOccurrence: z.number().min(1).max(10).optional(),
+      tags: z.array(z.string()).optional(),
+      industryStandard: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [newMode] = await db.insert(failureModesLibrary).values({
+        ...input,
+        createdBy: ctx.user.id,
+      }).returning();
+      
+      return newMode;
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      category: z.enum(['dimensional', 'visual', 'functional', 'assembly', 'material', 'process', 'contamination', 'environmental']).optional(),
+      failureMode: z.string().optional(),
+      genericEffect: z.string().optional(),
+      typicalCauses: z.array(z.string()).optional(),
+      applicableProcesses: z.array(z.string()).optional(),
+      defaultSeverity: z.number().min(1).max(10).optional(),
+      defaultOccurrence: z.number().min(1).max(10).optional(),
+      tags: z.array(z.string()).optional(),
+      status: z.enum(['active', 'deprecated']).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...updates } = input;
+      
+      await db.update(failureModesLibrary)
+        .set(updates)
+        .where(eq(failureModesLibrary.id, id));
+      
+      return { success: true };
+    }),
+
+  markUsed: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await db.update(failureModesLibrary)
+        .set({ lastUsed: new Date() })
+        .where(eq(failureModesLibrary.id, input.id));
+      
+      return { success: true };
+    }),
+
+  getCategories: publicProcedure.query(() => {
+    return [
+      { value: 'dimensional', label: 'Dimensional', icon: '📏' },
+      { value: 'visual', label: 'Visual/Cosmetic', icon: '👁️' },
+      { value: 'functional', label: 'Functional', icon: '⚙️' },
+      { value: 'assembly', label: 'Assembly', icon: '🔧' },
+      { value: 'material', label: 'Material', icon: '🧱' },
+      { value: 'process', label: 'Process', icon: '🏭' },
+      { value: 'contamination', label: 'Contamination', icon: '⚠️' },
+      { value: 'environmental', label: 'Environmental', icon: '🌡️' },
+    ];
+  }),
+
+  getUsageStats: publicProcedure.query(async () => {
+    const modes = await db.query.failureModesLibrary.findMany();
+    
+    const categoryStats = modes.reduce((acc, mode) => {
+      acc[mode.category] = (acc[mode.category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const recentlyUsed = modes
+      .filter(m => m.lastUsed)
+      .sort((a, b) => (b.lastUsed?.getTime() || 0) - (a.lastUsed?.getTime() || 0))
+      .slice(0, 10);
+    
+    return {
+      totalModes: modes.length,
+      categoryBreakdown: categoryStats,
+      recentlyUsed,
+    };
+  }),
+});
+
+// Add to packages/api/src/routers/index.ts
+import { failureModesRouter } from './failure-modes-library.js';
+
+export const appRouter = router({
+  process: processRouter,
+  part: partRouter,
+  changePackage: changePackageRouter,
+  autoReview: autoReviewRouter,
+  failureModes: failureModesRouter, // Add this
+});
+4. Frontend UI Component
+// apps/web/app/library/failure-modes/page.tsx
+
+'use client';
+
+import { useState } from 'react';
+import { trpc } from '../../trpc';
+import Link from 'next/link';
+
+const CATEGORY_ICONS = {
+  dimensional: '📏',
+  visual: '👁️',
+  functional: '⚙️',
+  assembly: '🔧',
+  material: '🧱',
+  process: '🏭',
+  contamination: '⚠️',
+  environmental: '🌡️',
+};
+
+export default function FailureModesLibraryPage() {
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const { data: categories } = trpc.failureModes.getCategories.useQuery();
+  const { data: modes, isLoading } = trpc.failureModes.list.useQuery({
+    search,
+    category: selectedCategory as any,
+    tags: selectedTags,
+  });
+  const { data: stats } = trpc.failureModes.getUsageStats.useQuery();
+
+  // Extract all unique tags from modes
+  const allTags = Array.from(
+    new Set(modes?.flatMap(m => m.tags as string[]) || [])
+  ).sort();
+
+  if (isLoading) {
+    return <div className="container mx-auto p-8">Loading...</div>;
+  }
+
+  return (
+    <div className="container mx-auto p-8">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold">Failure Modes Library</h1>
+          <p className="text-gray-600 mt-2">
+            Standardized failure modes catalog for PFMEA development
+          </p>
+        </div>
+        <Link 
+          href="/library/failure-modes/new"
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          + Add Failure Mode
+        </Link>
+      </div>
+
+      {/* Stats Dashboard */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-2xl font-bold">{stats?.totalModes || 0}</div>
+          <div className="text-sm text-gray-600">Total Failure Modes</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-2xl font-bold">{stats?.recentlyUsed.length || 0}</div>
+          <div className="text-sm text-gray-600">Recently Used</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-2xl font-bold">{Object.keys(stats?.categoryBreakdown || {}).length}</div>
+          <div className="text-sm text-gray-600">Categories</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="text-2xl font-bold">{allTags.length}</div>
+          <div className="text-sm text-gray-600">Unique Tags</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Filters</h2>
+        
+        <div className="grid grid-cols-2 gap-4">
+          {/* Search */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Search Failure Mode
+            </label>
+            <input
+              type="text"
+              placeholder="e.g., short shot, warpage..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+            />
+          </div>
+
+          {/* Category Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Category
+            </label>
+            <select
+              value={selectedCategory || ''}
+              onChange={(e) => setSelectedCategory(e.target.value || undefined)}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+            >
+              <option value="">All Categories</option>
+              {categories?.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.icon} {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Tag Filter */}
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Filter by Tags
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => {
+                  if (selectedTags.includes(tag)) {
+                    setSelectedTags(selectedTags.filter(t => t !== tag));
+                  } else {
+                    setSelectedTags([...selectedTags, tag]);
+                  }
+                }}
+                className={`px-3 py-1 rounded-full text-sm ${
+                  selectedTags.includes(tag)
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">
+          {modes?.length || 0} Failure Mode{modes?.length !== 1 ? 's' : ''}
+        </h2>
+
+        {modes?.map((mode) => (
+          <div key={mode.id} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">
+                  {CATEGORY_ICONS[mode.category as keyof typeof CATEGORY_ICONS]}
+                </span>
+                <div>
+                  <h3 className="text-lg font-semibold">{mode.failureMode}</h3>
+                  <span className="text-sm text-gray-500 capitalize">{mode.category}</span>
+                </div>
+              </div>
+              {mode.industryStandard && (
+                <span className="px-3 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                  {mode.industryStandard}
+                </span>
+              )}
+            </div>
+
+            <div className="mb-3">
+              <div className="text-sm font-medium text-gray-700 mb-1">Effect:</div>
+              <p className="text-gray-600">{mode.genericEffect}</p>
+            </div>
+
+            <div className="mb-3">
+              <div className="text-sm font-medium text-gray-700 mb-1">Typical Causes:</div>
+              <ul className="list-disc list-inside text-gray-600 text-sm space-y-1">
+                {(mode.typicalCauses as string[]).slice(0, 3).map((cause, idx) => (
+                  <li key={idx}>{cause}</li>
+                ))}
+                {(mode.typicalCauses as string[]).length > 3 && (
+                  <li className="text-blue-600">
+                    + {(mode.typicalCauses as string[]).length - 3} more
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex gap-4 text-sm">
+                {mode.defaultSeverity && (
+                  <span className="text-gray-600">
+                    Default S: <span className="font-semibold">{mode.defaultSeverity}</span>
+                  </span>
+                )}
+                {mode.defaultOccurrence && (
+                  <span className="text-gray-600">
+                    Default O: <span className="font-semibold">{mode.defaultOccurrence}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                {(mode.tags as string[]).map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-3 pt-3 border-t flex justify-between items-center">
+              <div className="text-xs text-gray-500">
+                Applicable: {(mode.applicableProcesses as string[]).join(', ') || 'All processes'}
+              </div>
+              <Link
+                href={`/library/failure-modes/${mode.id}`}
+                className="text-blue-600 hover:underline text-sm"
+              >
+                View Details →
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+5. Integration with PFMEA Template Builder
+// apps/web/app/builder/fmea-template/page.tsx
+
+'use client';
+
+import { useState } from 'react';
+import { trpc } from '../../trpc';
+
+export default function FMEATemplateBuilder() {
+  const [selectedProcess, setSelectedProcess] = useState<string | undefined>();
+  const [selectedStep, setSelectedStep] = useState<string | undefined>();
+  const [showCatalog, setShowCatalog] = useState(false);
+
+  const { data: processes } = trpc.process.list.useQuery({ status: 'effective' });
+  const { data: catalogModes } = trpc.failureModes.list.useQuery({
+    applicableProcess: selectedProcess,
+  });
+
+  const handleSelectFromCatalog = (mode: any) => {
+    // Pre-fill form with catalog data
+    console.log('Selected from catalog:', mode);
+    setShowCatalog(false);
+    // ... populate form fields
+  };
+
+  return (
+    <div className="container mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-8">FMEA Template Builder</h1>
+
+      {/* Catalog Quick Access */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="font-semibold text-blue-900">💡 Use Failure Modes Catalog</h3>
+            <p className="text-sm text-blue-700 mt-1">
+              Select from {catalogModes?.length || 0} pre-defined failure modes to speed up FMEA creation
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCatalog(!showCatalog)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            {showCatalog ? 'Hide' : 'Browse'} Catalog
+          </button>
+        </div>
+      </div>
+
+      {showCatalog && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h3 className="text-lg font-semibold mb-4">Select Failure Mode from Catalog</h3>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {catalogModes?.map((mode) => (
+              <div
+                key={mode.id}
+                onClick={() => handleSelectFromCatalog(mode)}
+                className="border border-gray-200 rounded p-4 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
+              >
+                <div className="font-semibold">{mode.failureMode}</div>
+                <div className="text-sm text-gray-600 mt-1">{mode.genericEffect}</div>
+                <div className="flex gap-2 mt-2">
+                  {(mode.tags as string[]).map(tag => (
+                    <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rest of FMEA Template Builder... */}
+    </div>
+  );
+}
+Next Steps
+Run migrations to add the new tables
+Seed the catalog with automotive failure modes
+Test the API routes via tRPC
+Build out the UI pages for catalog management
+Integrate with PFMEA template builder workflow
+Would you like me to:
+Add more industry-specific failure modes (electronics, aerospace, medical devices)?
+Build the detailed catalog entry form?
+Create the integration service that links catalog items to FMEA templates?
+Add export/import functionality for sharing catalogs between plants?
