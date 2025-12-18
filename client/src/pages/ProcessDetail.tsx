@@ -169,7 +169,7 @@ function StepFormDialog({
       return await res.json() as ProcessStep;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/processes/${processId}`] });
       toast({
         title: isEditing ? "Step updated" : "Step created",
         description: `The process step has been successfully ${isEditing ? "updated" : "created"}.`,
@@ -402,7 +402,7 @@ function DeleteStepDialog({
       await apiRequest("DELETE", `/api/processes/${processId}/steps/${step.id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/processes/${processId}`] });
       toast({
         title: "Step deleted",
         description: "The process step has been removed.",
@@ -574,7 +574,7 @@ export default function ProcessDetail() {
   const [selectedStep, setSelectedStep] = useState<ProcessStep | null>(null);
 
   const { data: process, isLoading: processLoading, error: processError } = useQuery<ProcessWithSteps>({
-    queryKey: ["/api/processes", processId],
+    queryKey: [`/api/processes/${processId}`],
     enabled: !!processId,
   });
 
