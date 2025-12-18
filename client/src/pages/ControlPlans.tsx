@@ -274,7 +274,24 @@ function ControlPlanRowDialog({
                 <FormItem>
                   <FormLabel>Measurement Method</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="e.g., CMM, Caliper, Visual inspection" data-testid="input-measurement-system" />
+                    <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <SelectTrigger data-testid="input-measurement-system">
+                        <SelectValue placeholder="Select measurement method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CMM">CMM</SelectItem>
+                        <SelectItem value="Caliper">Caliper</SelectItem>
+                        <SelectItem value="Micrometer">Micrometer</SelectItem>
+                        <SelectItem value="Height Gage">Height Gage</SelectItem>
+                        <SelectItem value="Vision System">Vision System</SelectItem>
+                        <SelectItem value="Go/No-Go Gage">Go/No-Go Gage</SelectItem>
+                        <SelectItem value="Visual Inspection">Visual Inspection</SelectItem>
+                        <SelectItem value="Weight Scale">Weight Scale</SelectItem>
+                        <SelectItem value="Durometer">Durometer</SelectItem>
+                        <SelectItem value="Torque Wrench">Torque Wrench</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -303,7 +320,23 @@ function ControlPlanRowDialog({
                   <FormItem>
                     <FormLabel>Sample Size</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., 5 pieces, 100%" data-testid="input-sample-size" />
+                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                        <SelectTrigger data-testid="input-sample-size">
+                          <SelectValue placeholder="Select sample size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1 pc">1 pc</SelectItem>
+                          <SelectItem value="3 pcs">3 pcs</SelectItem>
+                          <SelectItem value="5 pcs">5 pcs</SelectItem>
+                          <SelectItem value="10 pcs">10 pcs</SelectItem>
+                          <SelectItem value="100%">100%</SelectItem>
+                          <SelectItem value="n=5">n=5</SelectItem>
+                          <SelectItem value="n=10">n=10</SelectItem>
+                          <SelectItem value="Per cavity">Per cavity</SelectItem>
+                          <SelectItem value="1st & Last">1st & Last</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -316,7 +349,23 @@ function ControlPlanRowDialog({
                   <FormItem>
                     <FormLabel>Frequency</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., First/last, Every 2 hours" data-testid="input-frequency" />
+                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                        <SelectTrigger data-testid="input-frequency">
+                          <SelectValue placeholder="Select frequency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Each piece">Each piece</SelectItem>
+                          <SelectItem value="First/Last">First/Last</SelectItem>
+                          <SelectItem value="Hourly">Hourly</SelectItem>
+                          <SelectItem value="Every 2 hours">Every 2 hours</SelectItem>
+                          <SelectItem value="Per shift">Per shift</SelectItem>
+                          <SelectItem value="Daily">Daily</SelectItem>
+                          <SelectItem value="Per lot">Per lot</SelectItem>
+                          <SelectItem value="Setup only">Setup only</SelectItem>
+                          <SelectItem value="Continuous">Continuous</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -331,7 +380,23 @@ function ControlPlanRowDialog({
                 <FormItem>
                   <FormLabel>Control Method</FormLabel>
                   <FormControl>
-                    <Textarea {...field} placeholder="How is this characteristic controlled?" data-testid="input-control-method" />
+                    <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <SelectTrigger data-testid="input-control-method">
+                        <SelectValue placeholder="Select control method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="X̄-R Chart">X̄-R Chart</SelectItem>
+                        <SelectItem value="X̄-S Chart">X̄-S Chart</SelectItem>
+                        <SelectItem value="p-Chart">p-Chart</SelectItem>
+                        <SelectItem value="Attribute Check">Attribute Check</SelectItem>
+                        <SelectItem value="Visual Inspection">Visual Inspection</SelectItem>
+                        <SelectItem value="Go/No-Go">Go/No-Go</SelectItem>
+                        <SelectItem value="100% Inspection">100% Inspection</SelectItem>
+                        <SelectItem value="Automated Vision">Automated Vision</SelectItem>
+                        <SelectItem value="Error-Proofing">Error-Proofing</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -345,7 +410,21 @@ function ControlPlanRowDialog({
                 <FormItem>
                   <FormLabel>Acceptance Criteria</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="e.g., Within spec limits" data-testid="input-acceptance-criteria" />
+                    <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <SelectTrigger data-testid="input-acceptance-criteria">
+                        <SelectValue placeholder="Select acceptance criteria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cpk ≥ 1.33">Cpk ≥ 1.33</SelectItem>
+                        <SelectItem value="Cpk ≥ 1.67">Cpk ≥ 1.67</SelectItem>
+                        <SelectItem value="Ppk ≥ 1.67">Ppk ≥ 1.67</SelectItem>
+                        <SelectItem value="Go/No-Go Pass">Go/No-Go Pass</SelectItem>
+                        <SelectItem value="Zero Defects">Zero Defects</SelectItem>
+                        <SelectItem value="Within Spec">Within Spec</SelectItem>
+                        <SelectItem value="Per Control Limits">Per Control Limits</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -373,7 +452,17 @@ function ControlPlanRowDialog({
                 <FormItem>
                   <FormLabel>CSR Symbol (optional)</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="e.g., Ⓢ, ◆, ⓒ" data-testid="input-csr-symbol" />
+                    <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <SelectTrigger data-testid="input-csr-symbol">
+                        <SelectValue placeholder="Select CSR symbol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="Ⓢ">Ⓢ (Safety)</SelectItem>
+                        <SelectItem value="◆">◆ (Critical)</SelectItem>
+                        <SelectItem value="ⓒ">ⓒ (Compliance)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
