@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import Dashboard from "@/pages/Dashboard";
 import Parts from "@/pages/Parts";
 import Processes from "@/pages/Processes";
+import ProcessDetail from "@/pages/ProcessDetail";
 import PFMEA from "@/pages/PFMEA";
 import ControlPlans from "@/pages/ControlPlans";
 import Equipment from "@/pages/Equipment";
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/parts" component={Parts} />
       <Route path="/processes" component={Processes} />
+      <Route path="/processes/:id" component={ProcessDetail} />
       <Route path="/pfmea" component={PFMEA} />
       <Route path="/control-plans" component={ControlPlans} />
       <Route path="/equipment" component={Equipment} />
