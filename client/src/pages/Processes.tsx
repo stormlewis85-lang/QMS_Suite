@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Settings2, Plus, Search, Eye, Pencil, Trash2, Loader2, X, Copy, ChevronRight, FileText, GitBranch, AlertTriangle } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -6,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -56,12 +57,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { ProcessDef, ProcessStep } from "@shared/schema";
-import { insertProcessDefSchema } from "@shared/schema";
+import type { ProcessDef, InsertProcessDef, ProcessStep, InsertProcessStep } from "@shared/schema";
+import { insertProcessDefSchema, insertProcessStepSchema } from "@shared/schema";
 import { z } from "zod";
 
 // Extended process type with steps
@@ -287,6 +289,7 @@ function ProcessFormDialog({
                 type="button" 
                 variant="outline" 
                 onClick={() => onOpenChange(false)}
+                data-testid="button-process-cancel"
               >
                 Cancel
               </Button>
@@ -317,7 +320,7 @@ function ProcessDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { data: process, isLoading } = useQuery<ProcessWithSteps>({
-    queryKey: ["/api/processes", processId],
+    queryKey: [`/api/processes/${processId}`],
     enabled: !!processId && open,
   });
 
@@ -489,11 +492,12 @@ function DeleteConfirmDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel data-testid="button-delete-process-cancel">Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            data-testid="button-delete-process-confirm"
           >
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Delete Process
@@ -506,6 +510,7 @@ function DeleteConfirmDialog({
 
 // Main Processes Page Component
 export default function Processes() {
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   
@@ -544,8 +549,8 @@ export default function Processes() {
 
   // Handlers
   const handleView = (process: ProcessDef) => {
-    setSelectedProcess(process);
-    setViewDialogOpen(true);
+    // Navigate to process detail page for step builder
+    setLocation(`/processes/${process.id}`);
   };
 
   const handleEdit = (process: ProcessDef) => {
@@ -609,6 +614,7 @@ export default function Processes() {
               statusFilter === stat.filter ? "ring-2 ring-primary" : ""
             }`}
             onClick={() => setStatusFilter(stat.filter)}
+            data-testid={`card-filter-${stat.filter}`}
           >
             <CardContent className="p-4">
               <p className="text-2xl font-bold">{stat.value}</p>
@@ -637,6 +643,7 @@ export default function Processes() {
                   size="sm"
                   className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
                   onClick={() => setSearchQuery("")}
+                  data-testid="button-clear-search"
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -684,6 +691,7 @@ export default function Processes() {
                       setSearchQuery("");
                       setStatusFilter("all");
                     }}
+                    data-testid="button-clear-filters"
                   >
                     Clear Filters
                   </Button>
@@ -692,7 +700,7 @@ export default function Processes() {
                 <>
                   <p className="font-medium">No processes yet</p>
                   <p className="text-sm mt-1">Create your first process definition to get started</p>
-                  <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
+                  <Button className="mt-4" onClick={() => setCreateDialogOpen(true)} data-testid="button-create-process-empty">
                     <Plus className="mr-2 h-4 w-4" />
                     Create Process
                   </Button>
@@ -744,15 +752,15 @@ export default function Processes() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleView(process)}>
+                          <DropdownMenuItem onClick={() => handleView(process)} data-testid={`button-view-${process.id}`}>
                             <Eye className="mr-2 h-4 w-4" />
-                            View Details
+                            View & Edit Steps
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEdit(process)}>
+                          <DropdownMenuItem onClick={() => handleEdit(process)} data-testid={`button-edit-${process.id}`}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDuplicate(process)}>
+                          <DropdownMenuItem onClick={() => handleDuplicate(process)} data-testid={`button-duplicate-${process.id}`}>
                             <Copy className="mr-2 h-4 w-4" />
                             Duplicate
                           </DropdownMenuItem>
@@ -760,6 +768,7 @@ export default function Processes() {
                           <DropdownMenuItem 
                             onClick={() => handleDelete(process)}
                             className="text-destructive focus:text-destructive"
+                            data-testid={`button-delete-${process.id}`}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
