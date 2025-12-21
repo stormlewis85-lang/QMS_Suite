@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
   insertPartSchema,
+  insertPartProcessMapSchema,
   insertProcessDefSchema,
   insertProcessStepSchema,
   insertPfmeaSchema,
@@ -91,6 +92,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting part:", error);
       res.status(500).json({ error: "Failed to delete part" });
+    }
+  });
+
+  // Part-Process Mappings API
+  app.get("/api/part-process-maps", async (req, res) => {
+    try {
+      const partId = req.query.partId as string;
+      if (!partId) {
+        return res.status(400).json({ error: "partId query parameter is required" });
+      }
+      const maps = await storage.getPartProcessMaps(partId);
+      res.json(maps);
+    } catch (error) {
+      console.error("Error fetching part-process maps:", error);
+      res.status(500).json({ error: "Failed to fetch part-process maps" });
+    }
+  });
+
+  app.post("/api/part-process-maps", async (req, res) => {
+    try {
+      const validatedData = insertPartProcessMapSchema.parse(req.body);
+      const newMap = await storage.createPartProcessMap(validatedData);
+      res.status(201).json(newMap);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating part-process map:", error);
+      res.status(500).json({ error: "Failed to create part-process map" });
+    }
+  });
+
+  app.patch("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const validatedData = insertPartProcessMapSchema.partial().parse(req.body);
+      const updatedMap = await storage.updatePartProcessMap(req.params.id, validatedData);
+      if (!updatedMap) {
+        return res.status(404).json({ error: "Part-process map not found" });
+      }
+      res.json(updatedMap);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating part-process map:", error);
+      res.status(500).json({ error: "Failed to update part-process map" });
+    }
+  });
+
+  app.delete("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deletePartProcessMap(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Part-process map not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting part-process map:", error);
+      res.status(500).json({ error: "Failed to delete part-process map" });
     }
   });
 

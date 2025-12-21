@@ -3,6 +3,7 @@ import {
   part,
   processDef,
   processStep,
+  partProcessMap,
   pfmea,
   pfmeaRow,
   controlPlan,
@@ -20,6 +21,8 @@ import {
   type InsertProcessDef,
   type ProcessStep,
   type InsertProcessStep,
+  type PartProcessMap,
+  type InsertPartProcessMap,
   type PFMEA,
   type InsertPFMEA,
   type PFMEARow,
@@ -56,6 +59,13 @@ export interface IStorage {
   createPart(insertPart: InsertPart): Promise<Part>;
   updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined>;
   deletePart(id: string): Promise<boolean>;
+  
+  // Part-Process Mappings
+  getPartProcessMaps(partId: string): Promise<(PartProcessMap & { process?: ProcessDef })[]>;
+  getPartProcessMapById(id: string): Promise<PartProcessMap | undefined>;
+  createPartProcessMap(insertMap: InsertPartProcessMap): Promise<PartProcessMap>;
+  updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined>;
+  deletePartProcessMap(id: string): Promise<boolean>;
   
   // Processes
   getAllProcesses(): Promise<ProcessDef[]>;
@@ -154,6 +164,44 @@ export class DatabaseStorage implements IStorage {
 
   async deletePart(id: string): Promise<boolean> {
     const result = await db.delete(part).where(eq(part.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  // Part-Process Mappings
+  async getPartProcessMaps(partId: string): Promise<(PartProcessMap & { process?: ProcessDef })[]> {
+    const maps = await db.select().from(partProcessMap)
+      .where(eq(partProcessMap.partId, partId))
+      .orderBy(partProcessMap.sequence);
+    
+    const mapsWithProcess = await Promise.all(
+      maps.map(async (m) => {
+        const [process] = await db.select().from(processDef).where(eq(processDef.id, m.processDefId));
+        return { ...m, process };
+      })
+    );
+    return mapsWithProcess;
+  }
+
+  async getPartProcessMapById(id: string): Promise<PartProcessMap | undefined> {
+    const [result] = await db.select().from(partProcessMap).where(eq(partProcessMap.id, id));
+    return result || undefined;
+  }
+
+  async createPartProcessMap(insertMap: InsertPartProcessMap): Promise<PartProcessMap> {
+    const [newMap] = await db.insert(partProcessMap).values(insertMap).returning();
+    return newMap;
+  }
+
+  async updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined> {
+    const [updatedMap] = await db.update(partProcessMap)
+      .set(updates)
+      .where(eq(partProcessMap.id, id))
+      .returning();
+    return updatedMap || undefined;
+  }
+
+  async deletePartProcessMap(id: string): Promise<boolean> {
+    const result = await db.delete(partProcessMap).where(eq(partProcessMap.id, id));
     return result.rowCount !== null && result.rowCount > 0;
   }
 

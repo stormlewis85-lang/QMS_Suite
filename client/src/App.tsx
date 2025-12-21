@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import Dashboard from "@/pages/Dashboard";
 import Parts from "@/pages/Parts";
+import PartDetail from "@/pages/PartDetail";
 import Processes from "@/pages/Processes";
 import ProcessDetail from "@/pages/ProcessDetail";
 import PFMEA from "@/pages/PFMEA";
@@ -23,6 +24,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/parts" component={Parts} />
+      <Route path="/parts/:id" component={PartDetail} />
       <Route path="/processes" component={Processes} />
       <Route path="/processes/:id" component={ProcessDetail} />
       <Route path="/pfmea" component={PFMEA} />
