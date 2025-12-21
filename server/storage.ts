@@ -15,6 +15,7 @@ import {
   fmeaTemplateCatalogLink,
   controlsLibrary,
   controlPairings,
+  ratingScale,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -48,6 +49,7 @@ import {
   type InsertControlPairings,
   type ControlType,
   type ControlEffectiveness,
+  type RatingScale,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
@@ -137,6 +139,10 @@ export interface IStorage {
   getControlPairingsByFailureModeId(failureModeId: string): Promise<ControlPairings[]>;
   createControlPairing(insertPairing: InsertControlPairings): Promise<ControlPairings>;
   deleteControlPairing(id: string): Promise<boolean>;
+  
+  // Rating Scales
+  getRatingScales(): Promise<RatingScale[]>;
+  getRatingScale(version: string, kind: string): Promise<RatingScale | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -595,6 +601,17 @@ export class DatabaseStorage implements IStorage {
   async deleteControlPairing(id: string): Promise<boolean> {
     const result = await db.delete(controlPairings).where(eq(controlPairings.id, id));
     return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  // Rating Scales
+  async getRatingScales(): Promise<RatingScale[]> {
+    return await db.select().from(ratingScale).orderBy(ratingScale.version, ratingScale.kind);
+  }
+
+  async getRatingScale(version: string, kind: string): Promise<RatingScale | undefined> {
+    const [scale] = await db.select().from(ratingScale)
+      .where(and(eq(ratingScale.version, version), eq(ratingScale.kind, kind)));
+    return scale;
   }
 }
 
