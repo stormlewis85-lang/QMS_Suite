@@ -653,6 +653,23 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
     return result.rowCount !== null && result.rowCount > 0;
   }
+
+  async getFmeaTemplateRowsByStepId(stepId: string): Promise<FmeaTemplateRow[]> {
+    return await db.select().from(fmeaTemplateRow)
+      .where(eq(fmeaTemplateRow.stepId, stepId));
+  }
+
+  async duplicateFmeaTemplateRow(id: string): Promise<FmeaTemplateRow | undefined> {
+    const original = await this.getFmeaTemplateRowById(id);
+    if (!original) return undefined;
+    
+    const { id: _id, createdAt: _createdAt, ...rowData } = original;
+    const [duplicated] = await db.insert(fmeaTemplateRow).values({
+      ...rowData,
+      function: `${rowData.function} (Copy)`,
+    }).returning();
+    return duplicated;
+  }
 }
 
 export const storage = new DatabaseStorage();
