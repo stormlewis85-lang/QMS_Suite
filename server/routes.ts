@@ -964,6 +964,222 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================================================
+  // AP Calculator API Endpoints
+  // ============================================================================
+
+  app.post('/api/ap/calculate', async (req, res) => {
+    try {
+      const { severity, occurrence, detection } = req.body;
+      
+      if (!severity || !occurrence || !detection) {
+        return res.status(400).json({ error: 'severity, occurrence, and detection are required' });
+      }
+      
+      const s = parseInt(severity, 10);
+      const o = parseInt(occurrence, 10);
+      const d = parseInt(detection, 10);
+      
+      if (isNaN(s) || isNaN(o) || isNaN(d)) {
+        return res.status(400).json({ error: 'Ratings must be valid integers' });
+      }
+      
+      if (s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
+        return res.status(400).json({ error: 'Ratings must be between 1 and 10' });
+      }
+      
+      const rpn = s * o * d;
+      let ap: 'H' | 'M' | 'L';
+      let reason: string;
+      
+      // HIGH PRIORITY
+      if (s >= 9) {
+        ap = 'H';
+        reason = `Safety/Regulatory concern (Severity = ${s}). Immediate action required.`;
+      } else if (s >= 7 && s <= 8 && o >= 4) {
+        ap = 'H';
+        reason = `High severity (S=${s}) with significant occurrence (O=${o}).`;
+      } else if (s >= 7 && s <= 8 && d >= 7) {
+        ap = 'H';
+        reason = `High severity (S=${s}) with poor detection (D=${d}).`;
+      } else if (s >= 5 && s <= 6 && o >= 7 && d >= 6) {
+        ap = 'H';
+        reason = `Moderate severity with high occurrence and limited detection.`;
+      } else if (d >= 10 && o >= 4) {
+        ap = 'H';
+        reason = `No detection method (D=${d}) with occurrence ≥ 4.`;
+      }
+      // MEDIUM PRIORITY
+      else if (s >= 5 && s <= 6 && o >= 4 && o <= 6) {
+        ap = 'M';
+        reason = `Moderate severity (S=${s}) with moderate occurrence (O=${o}).`;
+      } else if (s >= 5 && s <= 6 && d >= 7) {
+        ap = 'M';
+        reason = `Moderate severity (S=${s}) with limited detection (D=${d}).`;
+      } else if (s >= 3 && s <= 4 && o >= 7) {
+        ap = 'M';
+        reason = `Lower severity but high occurrence (O=${o}).`;
+      } else if (s >= 7 && s <= 8 && o <= 3 && d >= 4 && d <= 6) {
+        ap = 'M';
+        reason = `High severity with low occurrence. Monitor and consider detection improvement.`;
+      } else if (d >= 6 && o >= 3 && s >= 4) {
+        ap = 'M';
+        reason = `Detection improvement opportunity (D=${d}).`;
+      }
+      // LOW PRIORITY
+      else {
+        ap = 'L';
+        reason = `Risk adequately controlled. Continue monitoring.`;
+      }
+      
+      res.json({ ap, reason, rpn, severity: s, occurrence: o, detection: d });
+    } catch (error) {
+      console.error('AP calculation error:', error);
+      res.status(500).json({ error: 'Failed to calculate AP' });
+    }
+  });
+
+  app.post('/api/ap/calculate-batch', async (req, res) => {
+    try {
+      const { rows } = req.body;
+      
+      if (!Array.isArray(rows)) {
+        return res.status(400).json({ error: 'rows must be an array' });
+      }
+      
+      const results = rows.map((row: { id: string; severity: number; occurrence: number; detection: number }) => {
+        const s = parseInt(String(row.severity), 10);
+        const o = parseInt(String(row.occurrence), 10);
+        const d = parseInt(String(row.detection), 10);
+        
+        if (isNaN(s) || isNaN(o) || isNaN(d) || 
+            s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
+          return { id: row.id, error: 'Invalid ratings' };
+        }
+        
+        const rpn = s * o * d;
+        let ap: 'H' | 'M' | 'L';
+        
+        if (s >= 9) ap = 'H';
+        else if (s >= 7 && (o >= 4 || d >= 7)) ap = 'H';
+        else if (s >= 5 && o >= 7 && d >= 6) ap = 'H';
+        else if (d >= 10 && o >= 4) ap = 'H';
+        else if (s >= 5 && (o >= 4 || d >= 7)) ap = 'M';
+        else if (s >= 3 && o >= 7) ap = 'M';
+        else if (d >= 6 && o >= 3 && s >= 4) ap = 'M';
+        else ap = 'L';
+        
+        return { id: row.id, ap, rpn };
+      });
+      
+      res.json({ results });
+    } catch (error) {
+      console.error('Batch AP calculation error:', error);
+      res.status(500).json({ error: 'Failed to calculate batch AP' });
+    }
+  });
+
+  app.get('/api/rating-scales', async (_req, res) => {
+    try {
+      const scales = {
+        severity: [
+          { rating: 10, description: 'Hazardous - without warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur without warning.' },
+          { rating: 9, description: 'Hazardous - with warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur with warning.' },
+          { rating: 8, description: 'Very High', criteria: 'Vehicle/item inoperable with loss of primary function. Customer very dissatisfied.' },
+          { rating: 7, description: 'High', criteria: 'Vehicle/item operable but at reduced level of performance. Customer dissatisfied.' },
+          { rating: 6, description: 'Moderate', criteria: 'Vehicle/item operable with comfort/convenience items inoperable. Customer experiences discomfort.' },
+          { rating: 5, description: 'Low', criteria: 'Vehicle/item operable with comfort/convenience items at reduced level. Customer experiences some dissatisfaction.' },
+          { rating: 4, description: 'Very Low', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by most customers.' },
+          { rating: 3, description: 'Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by average customers.' },
+          { rating: 2, description: 'Very Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by discriminating customers.' },
+          { rating: 1, description: 'None', criteria: 'No discernible effect.' },
+        ],
+        occurrence: [
+          { rating: 10, description: 'Very High', criteria: '≥1 in 2 — Cpk < 0.33 — Failure is almost inevitable' },
+          { rating: 9, description: 'Very High', criteria: '1 in 3 — Cpk ≥ 0.33 — Failures very likely' },
+          { rating: 8, description: 'High', criteria: '1 in 8 — Cpk ≥ 0.51 — Repeated failures' },
+          { rating: 7, description: 'High', criteria: '1 in 20 — Cpk ≥ 0.67 — Frequent failures' },
+          { rating: 6, description: 'Moderate', criteria: '1 in 80 — Cpk ≥ 0.83 — Occasional failures' },
+          { rating: 5, description: 'Moderate', criteria: '1 in 400 — Cpk ≥ 1.00 — Infrequent failures' },
+          { rating: 4, description: 'Moderate', criteria: '1 in 2,000 — Cpk ≥ 1.17 — Relatively few failures' },
+          { rating: 3, description: 'Low', criteria: '1 in 15,000 — Cpk ≥ 1.33 — Isolated failures' },
+          { rating: 2, description: 'Very Low', criteria: '1 in 150,000 — Cpk ≥ 1.50 — Only rare failures' },
+          { rating: 1, description: 'Remote', criteria: '<1 in 1,500,000 — Cpk ≥ 1.67 — Failure unlikely' },
+        ],
+        detection: [
+          { rating: 10, description: 'Absolute Uncertainty', criteria: 'No current control; cannot detect or not analyzed. No opportunity for detection.' },
+          { rating: 9, description: 'Very Remote', criteria: 'Control will probably not detect. Random checks only.' },
+          { rating: 8, description: 'Remote', criteria: 'Control has poor chance of detection. Visual inspection only.' },
+          { rating: 7, description: 'Very Low', criteria: 'Control has poor chance of detection. Double visual inspection.' },
+          { rating: 6, description: 'Low', criteria: 'Control may detect. Variable gauging after parts leave station.' },
+          { rating: 5, description: 'Moderate', criteria: 'Control may detect. Attribute gauging (go/no-go, manual torque check).' },
+          { rating: 4, description: 'Moderately High', criteria: 'Control has good chance to detect. Statistical process control (SPC).' },
+          { rating: 3, description: 'High', criteria: 'Control has good chance to detect. Improved detection controls.' },
+          { rating: 2, description: 'Very High', criteria: 'Control almost certain to detect. Automated in-station detection with automatic stop.' },
+          { rating: 1, description: 'Almost Certain', criteria: 'Control certain to detect. Error-proofing in process/product design (Poka-Yoke).' },
+        ],
+      };
+      res.json(scales);
+    } catch (error) {
+      console.error('Error fetching rating scales:', error);
+      res.status(500).json({ error: 'Failed to fetch rating scales' });
+    }
+  });
+
+  app.get('/api/rating-scales/:kind', async (req, res) => {
+    try {
+      const { kind } = req.params;
+      const scales: Record<string, Array<{ rating: number; description: string; criteria: string }>> = {
+        severity: [
+          { rating: 10, description: 'Hazardous - without warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur without warning.' },
+          { rating: 9, description: 'Hazardous - with warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur with warning.' },
+          { rating: 8, description: 'Very High', criteria: 'Vehicle/item inoperable with loss of primary function. Customer very dissatisfied.' },
+          { rating: 7, description: 'High', criteria: 'Vehicle/item operable but at reduced level of performance. Customer dissatisfied.' },
+          { rating: 6, description: 'Moderate', criteria: 'Vehicle/item operable with comfort/convenience items inoperable. Customer experiences discomfort.' },
+          { rating: 5, description: 'Low', criteria: 'Vehicle/item operable with comfort/convenience items at reduced level. Customer experiences some dissatisfaction.' },
+          { rating: 4, description: 'Very Low', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by most customers.' },
+          { rating: 3, description: 'Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by average customers.' },
+          { rating: 2, description: 'Very Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by discriminating customers.' },
+          { rating: 1, description: 'None', criteria: 'No discernible effect.' },
+        ],
+        occurrence: [
+          { rating: 10, description: 'Very High', criteria: '≥1 in 2 — Cpk < 0.33 — Failure is almost inevitable' },
+          { rating: 9, description: 'Very High', criteria: '1 in 3 — Cpk ≥ 0.33 — Failures very likely' },
+          { rating: 8, description: 'High', criteria: '1 in 8 — Cpk ≥ 0.51 — Repeated failures' },
+          { rating: 7, description: 'High', criteria: '1 in 20 — Cpk ≥ 0.67 — Frequent failures' },
+          { rating: 6, description: 'Moderate', criteria: '1 in 80 — Cpk ≥ 0.83 — Occasional failures' },
+          { rating: 5, description: 'Moderate', criteria: '1 in 400 — Cpk ≥ 1.00 — Infrequent failures' },
+          { rating: 4, description: 'Moderate', criteria: '1 in 2,000 — Cpk ≥ 1.17 — Relatively few failures' },
+          { rating: 3, description: 'Low', criteria: '1 in 15,000 — Cpk ≥ 1.33 — Isolated failures' },
+          { rating: 2, description: 'Very Low', criteria: '1 in 150,000 — Cpk ≥ 1.50 — Only rare failures' },
+          { rating: 1, description: 'Remote', criteria: '<1 in 1,500,000 — Cpk ≥ 1.67 — Failure unlikely' },
+        ],
+        detection: [
+          { rating: 10, description: 'Absolute Uncertainty', criteria: 'No current control; cannot detect or not analyzed. No opportunity for detection.' },
+          { rating: 9, description: 'Very Remote', criteria: 'Control will probably not detect. Random checks only.' },
+          { rating: 8, description: 'Remote', criteria: 'Control has poor chance of detection. Visual inspection only.' },
+          { rating: 7, description: 'Very Low', criteria: 'Control has poor chance of detection. Double visual inspection.' },
+          { rating: 6, description: 'Low', criteria: 'Control may detect. Variable gauging after parts leave station.' },
+          { rating: 5, description: 'Moderate', criteria: 'Control may detect. Attribute gauging (go/no-go, manual torque check).' },
+          { rating: 4, description: 'Moderately High', criteria: 'Control has good chance to detect. Statistical process control (SPC).' },
+          { rating: 3, description: 'High', criteria: 'Control has good chance to detect. Improved detection controls.' },
+          { rating: 2, description: 'Very High', criteria: 'Control almost certain to detect. Automated in-station detection with automatic stop.' },
+          { rating: 1, description: 'Almost Certain', criteria: 'Control certain to detect. Error-proofing in process/product design (Poka-Yoke).' },
+        ],
+      };
+      
+      const scale = scales[kind.toLowerCase()];
+      if (!scale) {
+        return res.status(404).json({ error: 'Rating scale not found. Valid kinds: severity, occurrence, detection' });
+      }
+      
+      res.json(scale);
+    } catch (error) {
+      console.error('Error fetching rating scale:', error);
+      res.status(500).json({ error: 'Failed to fetch rating scale' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

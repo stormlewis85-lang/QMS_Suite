@@ -1,0 +1,149 @@
+File 5: API Endpoint Updates - Add to server/routes.ts
+Add these new endpoints to the existing server/routes.ts file. Insert near the other utility endpoints:
+// ============================================================================
+// AP Calculator API Endpoints
+// ============================================================================
+
+// Calculate AP for given S/O/D ratings
+app.post('/api/ap/calculate', async (req, res) => {
+  try {
+    const { severity, occurrence, detection } = req.body;
+    
+    // Validate inputs
+    if (!severity || !occurrence || !detection) {
+      return res.status(400).json({ error: 'severity, occurrence, and detection are required' });
+    }
+    
+    const s = parseInt(severity, 10);
+    const o = parseInt(occurrence, 10);
+    const d = parseInt(detection, 10);
+    
+    if (isNaN(s) || isNaN(o) || isNaN(d)) {
+      return res.status(400).json({ error: 'Ratings must be valid integers' });
+    }
+    
+    if (s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
+      return res.status(400).json({ error: 'Ratings must be between 1 and 10' });
+    }
+    
+    // AIAG-VDA 2019 AP Calculation Logic
+    const rpn = s * o * d;
+    let ap: 'H' | 'M' | 'L';
+    let reason: string;
+    
+    // HIGH PRIORITY
+    if (s >= 9) {
+      ap = 'H';
+      reason = `Safety/Regulatory concern (Severity = ${s}). Immediate action required.`;
+    } else if (s >= 7 && s <= 8 && o >= 4) {
+      ap = 'H';
+      reason = `High severity (S=${s}) with significant occurrence (O=${o}).`;
+    } else if (s >= 7 && s <= 8 && d >= 7) {
+      ap = 'H';
+      reason = `High severity (S=${s}) with poor detection (D=${d}).`;
+    } else if (s >= 5 && s <= 6 && o >= 7 && d >= 6) {
+      ap = 'H';
+      reason = `Moderate severity with high occurrence and limited detection.`;
+    } else if (d >= 10 && o >= 4) {
+      ap = 'H';
+      reason = `No detection method (D=${d}) with occurrence ≥ 4.`;
+    }
+    // MEDIUM PRIORITY
+    else if (s >= 5 && s <= 6 && o >= 4 && o <= 6) {
+      ap = 'M';
+      reason = `Moderate severity (S=${s}) with moderate occurrence (O=${o}).`;
+    } else if (s >= 5 && s <= 6 && d >= 7) {
+      ap = 'M';
+      reason = `Moderate severity (S=${s}) with limited detection (D=${d}).`;
+    } else if (s >= 3 && s <= 4 && o >= 7) {
+      ap = 'M';
+      reason = `Lower severity but high occurrence (O=${o}).`;
+    } else if (s >= 7 && s <= 8 && o <= 3 && d >= 4 && d <= 6) {
+      ap = 'M';
+      reason = `High severity with low occurrence. Monitor and consider detection improvement.`;
+    } else if (d >= 6 && o >= 3 && s >= 4) {
+      ap = 'M';
+      reason = `Detection improvement opportunity (D=${d}).`;
+    }
+    // LOW PRIORITY
+    else {
+      ap = 'L';
+      reason = `Risk adequately controlled. Continue monitoring.`;
+    }
+    
+    res.json({ ap, reason, rpn, severity: s, occurrence: o, detection: d });
+  } catch (error) {
+    console.error('AP calculation error:', error);
+    res.status(500).json({ error: 'Failed to calculate AP' });
+  }
+});
+
+// Batch calculate AP for multiple rows
+app.post('/api/ap/calculate-batch', async (req, res) => {
+  try {
+    const { rows } = req.body;
+    
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'rows must be an array' });
+    }
+    
+    const results = rows.map((row: any) => {
+      const s = parseInt(row.severity, 10);
+      const o = parseInt(row.occurrence, 10);
+      const d = parseInt(row.detection, 10);
+      
+      if (isNaN(s) || isNaN(o) || isNaN(d) || 
+          s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
+        return { id: row.id, error: 'Invalid ratings' };
+      }
+      
+      const rpn = s * o * d;
+      let ap: 'H' | 'M' | 'L';
+      
+      // Simplified AP logic for batch
+      if (s >= 9) ap = 'H';
+      else if (s >= 7 && (o >= 4 || d >= 7)) ap = 'H';
+      else if (s >= 5 && o >= 7 && d >= 6) ap = 'H';
+      else if (d >= 10 && o >= 4) ap = 'H';
+      else if (s >= 5 && (o >= 4 || d >= 7)) ap = 'M';
+      else if (s >= 3 && o >= 7) ap = 'M';
+      else if (d >= 6 && o >= 3 && s >= 4) ap = 'M';
+      else ap = 'L';
+      
+      return { id: row.id, ap, rpn };
+    });
+    
+    res.json({ results });
+  } catch (error) {
+    console.error('Batch AP calculation error:', error);
+    res.status(500).json({ error: 'Failed to calculate batch AP' });
+  }
+});
+
+// Get rating scales
+app.get('/api/rating-scales', async (req, res) => {
+  try {
+    const scales = await storage.getRatingScales();
+    res.json(scales);
+  } catch (error) {
+    console.error('Error fetching rating scales:', error);
+    res.status(500).json({ error: 'Failed to fetch rating scales' });
+  }
+});
+
+// Get rating scale by version and kind
+app.get('/api/rating-scales/:version/:kind', async (req, res) => {
+  try {
+    const { version, kind } = req.params;
+    const scale = await storage.getRatingScale(version, kind);
+    
+    if (!scale) {
+      return res.status(404).json({ error: 'Rating scale not found' });
+    }
+    
+    res.json(scale);
+  } catch (error) {
+    console.error('Error fetching rating scale:', error);
+    res.status(500).json({ error: 'Failed to fetch rating scale' });
+  }
+});
