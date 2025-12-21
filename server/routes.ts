@@ -430,6 +430,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/steps/:stepId/fmea-template-rows", async (req, res) => {
+    try {
+      const rows = await storage.getFmeaTemplateRowsByStepId(req.params.stepId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching FMEA template rows by step:", error);
+      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
+    }
+  });
+
+  app.post("/api/fmea-template-rows/:id/duplicate", async (req, res) => {
+    try {
+      const duplicatedRow = await storage.duplicateFmeaTemplateRow(req.params.id);
+      if (!duplicatedRow) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.status(201).json(duplicatedRow);
+    } catch (error) {
+      console.error("Error duplicating FMEA template row:", error);
+      res.status(500).json({ error: "Failed to duplicate FMEA template row" });
+    }
+  });
+
   // PFMEA API
   app.get("/api/pfmea", async (req, res) => {
     try {
