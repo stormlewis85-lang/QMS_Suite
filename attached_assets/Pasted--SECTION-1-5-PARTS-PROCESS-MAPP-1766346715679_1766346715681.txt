@@ -1,0 +1,217 @@
+// ============================================================
+// SECTION 1.5: PARTS - PROCESS MAPPING
+// Storage and Routes Updates
+// ============================================================
+
+// ============================================================
+// STORAGE.TS ADDITIONS
+// ============================================================
+
+// 1. Add import for partProcessMap at the top of storage.ts:
+/*
+import {
+  // ... existing imports ...
+  partProcessMap,
+  type PartProcessMap,
+  type InsertPartProcessMap,
+} from "@shared/schema";
+*/
+
+// 2. Add to IStorage interface (around line 56, after deletePart):
+/*
+  // Part Process Maps
+  getPartProcessMaps(partId: string): Promise<(PartProcessMap & { process?: ProcessDef })[]>;
+  getPartProcessMapById(id: string): Promise<PartProcessMap | undefined>;
+  createPartProcessMap(data: InsertPartProcessMap): Promise<PartProcessMap>;
+  updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined>;
+  deletePartProcessMap(id: string): Promise<boolean>;
+*/
+
+// 3. Add implementations in DatabaseStorage class (after deletePart method):
+/*
+  // Part Process Maps
+  async getPartProcessMaps(partId: string): Promise<(PartProcessMap & { process?: ProcessDef })[]> {
+    const maps = await db.select().from(partProcessMap)
+      .where(eq(partProcessMap.partId, partId))
+      .orderBy(partProcessMap.sequence);
+    
+    // Fetch associated process details
+    const result = await Promise.all(maps.map(async (map) => {
+      const [process] = await db.select().from(processDef)
+        .where(eq(processDef.id, map.processDefId));
+      return { ...map, process };
+    }));
+    
+    return result;
+  }
+
+  async getPartProcessMapById(id: string): Promise<PartProcessMap | undefined> {
+    const [result] = await db.select().from(partProcessMap)
+      .where(eq(partProcessMap.id, id));
+    return result || undefined;
+  }
+
+  async createPartProcessMap(data: InsertPartProcessMap): Promise<PartProcessMap> {
+    const [newMap] = await db.insert(partProcessMap).values(data).returning();
+    return newMap;
+  }
+
+  async updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined> {
+    const [updatedMap] = await db.update(partProcessMap)
+      .set(updates)
+      .where(eq(partProcessMap.id, id))
+      .returning();
+    return updatedMap || undefined;
+  }
+
+  async deletePartProcessMap(id: string): Promise<boolean> {
+    await db.delete(partProcessMap).where(eq(partProcessMap.id, id));
+    return true;
+  }
+*/
+
+// ============================================================
+// ROUTES.TS ADDITIONS
+// ============================================================
+
+// Add these routes after the Parts API section (after DELETE /api/parts/:id):
+
+/*
+  // Part Process Maps API
+  app.get("/api/part-process-maps", async (req, res) => {
+    try {
+      const { partId } = req.query;
+      if (!partId || typeof partId !== 'string') {
+        return res.status(400).json({ error: "partId query parameter is required" });
+      }
+      const maps = await storage.getPartProcessMaps(partId);
+      res.json(maps);
+    } catch (error) {
+      console.error("Error fetching part process maps:", error);
+      res.status(500).json({ error: "Failed to fetch part process maps" });
+    }
+  });
+
+  app.get("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const map = await storage.getPartProcessMapById(req.params.id);
+      if (!map) {
+        return res.status(404).json({ error: "Part process map not found" });
+      }
+      res.json(map);
+    } catch (error) {
+      console.error("Error fetching part process map:", error);
+      res.status(500).json({ error: "Failed to fetch part process map" });
+    }
+  });
+
+  app.post("/api/part-process-maps", async (req, res) => {
+    try {
+      const validatedData = insertPartProcessMapSchema.parse(req.body);
+      const newMap = await storage.createPartProcessMap(validatedData);
+      res.status(201).json(newMap);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating part process map:", error);
+      res.status(500).json({ error: "Failed to create part process map" });
+    }
+  });
+
+  app.patch("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateSchema = insertPartProcessMapSchema.partial();
+      const validatedData = updateSchema.parse(req.body);
+      
+      const updatedMap = await storage.updatePartProcessMap(id, validatedData);
+      if (!updatedMap) {
+        return res.status(404).json({ error: "Part process map not found" });
+      }
+      res.json(updatedMap);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating part process map:", error);
+      res.status(500).json({ error: "Failed to update part process map" });
+    }
+  });
+
+  app.delete("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existingMap = await storage.getPartProcessMapById(id);
+      if (!existingMap) {
+        return res.status(404).json({ error: "Part process map not found" });
+      }
+      
+      await storage.deletePartProcessMap(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting part process map:", error);
+      res.status(500).json({ error: "Failed to delete part process map" });
+    }
+  });
+*/
+
+// ============================================================
+// ALSO: Add insertPartProcessMapSchema to imports in routes.ts
+// ============================================================
+
+/*
+import {
+  insertPartSchema,
+  insertProcessDefSchema,
+  insertProcessStepSchema,
+  insertPfmeaSchema,
+  insertPfmeaRowSchema,
+  insertControlPlanSchema,
+  insertControlPlanRowSchema,
+  insertEquipmentLibrarySchema,
+  insertEquipmentErrorProofingSchema,
+  insertEquipmentControlMethodsSchema,
+  insertFailureModesLibrarySchema,
+  insertFmeaTemplateCatalogLinkSchema,
+  insertControlsLibrarySchema,
+  insertControlPairingsSchema,
+  insertPartProcessMapSchema,  // ADD THIS
+  type FailureModeCategory,
+  type ControlType,
+  type ControlEffectiveness,
+} from "@shared/schema";
+*/
+
+// ============================================================
+// APP.TSX UPDATE - Add route for Part Detail page
+// ============================================================
+
+// In your App.tsx, add the route for the Part Detail page:
+/*
+import PartDetail from "@/pages/PartDetail";
+
+// Inside the Routes:
+<Route path="/parts/:id" component={PartDetail} />
+*/
+
+// ============================================================
+// PARTS.TSX UPDATE - Navigate to detail page
+// ============================================================
+
+// Update the handleViewDetails function in Parts.tsx to navigate:
+/*
+  const handleViewDetails = (part: Part) => {
+    setLocation(`/parts/${part.id}`);
+  };
+*/
+
+// And add the useLocation hook import and setup:
+/*
+import { useLocation } from "wouter";
+
+// Inside the component:
+const [, setLocation] = useLocation();
+*/
