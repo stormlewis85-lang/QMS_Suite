@@ -17,6 +17,7 @@ import {
   insertFmeaTemplateCatalogLinkSchema,
   insertControlsLibrarySchema,
   insertControlPairingsSchema,
+  insertFmeaTemplateRowSchema,
   type FailureModeCategory,
   type ControlType,
   type ControlEffectiveness,
@@ -353,6 +354,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching child steps:", error);
       res.status(500).json({ error: "Failed to fetch child steps" });
+    }
+  });
+
+  // FMEA Template Rows API
+  app.get("/api/processes/:processId/fmea-template-rows", async (req, res) => {
+    try {
+      const rows = await storage.getFmeaTemplateRowsByProcessId(req.params.processId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching FMEA template rows:", error);
+      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
+    }
+  });
+
+  app.post("/api/processes/:processId/fmea-template-rows", async (req, res) => {
+    try {
+      const validatedData = insertFmeaTemplateRowSchema.parse({
+        ...req.body,
+        processDefId: req.params.processId,
+      });
+      const newRow = await storage.createFmeaTemplateRow(validatedData);
+      res.status(201).json(newRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating FMEA template row:", error);
+      res.status(500).json({ error: "Failed to create FMEA template row" });
+    }
+  });
+
+  app.get("/api/fmea-template-rows/:id", async (req, res) => {
+    try {
+      const row = await storage.getFmeaTemplateRowById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.json(row);
+    } catch (error) {
+      console.error("Error fetching FMEA template row:", error);
+      res.status(500).json({ error: "Failed to fetch FMEA template row" });
+    }
+  });
+
+  app.patch("/api/fmea-template-rows/:id", async (req, res) => {
+    try {
+      const updates = insertFmeaTemplateRowSchema.partial().parse(req.body);
+      const updatedRow = await storage.updateFmeaTemplateRow(req.params.id, updates);
+      if (!updatedRow) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.json(updatedRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating FMEA template row:", error);
+      res.status(500).json({ error: "Failed to update FMEA template row" });
+    }
+  });
+
+  app.delete("/api/fmea-template-rows/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteFmeaTemplateRow(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting FMEA template row:", error);
+      res.status(500).json({ error: "Failed to delete FMEA template row" });
     }
   });
 

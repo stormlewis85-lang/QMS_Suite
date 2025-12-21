@@ -602,18 +602,16 @@ export default function FMEATemplateBuilder({
         steps={steps}
         failureModes={failureModes}
         controls={controls}
-        mode="create"
       />
 
       {editingRow && (
         <FMEATemplateRowDialog
           open={!!editingRow}
-          onOpenChange={(open) => !open && setEditingRow(null)}
+          onOpenChange={(open: boolean) => !open && setEditingRow(null)}
           processId={processId}
           steps={steps}
           failureModes={failureModes}
           controls={controls}
-          mode="edit"
           existingRow={editingRow}
         />
       )}

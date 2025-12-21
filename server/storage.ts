@@ -16,6 +16,7 @@ import {
   controlsLibrary,
   controlPairings,
   ratingScale,
+  fmeaTemplateRow,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -50,6 +51,8 @@ import {
   type ControlType,
   type ControlEffectiveness,
   type RatingScale,
+  type FmeaTemplateRow,
+  type InsertFmeaTemplateRow,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
@@ -143,6 +146,13 @@ export interface IStorage {
   // Rating Scales
   getRatingScales(): Promise<RatingScale[]>;
   getRatingScale(version: string, kind: string): Promise<RatingScale | undefined>;
+  
+  // FMEA Template Rows
+  getFmeaTemplateRowsByProcessId(processDefId: string): Promise<FmeaTemplateRow[]>;
+  getFmeaTemplateRowById(id: string): Promise<FmeaTemplateRow | undefined>;
+  createFmeaTemplateRow(insertRow: InsertFmeaTemplateRow): Promise<FmeaTemplateRow>;
+  updateFmeaTemplateRow(id: string, updates: Partial<InsertFmeaTemplateRow>): Promise<FmeaTemplateRow | undefined>;
+  deleteFmeaTemplateRow(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -612,6 +622,36 @@ export class DatabaseStorage implements IStorage {
     const [scale] = await db.select().from(ratingScale)
       .where(and(eq(ratingScale.version, version), eq(ratingScale.kind, kind)));
     return scale;
+  }
+
+  // FMEA Template Rows
+  async getFmeaTemplateRowsByProcessId(processDefId: string): Promise<FmeaTemplateRow[]> {
+    return await db.select().from(fmeaTemplateRow)
+      .where(eq(fmeaTemplateRow.processDefId, processDefId))
+      .orderBy(fmeaTemplateRow.stepId);
+  }
+
+  async getFmeaTemplateRowById(id: string): Promise<FmeaTemplateRow | undefined> {
+    const [row] = await db.select().from(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
+    return row;
+  }
+
+  async createFmeaTemplateRow(insertRow: InsertFmeaTemplateRow): Promise<FmeaTemplateRow> {
+    const [newRow] = await db.insert(fmeaTemplateRow).values(insertRow).returning();
+    return newRow;
+  }
+
+  async updateFmeaTemplateRow(id: string, updates: Partial<InsertFmeaTemplateRow>): Promise<FmeaTemplateRow | undefined> {
+    const [updatedRow] = await db.update(fmeaTemplateRow)
+      .set(updates)
+      .where(eq(fmeaTemplateRow.id, id))
+      .returning();
+    return updatedRow;
+  }
+
+  async deleteFmeaTemplateRow(id: string): Promise<boolean> {
+    const result = await db.delete(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
   }
 }
 
