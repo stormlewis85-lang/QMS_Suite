@@ -1,32 +1,28 @@
-import { useState, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
+import { useState } from "react";
+import { useRoute, Link } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Plus,
-  Search,
-  Eye,
-  Pencil,
-  Trash2,
-  Loader2,
-  X,
-  GripVertical,
-  ChevronUp,
-  ChevronDown,
   Settings2,
-  GitBranch,
-  Layers,
-  Link2,
+  FileText,
   AlertTriangle,
-  CheckCircle2,
-  Wrench,
+  ClipboardCheck,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  GripVertical,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  GitBranch,
+  Play,
+  RotateCcw,
 } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -36,24 +32,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -68,199 +55,204 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { ProcessDef, ProcessStep, InsertProcessStep, EquipmentLibrary } from "@shared/schema";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { insertProcessStepSchema } from "@shared/schema";
+import type { ProcessDef, ProcessStep, InsertProcessStep, FmeaTemplateRow } from "@shared/schema";
 import { z } from "zod";
 
-interface ProcessWithSteps extends ProcessDef {
-  steps?: ProcessStep[];
-}
+// Import the FMEA Template Builder component
+import FMEATemplateBuilder from "@/components/FMEATemplateBuilder";
 
+// Status badge component
 function StatusBadge({ status }: { status: string }) {
-  const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    effective: "default",
-    draft: "secondary",
-    review: "outline",
-    superseded: "destructive",
-    obsolete: "destructive",
+  const variants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+    draft: { variant: "secondary", label: "Draft" },
+    review: { variant: "outline", label: "In Review" },
+    effective: { variant: "default", label: "Effective" },
+    superseded: { variant: "destructive", label: "Superseded" },
+    obsolete: { variant: "destructive", label: "Obsolete" },
   };
-  return (
-    <Badge variant={variants[status] || "secondary"} className="capitalize">
-      {status}
-    </Badge>
-  );
+  
+  const { variant, label } = variants[status] || { variant: "secondary", label: status };
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
-function StepTypeBadge({ type }: { type: string }) {
-  if (type === "operation") return null;
-  return (
-    <Badge variant="outline" className="text-xs">
-      {type === "group" ? "Group" : "Subprocess Ref"}
-    </Badge>
-  );
+// Step type icon
+function StepTypeIcon({ stepType }: { stepType: string }) {
+  switch (stepType) {
+    case "group":
+      return <Folder className="h-4 w-4 text-blue-500" />;
+    case "subprocess_ref":
+      return <GitBranch className="h-4 w-4 text-purple-500" />;
+    case "decision":
+      return <ChevronRight className="h-4 w-4 text-orange-500" />;
+    default:
+      return <Play className="h-4 w-4 text-green-500" />;
+  }
 }
 
-const stepFormSchema = insertProcessStepSchema.omit({ processDefId: true });
-type StepFormData = z.infer<typeof stepFormSchema>;
-
+// Step form dialog
 function StepFormDialog({
-  processId,
   step,
-  existingSteps,
+  processId,
+  parentStepId,
   open,
   onOpenChange,
+  processes,
 }: {
-  processId: string;
   step?: ProcessStep;
-  existingSteps: ProcessStep[];
+  processId: string;
+  parentStepId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  processes?: ProcessDef[];
 }) {
   const { toast } = useToast();
   const isEditing = !!step;
-  const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<string[]>([]);
 
-  const { data: equipmentList } = useQuery<EquipmentLibrary[]>({
-    queryKey: ["/api/equipment"],
-  });
-
-  const { data: processList } = useQuery<ProcessDef[]>({
-    queryKey: ["/api/processes"],
-  });
-
-  const form = useForm<StepFormData>({
-    resolver: zodResolver(stepFormSchema),
+  const form = useForm<InsertProcessStep>({
+    resolver: zodResolver(insertProcessStepSchema),
     defaultValues: {
-      seq: (existingSteps?.length || 0) * 10 + 10,
+      processDefId: processId,
+      seq: 1,
       name: "",
       area: "",
       stepType: "operation",
+      parentStepId: parentStepId || null,
+      subprocessRefId: null,
       equipment: [],
-      equipmentIds: [],
-      branchTo: "",
-      reworkTo: "",
+      branchTo: null,
+      reworkTo: null,
     },
   });
 
-  const stepType = form.watch("stepType");
-
-  useEffect(() => {
+  // Reset form when dialog opens with step data
+  useState(() => {
     if (step && open) {
       form.reset({
+        processDefId: step.processDefId,
         seq: step.seq,
         name: step.name,
         area: step.area,
-        stepType: step.stepType || "operation",
+        stepType: step.stepType,
+        parentStepId: step.parentStepId,
+        subprocessRefId: step.subprocessRefId,
         equipment: step.equipment || [],
-        equipmentIds: step.equipmentIds || [],
-        branchTo: step.branchTo || "",
-        reworkTo: step.reworkTo || "",
-        parentStepId: step.parentStepId || undefined,
-        subprocessRefId: step.subprocessRefId || undefined,
-        subprocessRev: step.subprocessRev || undefined,
+        branchTo: step.branchTo,
+        reworkTo: step.reworkTo,
       });
-      setSelectedEquipmentIds(step.equipmentIds || []);
-    } else if (!open) {
-      form.reset({
-        seq: (existingSteps?.length || 0) * 10 + 10,
-        name: "",
-        area: "",
-        stepType: "operation",
-        equipment: [],
-        equipmentIds: [],
-        branchTo: "",
-        reworkTo: "",
-      });
-      setSelectedEquipmentIds([]);
     }
-  }, [step, open, form, existingSteps]);
+  });
 
-  const mutation = useMutation({
-    mutationFn: async (data: StepFormData) => {
-      const equipmentData = selectedEquipmentIds.map((id) => {
-        const eq = equipmentList?.find((e) => e.id === id);
-        return eq ? { name: eq.name, model: eq.model || undefined } : null;
-      }).filter(Boolean);
-
-      const payload = {
-        ...data,
-        equipment: equipmentData,
-        equipmentIds: selectedEquipmentIds,
-      };
-
-      const url = isEditing
-        ? `/api/processes/${processId}/steps/${step.id}`
-        : `/api/processes/${processId}/steps`;
-      const method = isEditing ? "PATCH" : "POST";
-
-      const res = await apiRequest(method, url, payload);
-      return await res.json() as ProcessStep;
+  const createMutation = useMutation({
+    mutationFn: async (data: InsertProcessStep) => {
+      return await apiRequest("POST", `/api/processes/${processId}/steps`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/processes/${processId}`] });
-      toast({
-        title: isEditing ? "Step updated" : "Step created",
-        description: `The process step has been successfully ${isEditing ? "updated" : "created"}.`,
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
+      toast({ title: "Success", description: "Step created successfully" });
       onOpenChange(false);
+      form.reset();
     },
     onError: (error: Error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || `Failed to ${isEditing ? "update" : "create"} step`,
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
-  const onSubmit = (data: StepFormData) => {
-    mutation.mutate(data);
+  const updateMutation = useMutation({
+    mutationFn: async (data: Partial<InsertProcessStep>) => {
+      return await apiRequest("PATCH", `/api/processes/${processId}/steps/${step?.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
+      toast({ title: "Success", description: "Step updated successfully" });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const onSubmit = (data: InsertProcessStep) => {
+    if (isEditing) {
+      updateMutation.mutate(data);
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
-  const toggleEquipment = (id: string) => {
-    setSelectedEquipmentIds((prev) =>
-      prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]
-    );
-  };
-
-  const groupSteps = existingSteps?.filter((s) => s.stepType === "group" && s.id !== step?.id) || [];
+  const stepType = form.watch("stepType");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Process Step" : "Add Process Step"}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Step" : "Add New Step"}</DialogTitle>
           <DialogDescription>
-            {isEditing
-              ? "Update step details and equipment assignments."
-              : "Add a new step to this process definition."}
+            {isEditing ? "Update the step details" : "Add a new step to this process"}
           </DialogDescription>
         </DialogHeader>
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Step Name*</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Injection Molding" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="seq"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sequence Number</FormLabel>
+                    <FormLabel>Sequence*</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         min={1}
-                        step={10}
                         {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 10)}
-                        data-testid="input-step-seq"
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
                       />
                     </FormControl>
-                    <FormDescription>Determines step order (10, 20, 30...)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="area"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Area*</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Molding, Assembly" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -271,16 +263,23 @@ function StepFormDialog({
                 name="stepType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Step Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || "operation"}>
+                    <FormLabel>Step Type*</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
                       <FormControl>
-                        <SelectTrigger data-testid="select-step-type">
-                          <SelectValue placeholder="Select type" />
+                        <SelectTrigger>
+                          <SelectValue />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="operation">Operation</SelectItem>
-                        <SelectItem value="group">Group (Container)</SelectItem>
+                        <SelectItem value="inspection">Inspection</SelectItem>
+                        <SelectItem value="transport">Transport</SelectItem>
+                        <SelectItem value="storage">Storage</SelectItem>
+                        <SelectItem value="decision">Decision</SelectItem>
+                        <SelectItem value="group">Group</SelectItem>
                         <SelectItem value="subprocess_ref">Subprocess Reference</SelectItem>
                       </SelectContent>
                     </Select>
@@ -290,155 +289,35 @@ function StepFormDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Step Name</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g., Mold Part, Visual Inspection"
-                      {...field}
-                      data-testid="input-step-name"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="area"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Area / Work Center</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g., Molding, Assembly, QC"
-                      {...field}
-                      data-testid="input-step-area"
-                    />
-                  </FormControl>
-                  <FormDescription>Production area or work center for this step</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             {stepType === "subprocess_ref" && (
               <FormField
                 control={form.control}
                 name="subprocessRefId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Referenced Subprocess</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                    <FormLabel>Referenced Process*</FormLabel>
+                    <Select
+                      value={field.value || ""}
+                      onValueChange={field.onChange}
+                    >
                       <FormControl>
-                        <SelectTrigger data-testid="select-subprocess-ref">
+                        <SelectTrigger>
                           <SelectValue placeholder="Select a process to reference" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {processList
-                          ?.filter((p) => p.id !== processId && p.status === "effective")
-                          .map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name} (Rev {p.rev})
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Link to another process definition as a subprocess
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {stepType !== "group" && groupSteps.length > 0 && (
-              <FormField
-                control={form.control}
-                name="parentStepId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Parent Group (Optional)</FormLabel>
-                    <Select
-                      onValueChange={(val) => field.onChange(val === "none" ? undefined : val)}
-                      value={field.value || "none"}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-parent-group">
-                          <SelectValue placeholder="No parent (top level)" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">No parent (top level)</SelectItem>
-                        {groupSteps.map((g) => (
-                          <SelectItem key={g.id} value={g.id}>
-                            {g.seq}: {g.name}
+                        {processes?.filter(p => p.id !== processId).map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} (Rev {p.rev})
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormDescription>Nest this step within a group</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             )}
-
-            <Separator />
-
-            {stepType === "operation" && (
-              <div className="space-y-3">
-                <div>
-                  <FormLabel>Equipment</FormLabel>
-                  <FormDescription>Select equipment used in this step</FormDescription>
-                </div>
-                <div className="border rounded-md max-h-48 overflow-y-auto">
-                  {equipmentList && equipmentList.length > 0 ? (
-                    <div className="divide-y">
-                      {equipmentList.map((eq) => (
-                        <label
-                          key={eq.id}
-                          className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50"
-                        >
-                          <Checkbox
-                            checked={selectedEquipmentIds.includes(eq.id)}
-                            onCheckedChange={() => toggleEquipment(eq.id)}
-                            data-testid={`checkbox-equipment-${eq.id}`}
-                          />
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{eq.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {eq.manufacturer} {eq.model} • {eq.location}
-                            </p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {eq.type}
-                          </Badge>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      No equipment available. Add equipment in the Equipment Library first.
-                    </div>
-                  )}
-                </div>
-                {selectedEquipmentIds.length > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {selectedEquipmentIds.length} equipment item(s) selected
-                  </p>
-                )}
-              </div>
-            )}
-
-            <Separator />
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -446,16 +325,14 @@ function StepFormDialog({
                 name="branchTo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Branch To (Optional)</FormLabel>
+                    <FormLabel>Branch To (Step Number)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Step name or ID"
+                        placeholder="e.g., 20"
                         {...field}
                         value={field.value || ""}
-                        data-testid="input-branch-to"
                       />
                     </FormControl>
-                    <FormDescription>Alternative path step</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -466,16 +343,14 @@ function StepFormDialog({
                 name="reworkTo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Rework To (Optional)</FormLabel>
+                    <FormLabel>Rework To (Step Number)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Step name or ID"
+                        placeholder="e.g., 10"
                         {...field}
                         value={field.value || ""}
-                        data-testid="input-rework-to"
                       />
                     </FormControl>
-                    <FormDescription>Rework loop destination</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -483,12 +358,14 @@ function StepFormDialog({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-step-cancel">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending} data-testid="button-step-submit">
-                {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isEditing ? "Save Changes" : "Add Step"}
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                {(createMutation.isPending || updateMutation.isPending) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isEditing ? "Save Changes" : "Create Step"}
               </Button>
             </DialogFooter>
           </form>
@@ -498,147 +375,292 @@ function StepFormDialog({
   );
 }
 
-function DeleteStepDialog({
-  processId,
-  step,
-  open,
-  onOpenChange,
+// Steps tab content
+function StepsTab({
+  process,
+  steps,
+  processes,
 }: {
-  processId: string;
-  step: ProcessStep | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  process: ProcessDef;
+  steps: ProcessStep[];
+  processes?: ProcessDef[];
 }) {
   const { toast } = useToast();
+  const [stepDialogOpen, setStepDialogOpen] = useState(false);
+  const [editingStep, setEditingStep] = useState<ProcessStep | undefined>();
+  const [deleteStepId, setDeleteStepId] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!step) return;
-      await apiRequest("DELETE", `/api/processes/${processId}/steps/${step.id}`);
+  const deleteMutation = useMutation({
+    mutationFn: async (stepId: string) => {
+      await apiRequest("DELETE", `/api/processes/${process.id}/steps/${stepId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/processes/${processId}`] });
-      toast({
-        title: "Step deleted",
-        description: "The process step has been removed.",
-      });
-      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/processes", process.id] });
+      toast({ title: "Success", description: "Step deleted successfully" });
+      setDeleteStepId(null);
     },
     onError: (error: Error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to delete step",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
-  if (!step) return null;
+  const toggleGroup = (groupId: string) => {
+    const next = new Set(expandedGroups);
+    if (next.has(groupId)) {
+      next.delete(groupId);
+    } else {
+      next.add(groupId);
+    }
+    setExpandedGroups(next);
+  };
+
+  // Build tree structure for nested steps
+  const rootSteps = steps.filter((s) => !s.parentStepId);
+  const getChildSteps = (parentId: string) => steps.filter((s) => s.parentStepId === parentId);
+
+  const renderStep = (step: ProcessStep, depth: number = 0) => {
+    const children = getChildSteps(step.id);
+    const hasChildren = children.length > 0;
+    const isExpanded = expandedGroups.has(step.id);
+
+    return (
+      <div key={step.id}>
+        <div
+          className={`flex items-center gap-2 p-3 border-b hover:bg-muted/50 transition-colors ${
+            depth > 0 ? "pl-" + (depth * 8 + 3) : ""
+          }`}
+          style={{ paddingLeft: depth > 0 ? `${depth * 2 + 0.75}rem` : undefined }}
+        >
+          {/* Expand/Collapse for groups */}
+          <div className="w-6">
+            {step.stepType === "group" && hasChildren && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => toggleGroup(step.id)}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
+
+          {/* Drag handle */}
+          <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+
+          {/* Sequence number */}
+          <div className="w-12 text-center">
+            <Badge variant="outline" className="font-mono">
+              {step.seq}
+            </Badge>
+          </div>
+
+          {/* Step type icon */}
+          <StepTypeIcon stepType={step.stepType} />
+
+          {/* Step name and area */}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate">{step.name}</div>
+            <div className="text-sm text-muted-foreground truncate">{step.area}</div>
+          </div>
+
+          {/* Step type badge */}
+          <Badge variant="secondary" className="capitalize">
+            {step.stepType.replace("_", " ")}
+          </Badge>
+
+          {/* Branch/Rework indicators */}
+          {step.branchTo && (
+            <Badge variant="outline" className="text-blue-600 border-blue-300">
+              → {step.branchTo}
+            </Badge>
+          )}
+          {step.reworkTo && (
+            <Badge variant="outline" className="text-orange-600 border-orange-300">
+              <RotateCcw className="h-3 w-3 mr-1" />
+              {step.reworkTo}
+            </Badge>
+          )}
+
+          {/* Actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  setEditingStep(step);
+                  setStepDialogOpen(true);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              {step.stepType === "group" && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setEditingStep(undefined);
+                    // Would need to pass parentStepId - for now just open add dialog
+                    setStepDialogOpen(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Child Step
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => setDeleteStepId(step.id)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Render children if expanded */}
+        {step.stepType === "group" && isExpanded && children.length > 0 && (
+          <div className="border-l-2 border-blue-200 ml-6">
+            {children.map((child) => renderStep(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-            Delete Process Step
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete step <strong>"{step.name}"</strong> (Seq {step.seq})?
-            <br /><br />
-            {step.stepType === "group" && (
-              <span className="text-destructive">
-                Warning: This is a group step. All child steps will also be deleted.
-              </span>
-            )}
-            This action cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            data-testid="button-delete-confirm"
-          >
-            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Delete Step
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Process Steps</h3>
+          <p className="text-sm text-muted-foreground">
+            {steps.length} step{steps.length !== 1 ? "s" : ""} defined
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            setEditingStep(undefined);
+            setStepDialogOpen(true);
+          }}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Add Step
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {steps.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No steps defined yet.</p>
+              <p className="text-sm">Click "Add Step" to create your first process step.</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {rootSteps.map((step) => renderStep(step))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Step form dialog */}
+      <StepFormDialog
+        step={editingStep}
+        processId={process.id}
+        open={stepDialogOpen}
+        onOpenChange={setStepDialogOpen}
+        processes={processes}
+      />
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteStepId} onOpenChange={() => setDeleteStepId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Step</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this step? This action cannot be undone.
+              If this is a group, all child steps will also be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteStepId && deleteMutation.mutate(deleteStepId)}
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
+// Main ProcessDetail component
 export default function ProcessDetail() {
-  const params = useParams<{ id: string }>();
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const processId = params.id;
+  const [, params] = useRoute("/processes/:id");
+  const processId = params?.id;
 
-  const [createStepOpen, setCreateStepOpen] = useState(false);
-  const [editStepOpen, setEditStepOpen] = useState(false);
-  const [deleteStepOpen, setDeleteStepOpen] = useState(false);
-  const [selectedStep, setSelectedStep] = useState<ProcessStep | null>(null);
-
-  const { data: process, isLoading, error } = useQuery<ProcessWithSteps>({
-    queryKey: [`/api/processes/${processId}`],
+  // Fetch process with steps
+  const { data: process, isLoading, error } = useQuery<ProcessDef & { steps: ProcessStep[] }>({
+    queryKey: ["/api/processes", processId],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes/${processId}`);
+      if (!res.ok) throw new Error("Failed to fetch process");
+      return res.json();
+    },
     enabled: !!processId,
   });
 
-  const moveMutation = useMutation({
-    mutationFn: async ({ stepId, newSeq }: { stepId: string; newSeq: number }) => {
-      const res = await apiRequest("PATCH", `/api/processes/${processId}/steps/${stepId}`, {
-        seq: newSeq,
-      });
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/processes/${processId}`] });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to reorder step",
-      });
+  // Fetch all processes for subprocess references
+  const { data: allProcesses } = useQuery<ProcessDef[]>({
+    queryKey: ["/api/processes"],
+    queryFn: async () => {
+      const res = await fetch("/api/processes");
+      if (!res.ok) throw new Error("Failed to fetch processes");
+      return res.json();
     },
   });
 
-  const handleMoveUp = (step: ProcessStep, steps: ProcessStep[]) => {
-    const sortedSteps = [...steps].sort((a, b) => a.seq - b.seq);
-    const currentIndex = sortedSteps.findIndex((s) => s.id === step.id);
-    if (currentIndex <= 0) return;
+  // Fetch FMEA template rows for this process
+  const { data: fmeaTemplateRows } = useQuery<FmeaTemplateRow[]>({
+    queryKey: ["/api/processes", processId, "fmea-template-rows"],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes/${processId}/fmea-template-rows`);
+      if (!res.ok) throw new Error("Failed to fetch FMEA template rows");
+      return res.json();
+    },
+    enabled: !!processId,
+  });
 
-    const prevStep = sortedSteps[currentIndex - 1];
-    moveMutation.mutate({ stepId: step.id, newSeq: prevStep.seq });
-    moveMutation.mutate({ stepId: prevStep.id, newSeq: step.seq });
-  };
-
-  const handleMoveDown = (step: ProcessStep, steps: ProcessStep[]) => {
-    const sortedSteps = [...steps].sort((a, b) => a.seq - b.seq);
-    const currentIndex = sortedSteps.findIndex((s) => s.id === step.id);
-    if (currentIndex >= sortedSteps.length - 1) return;
-
-    const nextStep = sortedSteps[currentIndex + 1];
-    moveMutation.mutate({ stepId: step.id, newSeq: nextStep.seq });
-    moveMutation.mutate({ stepId: nextStep.id, newSeq: step.seq });
-  };
-
-  const handleEditStep = (step: ProcessStep) => {
-    setSelectedStep(step);
-    setEditStepOpen(true);
-  };
-
-  const handleDeleteStep = (step: ProcessStep) => {
-    setSelectedStep(step);
-    setDeleteStepOpen(true);
-  };
+  if (!processId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">No process selected</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
+      <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -646,260 +668,108 @@ export default function ProcessDetail() {
 
   if (error || !process) {
     return (
-      <div className="space-y-6">
-        <Button variant="ghost" onClick={() => setLocation("/processes")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Processes
-        </Button>
-        <Card>
-          <CardContent className="py-16 text-center">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
-            <p className="text-lg font-medium">Process not found</p>
-            <p className="text-muted-foreground mt-1">
-              The process you're looking for doesn't exist or was deleted.
-            </p>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <AlertTriangle className="h-12 w-12 text-destructive" />
+        <p className="text-muted-foreground">Failed to load process</p>
+        <Link href="/processes">
+          <Button variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Processes
+          </Button>
+        </Link>
       </div>
     );
   }
 
-  const sortedSteps = [...(process.steps || [])].sort((a, b) => a.seq - b.seq);
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" onClick={() => setLocation("/processes")} data-testid="button-back">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <Settings2 className="h-6 w-6 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">{process.name}</h1>
-            <StatusBadge status={process.status} />
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/processes">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          </Link>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">{process.name}</h1>
+              <StatusBadge status={process.status} />
+            </div>
+            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+              <span>Rev {process.rev}</span>
+              {process.effectiveFrom && (
+                <span>
+                  Effective: {new Date(process.effectiveFrom).toLocaleDateString()}
+                </span>
+              )}
+              <span>{process.steps?.length || 0} steps</span>
+              <span>{fmeaTemplateRows?.length || 0} FMEA templates</span>
+            </div>
           </div>
-          <p className="text-muted-foreground mt-1">
-            Rev {process.rev} • Created {new Date(process.createdAt).toLocaleDateString()}
-          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline">
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit Process
+          </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Process Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Status</p>
-              <StatusBadge status={process.status} />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Revision</p>
-              <code className="text-sm bg-muted px-2 py-1 rounded">{process.rev}</code>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Effective From</p>
-              <p className="font-medium">
-                {process.effectiveFrom
-                  ? new Date(process.effectiveFrom).toLocaleDateString()
-                  : "Not set"}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Steps</p>
-              <p className="font-medium">{sortedSteps.length}</p>
-            </div>
-          </div>
-          {process.changeNote && (
-            <div className="mt-4 pt-4 border-t">
-              <p className="text-sm text-muted-foreground">Change Notes</p>
-              <p className="text-sm mt-1">{process.changeNote}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Tabs */}
+      <Tabs defaultValue="steps" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="steps" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Steps ({process.steps?.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="fmea-templates" className="gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            FMEA Templates ({fmeaTemplateRows?.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="control-templates" className="gap-2">
+            <ClipboardCheck className="h-4 w-4" />
+            Control Plan Templates
+          </TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <GitBranch className="h-5 w-5" />
-                Process Steps
-              </CardTitle>
+        <TabsContent value="steps">
+          <StepsTab
+            process={process}
+            steps={process.steps || []}
+            processes={allProcesses}
+          />
+        </TabsContent>
+
+        <TabsContent value="fmea-templates">
+          <FMEATemplateBuilder
+            processId={processId}
+            processName={process.name}
+            steps={process.steps || []}
+          />
+        </TabsContent>
+
+        <TabsContent value="control-templates">
+          <Card>
+            <CardHeader>
+              <CardTitle>Control Plan Templates</CardTitle>
               <CardDescription>
-                Define the sequence of operations for this process
+                Define control plan characteristics linked to FMEA template rows
               </CardDescription>
-            </div>
-            <Button onClick={() => setCreateStepOpen(true)} data-testid="button-add-step">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Step
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {sortedSteps.length === 0 ? (
-            <div className="text-center py-12 border rounded-lg border-dashed">
-              <Layers className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="font-medium">No steps defined</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Add steps to define the sequence of operations
-              </p>
-              <Button className="mt-4" onClick={() => setCreateStepOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add First Step
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sortedSteps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className={`flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
-                    step.parentStepId ? "ml-8 border-l-4 border-l-primary/30" : ""
-                  }`}
-                  data-testid={`step-row-${step.id}`}
-                >
-                  <div className="flex flex-col gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      disabled={index === 0 || moveMutation.isPending}
-                      onClick={() => handleMoveUp(step, sortedSteps)}
-                      data-testid={`button-move-up-${step.id}`}
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      disabled={index === sortedSteps.length - 1 || moveMutation.isPending}
-                      onClick={() => handleMoveDown(step, sortedSteps)}
-                      data-testid={`button-move-down-${step.id}`}
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary font-bold text-sm shrink-0">
-                    {step.seq}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium truncate">{step.name}</p>
-                      <StepTypeBadge type={step.stepType || "operation"} />
-                    </div>
-                    <p className="text-sm text-muted-foreground">{step.area}</p>
-                  </div>
-
-                  {step.equipment && step.equipment.length > 0 && (
-                    <Badge variant="secondary" className="shrink-0">
-                      <Wrench className="mr-1 h-3 w-3" />
-                      {step.equipment.length} Equipment
-                    </Badge>
-                  )}
-
-                  {(step.branchTo || step.reworkTo) && (
-                    <Badge variant="outline" className="shrink-0">
-                      <Link2 className="mr-1 h-3 w-3" />
-                      Branching
-                    </Badge>
-                  )}
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" data-testid={`button-step-actions-${step.id}`}>
-                        •••
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEditStep(step)} data-testid={`button-edit-step-${step.id}`}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit Step
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleDeleteStep(step)}
-                        data-testid={`button-delete-step-${step.id}`}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete Step
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {sortedSteps.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Process Flow Preview</CardTitle>
-            <CardDescription>Visual representation of the process sequence</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 text-green-700 shrink-0">
-                <CheckCircle2 className="h-5 w-5" />
+            </CardHeader>
+            <CardContent>
+              <div className="p-8 text-center text-muted-foreground">
+                <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Control Plan Template Builder coming soon.</p>
+                <p className="text-sm mt-2">
+                  This will be implemented in Section 2.3 of the implementation plan.
+                </p>
               </div>
-              {sortedSteps.map((step, index) => (
-                <div key={step.id} className="flex items-center gap-2">
-                  <div className="w-8 h-0.5 bg-muted-foreground/30" />
-                  <div className="flex flex-col items-center gap-1 shrink-0">
-                    <div
-                      className={`flex items-center justify-center w-12 h-12 rounded-lg border-2 ${
-                        step.stepType === "group"
-                          ? "border-blue-500 bg-blue-50"
-                          : step.stepType === "subprocess_ref"
-                          ? "border-purple-500 bg-purple-50"
-                          : "border-primary bg-primary/10"
-                      }`}
-                    >
-                      <span className="text-xs font-bold">{step.seq}</span>
-                    </div>
-                    <p className="text-xs text-center max-w-20 truncate">{step.name}</p>
-                  </div>
-                </div>
-              ))}
-              <div className="w-8 h-0.5 bg-muted-foreground/30" />
-              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-700 shrink-0">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <StepFormDialog
-        processId={processId!}
-        existingSteps={sortedSteps}
-        open={createStepOpen}
-        onOpenChange={setCreateStepOpen}
-      />
-
-      <StepFormDialog
-        processId={processId!}
-        step={selectedStep || undefined}
-        existingSteps={sortedSteps}
-        open={editStepOpen}
-        onOpenChange={setEditStepOpen}
-      />
-
-      <DeleteStepDialog
-        processId={processId!}
-        step={selectedStep}
-        open={deleteStepOpen}
-        onOpenChange={setDeleteStepOpen}
-      />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
