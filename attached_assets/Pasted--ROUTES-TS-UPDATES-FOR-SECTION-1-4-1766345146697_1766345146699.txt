@@ -1,0 +1,181 @@
+// ============================================================
+// ROUTES.TS UPDATES FOR SECTION 1.4 - PARTS CRUD
+// ============================================================
+// 
+// Add these new routes after the existing POST /api/parts endpoint
+// (around line 64, before the Processes API section)
+
+// ============================================================
+// NEW ROUTES TO ADD
+// ============================================================
+
+/*
+  // PATCH /api/parts/:id - Update a part
+  app.patch("/api/parts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate the update data (allow partial updates)
+      const updateSchema = insertPartSchema.partial();
+      const validatedData = updateSchema.parse(req.body);
+      
+      const updatedPart = await storage.updatePart(id, validatedData);
+      if (!updatedPart) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.json(updatedPart);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating part:", error);
+      res.status(500).json({ error: "Failed to update part" });
+    }
+  });
+
+  // DELETE /api/parts/:id - Delete a part
+  app.delete("/api/parts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if part exists first
+      const existingPart = await storage.getPartById(id);
+      if (!existingPart) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      
+      await storage.deletePart(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting part:", error);
+      res.status(500).json({ error: "Failed to delete part" });
+    }
+  });
+*/
+
+// ============================================================
+// FULL UPDATED PARTS API SECTION FOR routes.ts
+// ============================================================
+// Replace the existing Parts API section (lines ~27-64) with this complete section:
+
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import {
+  insertPartSchema,
+  insertProcessDefSchema,
+  insertProcessStepSchema,
+  insertPfmeaSchema,
+  insertPfmeaRowSchema,
+  insertControlPlanSchema,
+  insertControlPlanRowSchema,
+  insertEquipmentLibrarySchema,
+  insertEquipmentErrorProofingSchema,
+  insertEquipmentControlMethodsSchema,
+  insertFailureModesLibrarySchema,
+  insertFmeaTemplateCatalogLinkSchema,
+  insertControlsLibrarySchema,
+  insertControlPairingsSchema,
+  type FailureModeCategory,
+  type ControlType,
+  type ControlEffectiveness,
+} from "@shared/schema";
+import { z } from "zod";
+import { fromError } from "zod-validation-error";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // ============================================================
+  // PARTS API - COMPLETE CRUD
+  // ============================================================
+  
+  // GET /api/parts - List all parts
+  app.get("/api/parts", async (req, res) => {
+    try {
+      const parts = await storage.getAllParts();
+      res.json(parts);
+    } catch (error) {
+      console.error("Error fetching parts:", error);
+      res.status(500).json({ error: "Failed to fetch parts" });
+    }
+  });
+
+  // GET /api/parts/:id - Get single part
+  app.get("/api/parts/:id", async (req, res) => {
+    try {
+      const part = await storage.getPartById(req.params.id);
+      if (!part) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.json(part);
+    } catch (error) {
+      console.error("Error fetching part:", error);
+      res.status(500).json({ error: "Failed to fetch part" });
+    }
+  });
+
+  // POST /api/parts - Create new part
+  app.post("/api/parts", async (req, res) => {
+    try {
+      const validatedData = insertPartSchema.parse(req.body);
+      const newPart = await storage.createPart(validatedData);
+      res.status(201).json(newPart);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating part:", error);
+      res.status(500).json({ error: "Failed to create part" });
+    }
+  });
+
+  // PATCH /api/parts/:id - Update part (NEW)
+  app.patch("/api/parts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate the update data (allow partial updates)
+      const updateSchema = insertPartSchema.partial();
+      const validatedData = updateSchema.parse(req.body);
+      
+      const updatedPart = await storage.updatePart(id, validatedData);
+      if (!updatedPart) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.json(updatedPart);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating part:", error);
+      res.status(500).json({ error: "Failed to update part" });
+    }
+  });
+
+  // DELETE /api/parts/:id - Delete part (NEW)
+  app.delete("/api/parts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if part exists first
+      const existingPart = await storage.getPartById(id);
+      if (!existingPart) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      
+      await storage.deletePart(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting part:", error);
+      res.status(500).json({ error: "Failed to delete part" });
+    }
+  });
+
+  // ============================================================
+  // REST OF ROUTES UNCHANGED...
+  // ============================================================
+  
+  // ... Processes API continues here ...
+}
