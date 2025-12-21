@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Package, Plus, Search, Eye, Pencil, Trash2, Loader2, Factory, Users, Layers, FileText, ClipboardList, Building2, Car } from "lucide-react";
+import { useLocation } from "wouter";
+import { Package, Plus, Search, Eye, Pencil, Trash2, Loader2, Factory, Users, Layers, Car } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,11 +59,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Part, InsertPart, PFMEA, ControlPlan } from "@shared/schema";
+import type { Part, InsertPart } from "@shared/schema";
 import { insertPartSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -303,7 +302,7 @@ function PartFormDialog({
                       <Input
                         placeholder="e.g., WHL-2024-001"
                         {...field}
-                        disabled={isEditing}
+                        disabled={isEditing} // Part numbers typically shouldn't change
                         data-testid="input-part-number"
                       />
                     </FormControl>
@@ -438,214 +437,6 @@ function PartFormDialog({
   );
 }
 
-// Part details dialog with related documents
-function PartDetailsDialog({
-  part,
-  open,
-  onOpenChange,
-  onEdit,
-}: {
-  part: Part | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onEdit: () => void;
-}) {
-  // Fetch PFMEAs for this part
-  const { data: pfmeas = [] } = useQuery<PFMEA[]>({
-    queryKey: ["/api/pfmeas", { partId: part?.id }],
-    queryFn: async () => {
-      if (!part) return [];
-      const res = await fetch(`/api/pfmeas?partId=${part.id}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!part && open,
-  });
-
-  // Fetch Control Plans for this part
-  const { data: controlPlans = [] } = useQuery<ControlPlan[]>({
-    queryKey: ["/api/control-plans", { partId: part?.id }],
-    queryFn: async () => {
-      if (!part) return [];
-      const res = await fetch(`/api/control-plans?partId=${part.id}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!part && open,
-  });
-
-  if (!part) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            {part.partName}
-          </DialogTitle>
-          <DialogDescription>Part Number: {part.partNumber}</DialogDescription>
-        </DialogHeader>
-
-        <Tabs defaultValue="details" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="details" data-testid="tab-part-details">Details</TabsTrigger>
-            <TabsTrigger value="pfmeas" data-testid="tab-part-pfmeas">
-              PFMEAs ({pfmeas.length})
-            </TabsTrigger>
-            <TabsTrigger value="controlplans" data-testid="tab-part-controlplans">
-              Control Plans ({controlPlans.length})
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="details" className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Users className="h-4 w-4" />
-                  Customer
-                </div>
-                <p className="font-medium">{part.customer}</p>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Car className="h-4 w-4" />
-                  Program
-                </div>
-                <p className="font-medium">{part.program}</p>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Package className="h-4 w-4" />
-                  Part Number
-                </div>
-                <p className="font-medium font-mono">{part.partNumber}</p>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Factory className="h-4 w-4" />
-                  Plant
-                </div>
-                <p className="font-medium">{part.plant}</p>
-              </div>
-            </div>
-
-            {part.csrNotes && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FileText className="h-4 w-4" />
-                  CSR Notes
-                </div>
-                <p className="text-sm bg-muted p-3 rounded-md">{part.csrNotes}</p>
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="pfmeas" className="mt-4">
-            {pfmeas.length > 0 ? (
-              <div className="space-y-2">
-                {pfmeas.map((pfmea) => (
-                  <div
-                    key={pfmea.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
-                    data-testid={`pfmea-row-${pfmea.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">
-                          PFMEA Rev {pfmea.rev}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {pfmea.docNo || "No document number"}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={
-                        pfmea.status === "effective"
-                          ? "default"
-                          : pfmea.status === "draft"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {pfmea.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No PFMEAs created for this part</p>
-                <p className="text-sm mt-1">
-                  Generate a PFMEA from the Part Detail page
-                </p>
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="controlplans" className="mt-4">
-            {controlPlans.length > 0 ? (
-              <div className="space-y-2">
-                {controlPlans.map((cp) => (
-                  <div
-                    key={cp.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
-                    data-testid={`controlplan-row-${cp.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">
-                          Control Plan Rev {cp.rev}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {cp.type} - {cp.docNo || "No document number"}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={
-                        cp.status === "effective"
-                          ? "default"
-                          : cp.status === "draft"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {cp.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No Control Plans created for this part</p>
-                <p className="text-sm mt-1">
-                  Generate a Control Plan from the Part Detail page
-                </p>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter className="mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-part-details-close">
-            Close
-          </Button>
-          <Button onClick={onEdit} data-testid="button-part-details-edit">
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit Part
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // Delete confirmation dialog
 function DeletePartDialog({
   part,
@@ -674,12 +465,12 @@ function DeletePartDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel data-testid="button-delete-part-cancel">Cancel</AlertDialogCancel>
+          <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
-            disabled={isPending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            data-testid="button-delete-part-confirm"
+            disabled={isPending}
+            data-testid="button-delete-confirm"
           >
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Delete Part
@@ -690,33 +481,25 @@ function DeletePartDialog({
   );
 }
 
-// Main Parts page component
-export default function Parts() {
-  const { toast } = useToast();
+export default function PartsPage() {
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
   const [plantFilter, setPlantFilter] = useState<string>("all");
-
-  // Dialog states
-  const [newPartOpen, setNewPartOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editingPart, setEditingPart] = useState<Part | undefined>();
+  const [newPartOpen, setNewPartOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-
-  // Selected items
-  const [selectedPart, setSelectedPart] = useState<Part | null>(null);
-  const [editingPart, setEditingPart] = useState<Part | undefined>(undefined);
   const [partToDelete, setPartToDelete] = useState<Part | null>(null);
+  const { toast } = useToast();
 
-  // Fetch parts
-  const { data: parts = [], isLoading, error } = useQuery<Part[]>({
+  const { data: parts = [], isLoading } = useQuery<Part[]>({
     queryKey: ["/api/parts"],
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (partId: string) => {
-      await apiRequest("DELETE", `/api/parts/${partId}`);
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/parts/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parts"] });
@@ -736,35 +519,8 @@ export default function Parts() {
     },
   });
 
-  // Get unique customers and plants for filters
-  const uniqueCustomers = Array.from(new Set(parts.map((p) => p.customer))).sort();
-  const uniquePlants = Array.from(new Set(parts.map((p) => p.plant))).sort();
-
-  // Filter parts
-  const filteredParts = parts.filter((part) => {
-    const matchesSearch =
-      part.partNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.partName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.program.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesCustomer =
-      customerFilter === "all" || part.customer === customerFilter;
-    const matchesPlant = plantFilter === "all" || part.plant === plantFilter;
-
-    return matchesSearch && matchesCustomer && matchesPlant;
-  });
-
-  // Group parts by customer for summary
-  const partsByCustomer = parts.reduce((acc, part) => {
-    acc[part.customer] = (acc[part.customer] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // Handlers
-  const handleView = (part: Part) => {
-    setSelectedPart(part);
-    setDetailsOpen(true);
+  const handleViewDetails = (part: Part) => {
+    setLocation(`/parts/${part.id}`);
   };
 
   const handleEdit = (part: Part) => {
@@ -783,99 +539,124 @@ export default function Parts() {
     }
   };
 
+  // Get unique customers and plants for filters
+  const uniqueCustomers = Array.from(new Set(parts.map((p) => p.customer))).sort();
+  const uniquePlants = Array.from(new Set(parts.map((p) => p.plant))).sort();
+
+  // Filter parts
+  const filteredParts = parts.filter((part) => {
+    const matchesSearch =
+      searchQuery === "" ||
+      part.partNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      part.partName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      part.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      part.program.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesCustomer =
+      customerFilter === "all" || part.customer === customerFilter;
+    const matchesPlant = plantFilter === "all" || part.plant === plantFilter;
+
+    return matchesSearch && matchesCustomer && matchesPlant;
+  });
+
+  // Summary stats
+  const customerCount = uniqueCustomers.length;
+  const plantCount = uniquePlants.length;
+
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Parts</h1>
-          <p className="text-muted-foreground">
-            Manage automotive parts across customers and programs
-          </p>
+    <div className="flex-1 overflow-auto">
+      <div className="p-8 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Package className="h-8 w-8" />
+              Parts
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Manage parts with associated PFMEAs and Control Plans
+            </p>
+          </div>
+          <Button onClick={() => setNewPartOpen(true)} data-testid="button-new-part">
+            <Plus className="h-4 w-4 mr-2" />
+            New Part
+          </Button>
         </div>
-        <Button onClick={() => setNewPartOpen(true)} data-testid="button-create-part">
-          <Plus className="mr-2 h-4 w-4" />
-          New Part
-        </Button>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Package className="h-6 w-6 text-primary" />
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <Package className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{parts.length}</p>
+                  <p className="text-sm text-muted-foreground">Total Parts</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold">{parts.length}</p>
-                <p className="text-sm text-muted-foreground">Total Parts</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <Users className="h-6 w-6 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{customerCount}</p>
+                  <p className="text-sm text-muted-foreground">Customers</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <Users className="h-6 w-6 text-blue-500" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-green-500/10 rounded-lg">
+                  <Factory className="h-6 w-6 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{plantCount}</p>
+                  <p className="text-sm text-muted-foreground">Plants</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold">{uniqueCustomers.length}</p>
-                <p className="text-sm text-muted-foreground">Customers</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-orange-500/10 rounded-lg">
+                  <Car className="h-6 w-6 text-orange-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">
+                    {Array.from(new Set(parts.map((p) => p.program))).length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Programs</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-green-500/10 rounded-lg">
-                <Factory className="h-6 w-6 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{uniquePlants.length}</p>
-                <p className="text-sm text-muted-foreground">Plants</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-orange-500/10 rounded-lg">
-                <Layers className="h-6 w-6 text-orange-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {Object.keys(partsByCustomer).length > 0
-                    ? Math.max(...Object.values(partsByCustomer))
-                    : 0}
-                </p>
-                <p className="text-sm text-muted-foreground">Max per Customer</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Filters and Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search parts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-                data-testid="input-search-parts"
-              />
-            </div>
-            <div className="flex gap-2">
+        {/* Search and Filters */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by part number, name, customer, or program..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search-parts"
+                />
+              </div>
               <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                <SelectTrigger className="w-[180px]" data-testid="select-customer-filter">
+                <SelectTrigger className="w-[180px]" data-testid="select-filter-customer">
                   <SelectValue placeholder="All Customers" />
                 </SelectTrigger>
                 <SelectContent>
@@ -888,7 +669,7 @@ export default function Parts() {
                 </SelectContent>
               </Select>
               <Select value={plantFilter} onValueChange={setPlantFilter}>
-                <SelectTrigger className="w-[180px]" data-testid="select-plant-filter">
+                <SelectTrigger className="w-[180px]" data-testid="select-filter-plant">
                   <SelectValue placeholder="All Plants" />
                 </SelectTrigger>
                 <SelectContent>
@@ -901,155 +682,126 @@ export default function Parts() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : error ? (
-            <div className="text-center py-12 text-destructive">
-              <p>Failed to load parts</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {error instanceof Error ? error.message : "Unknown error"}
-              </p>
-            </div>
-          ) : filteredParts.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              {searchQuery || customerFilter !== "all" || plantFilter !== "all" ? (
-                <>
-                  <p className="font-medium">No parts match your filters</p>
-                  <p className="text-sm mt-1">Try adjusting your search or filter criteria</p>
-                  <Button
-                    variant="outline"
-                    className="mt-4"
-                    onClick={() => {
-                      setSearchQuery("");
-                      setCustomerFilter("all");
-                      setPlantFilter("all");
-                    }}
-                    data-testid="button-clear-filters"
-                  >
-                    Clear Filters
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <p className="font-medium">No parts yet</p>
-                  <p className="text-sm mt-1">Create your first part to get started</p>
-                  <Button className="mt-4" onClick={() => setNewPartOpen(true)} data-testid="button-create-part-empty">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Part
-                  </Button>
-                </>
-              )}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Part Number</TableHead>
-                  <TableHead>Part Name</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Program</TableHead>
-                  <TableHead>Plant</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredParts.map((part) => (
-                  <TableRow key={part.id} data-testid={`part-row-${part.id}`}>
-                    <TableCell className="font-mono font-medium">
-                      {part.partNumber}
-                    </TableCell>
-                    <TableCell>{part.partName}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{part.customer}</Badge>
-                    </TableCell>
-                    <TableCell>{part.program}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Factory className="h-3 w-3 text-muted-foreground" />
-                        {part.plant}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" data-testid={`button-actions-${part.id}`}>
-                            ...
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleView(part)} data-testid={`button-view-${part.id}`}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEdit(part)} data-testid={`button-edit-${part.id}`}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(part)}
-                            className="text-destructive focus:text-destructive"
-                            data-testid={`button-delete-${part.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredParts.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Part Number</TableHead>
+                    <TableHead>Part Name</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Program</TableHead>
+                    <TableHead>Plant</TableHead>
+                    <TableHead>CSR</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {filteredParts.map((part) => (
+                    <TableRow key={part.id} data-testid={`row-part-${part.id}`}>
+                      <TableCell className="font-mono font-medium">
+                        {part.partNumber}
+                      </TableCell>
+                      <TableCell>{part.partName}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{part.customer}</Badge>
+                      </TableCell>
+                      <TableCell>{part.program}</TableCell>
+                      <TableCell>{part.plant}</TableCell>
+                      <TableCell>
+                        {part.csrNotes ? (
+                          <Badge variant="secondary" className="text-xs">
+                            Has CSR
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-actions-${part.id}`}
+                            >
+                              <Layers className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleViewDetails(part)}
+                              data-testid={`menu-view-${part.id}`}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleEdit(part)}
+                              data-testid={`menu-edit-${part.id}`}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit Part
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDelete(part)}
+                              data-testid={`menu-delete-${part.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Part
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                {searchQuery || customerFilter !== "all" || plantFilter !== "all"
+                  ? "No parts found matching your filters."
+                  : "No parts found. Create your first part to get started."}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Dialogs */}
-      <PartDetailsDialog
-        part={selectedPart}
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
-        onEdit={() => {
-          setDetailsOpen(false);
-          if (selectedPart) {
-            handleEdit(selectedPart);
-          }
-        }}
-      />
+        {/* Dialogs */}
+        <PartFormDialog
+          part={undefined}
+          open={newPartOpen}
+          onOpenChange={setNewPartOpen}
+        />
 
-      <PartFormDialog
-        part={undefined}
-        open={newPartOpen}
-        onOpenChange={setNewPartOpen}
-      />
+        <PartFormDialog
+          part={editingPart}
+          open={editOpen}
+          onOpenChange={(open) => {
+            setEditOpen(open);
+            if (!open) {
+              setEditingPart(undefined);
+            }
+          }}
+        />
 
-      <PartFormDialog
-        part={editingPart}
-        open={editOpen}
-        onOpenChange={(open) => {
-          setEditOpen(open);
-          if (!open) {
-            setEditingPart(undefined);
-          }
-        }}
-      />
-
-      <DeletePartDialog
-        part={partToDelete}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={confirmDelete}
-        isPending={deleteMutation.isPending}
-      />
+        <DeletePartDialog
+          part={partToDelete}
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          onConfirm={confirmDelete}
+          isPending={deleteMutation.isPending}
+        />
+      </div>
     </div>
   );
 }
