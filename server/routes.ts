@@ -63,6 +63,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/parts/:id", async (req, res) => {
+    try {
+      const validatedData = insertPartSchema.partial().parse(req.body);
+      const updatedPart = await storage.updatePart(req.params.id, validatedData);
+      if (!updatedPart) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.json(updatedPart);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating part:", error);
+      res.status(500).json({ error: "Failed to update part" });
+    }
+  });
+
+  app.delete("/api/parts/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deletePart(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting part:", error);
+      res.status(500).json({ error: "Failed to delete part" });
+    }
+  });
+
   // Processes API
   app.get("/api/processes", async (req, res) => {
     try {

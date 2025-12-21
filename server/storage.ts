@@ -54,6 +54,8 @@ export interface IStorage {
   getAllParts(): Promise<Part[]>;
   getPartById(id: string): Promise<Part | undefined>;
   createPart(insertPart: InsertPart): Promise<Part>;
+  updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined>;
+  deletePart(id: string): Promise<boolean>;
   
   // Processes
   getAllProcesses(): Promise<ProcessDef[]>;
@@ -140,6 +142,19 @@ export class DatabaseStorage implements IStorage {
   async createPart(insertPart: InsertPart): Promise<Part> {
     const [newPart] = await db.insert(part).values(insertPart).returning();
     return newPart;
+  }
+
+  async updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined> {
+    const [updatedPart] = await db.update(part)
+      .set(updates)
+      .where(eq(part.id, id))
+      .returning();
+    return updatedPart || undefined;
+  }
+
+  async deletePart(id: string): Promise<boolean> {
+    const result = await db.delete(part).where(eq(part.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
   }
 
   async getAllProcesses(): Promise<ProcessDef[]> {
