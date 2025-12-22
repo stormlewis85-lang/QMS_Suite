@@ -43,6 +43,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -61,7 +69,6 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { calculateAP } from "@/lib/ap-calculator";
 import { z } from "zod";
 import type {
   ProcessStep,
@@ -70,7 +77,9 @@ import type {
   FailureModesLibrary,
   ControlsLibrary,
 } from "@shared/schema";
+import { insertFmeaTemplateRowSchema } from "@shared/schema";
 
+// Extended schema with validation
 const fmeaTemplateRowFormSchema = z.object({
   stepId: z.string().uuid("Please select a process step"),
   function: z.string().min(1, "Function is required").max(500),
@@ -90,6 +99,7 @@ const fmeaTemplateRowFormSchema = z.object({
 
 type FormData = z.infer<typeof fmeaTemplateRowFormSchema>;
 
+// AIAG-VDA 2019 Rating Scales
 const SEVERITY_SCALE = [
   { rating: 10, description: "Hazardous - No Warning", criteria: "Very high severity with no warning" },
   { rating: 9, description: "Hazardous - With Warning", criteria: "Very high severity with warning" },
@@ -129,11 +139,43 @@ const DETECTION_SCALE = [
   { rating: 1, description: "Almost Certain", criteria: "Detection almost certain" },
 ];
 
+// Calculate Action Priority based on AIAG-VDA 2019
+function calculateAP(S: number, O: number, D: number): { ap: "H" | "M" | "L"; reason: string } {
+  // HIGH: S >= 9 regardless of O or D
+  if (S >= 9) {
+    return { ap: "H", reason: "Severity ≥ 9 (Safety critical)" };
+  }
+  // HIGH: S = 7-8 AND O >= 7
+  if (S >= 7 && S <= 8 && O >= 7) {
+    return { ap: "H", reason: "Severity 7-8 with high occurrence ≥ 7" };
+  }
+  // HIGH: S = 7-8 AND D >= 7
+  if (S >= 7 && S <= 8 && D >= 7) {
+    return { ap: "H", reason: "Severity 7-8 with poor detection ≥ 7" };
+  }
+  // HIGH: D >= 9 regardless of S/O
+  if (D >= 9) {
+    return { ap: "H", reason: "Detection ≥ 9 (no control)" };
+  }
+  // MEDIUM: S = 5-6 AND (O >= 7 OR D >= 7)
+  if (S >= 5 && S <= 6 && (O >= 7 || D >= 7)) {
+    return { ap: "M", reason: "Moderate severity with high O or D" };
+  }
+  // MEDIUM: S = 7-8 AND O = 4-6 AND D = 4-6
+  if (S >= 7 && S <= 8 && O >= 4 && O <= 6 && D >= 4 && D <= 6) {
+    return { ap: "M", reason: "High severity with moderate O and D" };
+  }
+  // LOW: All other combinations
+  return { ap: "L", reason: "Low risk - effective controls in place" };
+}
+
+// Rating Selector Component
 function RatingSelector({
   value,
   onChange,
   scale,
   label,
+  type,
 }: {
   value: number;
   onChange: (value: number) => void;
@@ -158,7 +200,6 @@ function RatingSelector({
         <Button
           variant="outline"
           className={`w-full justify-between h-auto py-2 ${getBgColor(value)}`}
-          data-testid={`button-rating-${label.toLowerCase()}`}
         >
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold">{value}</span>
@@ -179,14 +220,13 @@ function RatingSelector({
             {scale.map((item) => (
               <div
                 key={item.rating}
-                className={`flex items-start gap-3 p-2 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                  item.rating === value ? "bg-slate-100 dark:bg-slate-800 ring-2 ring-primary" : ""
+                className={`flex items-start gap-3 p-2 rounded cursor-pointer hover:bg-slate-100 ${
+                  item.rating === value ? "bg-slate-100 ring-2 ring-primary" : ""
                 }`}
                 onClick={() => {
                   onChange(item.rating);
                   setIsOpen(false);
                 }}
-                data-testid={`rating-option-${item.rating}`}
               >
                 <div
                   className={`w-10 h-10 rounded flex items-center justify-center font-bold text-lg ${getBgColor(
@@ -209,6 +249,7 @@ function RatingSelector({
   );
 }
 
+// Controls Multi-Select Component
 function ControlsMultiSelect({
   value,
   onChange,
@@ -257,6 +298,7 @@ function ControlsMultiSelect({
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
+      {/* Selected controls badges */}
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {value.map((ctrl, idx) => (
@@ -272,7 +314,7 @@ function ControlsMultiSelect({
       )}
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" className="w-full justify-between" data-testid={`button-select-${type}-controls`}>
+          <Button variant="outline" className="w-full justify-between">
             <span className="text-muted-foreground">
               {value.length === 0
                 ? `Select ${type} controls...`
@@ -291,7 +333,6 @@ function ControlsMultiSelect({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8"
-                data-testid={`input-search-${type}-controls`}
               />
             </div>
           </div>
@@ -301,11 +342,10 @@ function ControlsMultiSelect({
                 {filteredControls.map((control) => (
                   <div
                     key={control.id}
-                    className={`flex items-start gap-2 p-2 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                      value.includes(control.name) ? "bg-slate-100 dark:bg-slate-800" : ""
+                    className={`flex items-start gap-2 p-2 rounded cursor-pointer hover:bg-slate-100 ${
+                      value.includes(control.name) ? "bg-slate-100" : ""
                     }`}
                     onClick={() => toggleControl(control.name)}
-                    data-testid={`control-option-${control.id}`}
                   >
                     <div
                       className={`w-4 h-4 border rounded flex items-center justify-center ${
@@ -347,9 +387,8 @@ function ControlsMultiSelect({
                 value={customControl}
                 onChange={(e) => setCustomControl(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addCustomControl()}
-                data-testid={`input-custom-${type}-control`}
               />
-              <Button size="sm" onClick={addCustomControl} disabled={!customControl.trim()} data-testid={`button-add-custom-${type}`}>
+              <Button size="sm" onClick={addCustomControl} disabled={!customControl.trim()}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -368,7 +407,6 @@ interface FMEATemplateRowDialogProps {
   existingRow?: FmeaTemplateRow | null;
   failureModes: FailureModesLibrary[];
   controls: ControlsLibrary[];
-  mode?: "create" | "edit";
 }
 
 export default function FMEATemplateRowDialog({
@@ -406,11 +444,13 @@ export default function FMEATemplateRowDialog({
     },
   });
 
+  // Watch ratings for AP calculation
   const severity = form.watch("severity");
   const occurrence = form.watch("occurrence");
   const detection = form.watch("detection");
   const apResult = calculateAP(severity, occurrence, detection);
 
+  // Reset form when dialog opens/closes or row changes
   useEffect(() => {
     if (open) {
       if (existingRow) {
@@ -452,6 +492,7 @@ export default function FMEATemplateRowDialog({
     }
   }, [open, existingRow, form, steps]);
 
+  // Filter failure modes for suggestions
   const filteredFailureModes = useMemo(() => {
     if (!failureModeSearch) return [];
     return failureModes
@@ -463,6 +504,7 @@ export default function FMEATemplateRowDialog({
       .slice(0, 5);
   }, [failureModes, failureModeSearch]);
 
+  // Mutation for create/update
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
       const payload: InsertFmeaTemplateRow = {
@@ -512,6 +554,7 @@ export default function FMEATemplateRowDialog({
     mutation.mutate(data);
   };
 
+  // Apply failure mode from library
   const applyFailureMode = (fm: FailureModesLibrary) => {
     form.setValue("failureMode", fm.failureMode);
     if (fm.genericEffect) form.setValue("effect", fm.genericEffect);
@@ -538,7 +581,8 @@ export default function FMEATemplateRowDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 rounded-lg mb-4">
+            {/* AP Preview */}
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-lg mb-4">
               <div className="flex items-center gap-4">
                 <div className="text-center">
                   <div className="text-xs text-muted-foreground">S</div>
@@ -571,7 +615,6 @@ export default function FMEATemplateRowDialog({
                         ? "bg-yellow-500"
                         : "bg-green-500"
                     }`}
-                    data-testid="badge-ap-preview"
                   >
                     {apResult.ap}
                   </Badge>
@@ -580,7 +623,7 @@ export default function FMEATemplateRowDialog({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" type="button">
+                    <Button variant="ghost" size="icon">
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </TooltipTrigger>
@@ -594,15 +637,17 @@ export default function FMEATemplateRowDialog({
               </TooltipProvider>
             </div>
 
+            {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
               <TabsList className="grid grid-cols-3 w-full">
-                <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="ratings" data-testid="tab-ratings">Ratings</TabsTrigger>
-                <TabsTrigger value="controls" data-testid="tab-controls">Controls</TabsTrigger>
+                <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                <TabsTrigger value="ratings">Ratings</TabsTrigger>
+                <TabsTrigger value="controls">Controls</TabsTrigger>
               </TabsList>
 
               <ScrollArea className="flex-1 mt-4">
                 <TabsContent value="basic" className="space-y-4 px-1">
+                  {/* Process Step */}
                   <FormField
                     control={form.control}
                     name="stepId"
@@ -611,7 +656,7 @@ export default function FMEATemplateRowDialog({
                         <FormLabel>Process Step *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
-                            <SelectTrigger data-testid="select-step">
+                            <SelectTrigger>
                               <SelectValue placeholder="Select process step" />
                             </SelectTrigger>
                           </FormControl>
@@ -629,6 +674,7 @@ export default function FMEATemplateRowDialog({
                   />
 
                   <div className="grid grid-cols-2 gap-4">
+                    {/* Function */}
                     <FormField
                       control={form.control}
                       name="function"
@@ -636,7 +682,7 @@ export default function FMEATemplateRowDialog({
                         <FormItem>
                           <FormLabel>Function *</FormLabel>
                           <FormControl>
-                            <Input placeholder="What the step does..." {...field} data-testid="input-function" />
+                            <Input placeholder="What the step does..." {...field} />
                           </FormControl>
                           <FormDescription>The intended purpose of this process step</FormDescription>
                           <FormMessage />
@@ -644,6 +690,7 @@ export default function FMEATemplateRowDialog({
                       )}
                     />
 
+                    {/* Requirement */}
                     <FormField
                       control={form.control}
                       name="requirement"
@@ -651,7 +698,7 @@ export default function FMEATemplateRowDialog({
                         <FormItem>
                           <FormLabel>Requirement *</FormLabel>
                           <FormControl>
-                            <Input placeholder="CTQs per print, etc." {...field} data-testid="input-requirement" />
+                            <Input placeholder="CTQs per print, etc." {...field} />
                           </FormControl>
                           <FormDescription>The specification or requirement</FormDescription>
                           <FormMessage />
@@ -660,6 +707,7 @@ export default function FMEATemplateRowDialog({
                     />
                   </div>
 
+                  {/* Failure Mode with Library Suggestions */}
                   <FormField
                     control={form.control}
                     name="failureMode"
@@ -689,7 +737,6 @@ export default function FMEATemplateRowDialog({
                                 setShowFailureModeSuggestions(true);
                               }}
                               onFocus={() => setShowFailureModeSuggestions(true)}
-                              data-testid="input-failure-mode"
                             />
                           </FormControl>
                           {showFailureModeSuggestions && filteredFailureModes.length > 0 && (
@@ -704,9 +751,8 @@ export default function FMEATemplateRowDialog({
                                 {filteredFailureModes.map((fm) => (
                                   <div
                                     key={fm.id}
-                                    className="px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer border-t"
+                                    className="px-3 py-2 hover:bg-slate-100 cursor-pointer border-t"
                                     onClick={() => applyFailureMode(fm)}
-                                    data-testid={`suggestion-${fm.id}`}
                                   >
                                     <div className="font-medium text-sm">{fm.failureMode}</div>
                                     {fm.genericEffect && (
@@ -736,6 +782,7 @@ export default function FMEATemplateRowDialog({
                   />
 
                   <div className="grid grid-cols-2 gap-4">
+                    {/* Effect */}
                     <FormField
                       control={form.control}
                       name="effect"
@@ -743,13 +790,14 @@ export default function FMEATemplateRowDialog({
                         <FormItem>
                           <FormLabel>Effect *</FormLabel>
                           <FormControl>
-                            <Textarea placeholder="What happens if this fails?" {...field} rows={2} data-testid="input-effect" />
+                            <Textarea placeholder="What happens if this fails?" {...field} rows={2} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
 
+                    {/* Cause */}
                     <FormField
                       control={form.control}
                       name="cause"
@@ -757,7 +805,7 @@ export default function FMEATemplateRowDialog({
                         <FormItem>
                           <FormLabel>Cause *</FormLabel>
                           <FormControl>
-                            <Textarea placeholder="Why might this fail?" {...field} rows={2} data-testid="input-cause" />
+                            <Textarea placeholder="Why might this fail?" {...field} rows={2} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -765,6 +813,7 @@ export default function FMEATemplateRowDialog({
                     />
                   </div>
 
+                  {/* Notes */}
                   <FormField
                     control={form.control}
                     name="notes"
@@ -777,7 +826,6 @@ export default function FMEATemplateRowDialog({
                             {...field}
                             value={field.value || ""}
                             rows={2}
-                            data-testid="input-notes"
                           />
                         </FormControl>
                         <FormMessage />
@@ -787,6 +835,7 @@ export default function FMEATemplateRowDialog({
                 </TabsContent>
 
                 <TabsContent value="ratings" className="space-y-6 px-1">
+                  {/* Severity */}
                   <FormField
                     control={form.control}
                     name="severity"
@@ -807,6 +856,7 @@ export default function FMEATemplateRowDialog({
                     )}
                   />
 
+                  {/* Occurrence */}
                   <FormField
                     control={form.control}
                     name="occurrence"
@@ -827,6 +877,7 @@ export default function FMEATemplateRowDialog({
                     )}
                   />
 
+                  {/* Detection */}
                   <FormField
                     control={form.control}
                     name="detection"
@@ -847,6 +898,7 @@ export default function FMEATemplateRowDialog({
                     )}
                   />
 
+                  {/* Special Characteristics */}
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2">
@@ -867,7 +919,7 @@ export default function FMEATemplateRowDialog({
                               </FormDescription>
                             </div>
                             <FormControl>
-                              <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-special-flag" />
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
                             </FormControl>
                           </FormItem>
                         )}
@@ -884,7 +936,7 @@ export default function FMEATemplateRowDialog({
                               value={field.value || "none"}
                             >
                               <FormControl>
-                                <SelectTrigger data-testid="select-csr-symbol">
+                                <SelectTrigger>
                                   <SelectValue placeholder="Select symbol" />
                                 </SelectTrigger>
                               </FormControl>
@@ -925,6 +977,7 @@ export default function FMEATemplateRowDialog({
                 </TabsContent>
 
                 <TabsContent value="controls" className="space-y-6 px-1">
+                  {/* Prevention Controls */}
                   <FormField
                     control={form.control}
                     name="preventionControls"
@@ -945,6 +998,7 @@ export default function FMEATemplateRowDialog({
                     )}
                   />
 
+                  {/* Detection Controls */}
                   <FormField
                     control={form.control}
                     name="detectionControls"
@@ -965,16 +1019,17 @@ export default function FMEATemplateRowDialog({
                     )}
                   />
 
+                  {/* Detection warning */}
                   {severity >= 7 &&
                     (!form.watch("preventionControls")?.length ||
                       form.watch("preventionControls").length === 0) && (
-                      <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950 dark:border-orange-800">
+                      <Card className="border-orange-200 bg-orange-50">
                         <CardContent className="py-3">
                           <div className="flex items-start gap-2">
                             <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5" />
                             <div>
-                              <p className="font-medium text-orange-800 dark:text-orange-200">Warning: No Prevention Controls</p>
-                              <p className="text-sm text-orange-700 dark:text-orange-300">
+                              <p className="font-medium text-orange-800">Warning: No Prevention Controls</p>
+                              <p className="text-sm text-orange-700">
                                 This row has Severity ≥ 7 but no prevention controls. Per AIAG-VDA 2019,
                                 detection-only strategies are not recommended for high-severity failures.
                               </p>
@@ -988,17 +1043,19 @@ export default function FMEATemplateRowDialog({
             </Tabs>
 
             <DialogFooter className="mt-4 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending} data-testid="button-submit">
+              <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     {isEditing ? "Updating..." : "Creating..."}
                   </>
                 ) : (
-                  <>{isEditing ? "Update Row" : "Create Row"}</>
+                  <>
+                    {isEditing ? "Update Row" : "Create Row"}
+                  </>
                 )}
               </Button>
             </DialogFooter>
