@@ -34,6 +34,15 @@ import {
   recalculateAP,
   type ProcessWithTemplates 
 } from "./pfmea-generator";
+import {
+  prepareControlPlanGeneration,
+  validatePFMEAForControlPlan,
+  buildTemplateMappings,
+  previewControlPlanGeneration,
+  calculatePreviewStats as calculateCPPreviewStats,
+  validateControlPlanForApproval,
+  type ControlPlanType,
+} from "./control-plan-generator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Parts API
@@ -1104,6 +1113,241 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating control plan row:", error);
       res.status(500).json({ error: "Failed to update control plan row" });
+    }
+  });
+
+  // ===========================================
+  // Control Plan Generation API (Section 2.6)
+  // ===========================================
+
+  // Preview Control Plan generation from PFMEA
+  app.get("/api/pfmeas/:pfmeaId/control-plan/preview", async (req, res) => {
+    try {
+      // Get PFMEA with rows
+      const pfmeaDoc = await storage.getPFMEAById(req.params.pfmeaId);
+      if (!pfmeaDoc) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+
+      // Validate PFMEA for Control Plan generation
+      const pfmeaValidation = validatePFMEAForControlPlan(pfmeaDoc, pfmeaDoc.rows);
+      if (!pfmeaValidation.canGenerate) {
+        return res.status(400).json({
+          error: "Cannot generate Control Plan",
+          validation: pfmeaValidation,
+        });
+      }
+
+      // Get part with process maps
+      const partWithMaps = await storage.getPartWithProcessMaps(pfmeaDoc.partId);
+      if (!partWithMaps) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+
+      // Get control template rows for all mapped processes
+      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
+      const controlTemplateRows = await storage.getControlTemplateRowsByProcessIds(processIds);
+
+      // Build template mappings
+      const templateMappings = buildTemplateMappings(pfmeaDoc.rows, controlTemplateRows);
+
+      // Generate preview
+      const preview = previewControlPlanGeneration(pfmeaDoc.rows, templateMappings);
+      const stats = calculateCPPreviewStats(pfmeaDoc.rows, preview);
+
+      res.json({
+        pfmea: {
+          id: pfmeaDoc.id,
+          partId: pfmeaDoc.partId,
+          rev: pfmeaDoc.rev,
+          status: pfmeaDoc.status,
+        },
+        part: {
+          id: partWithMaps.id,
+          partNumber: partWithMaps.partNumber,
+          partName: partWithMaps.partName,
+          customer: partWithMaps.customer,
+        },
+        preview,
+        stats,
+        validation: pfmeaValidation,
+      });
+    } catch (error) {
+      console.error("Error previewing Control Plan generation:", error);
+      res.status(500).json({ error: "Failed to preview Control Plan generation" });
+    }
+  });
+
+  // Generate Control Plan from PFMEA
+  const controlPlanGenerateSchema = z.object({
+    rev: z.string().optional(),
+    type: z.enum(['Prototype', 'Pre-Launch', 'Production']).default('Production'),
+    docNo: z.string().optional(),
+  });
+
+  app.post("/api/pfmeas/:pfmeaId/control-plan/generate", async (req, res) => {
+    try {
+      const input = controlPlanGenerateSchema.parse(req.body);
+
+      // Get PFMEA with rows
+      const pfmeaDoc = await storage.getPFMEAById(req.params.pfmeaId);
+      if (!pfmeaDoc) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+
+      // Validate PFMEA for Control Plan generation
+      const pfmeaValidation = validatePFMEAForControlPlan(pfmeaDoc, pfmeaDoc.rows);
+      if (!pfmeaValidation.canGenerate) {
+        return res.status(400).json({
+          error: "Cannot generate Control Plan",
+          validation: pfmeaValidation,
+        });
+      }
+
+      // Get part
+      const partDoc = await storage.getPartById(pfmeaDoc.partId);
+      if (!partDoc) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+
+      // Get part with process maps
+      const partWithMaps = await storage.getPartWithProcessMaps(pfmeaDoc.partId);
+      if (!partWithMaps) {
+        return res.status(404).json({ error: "Part process maps not found" });
+      }
+
+      // Get existing Control Plans for revision tracking
+      const existingCPs = await storage.getControlPlansByPartId(pfmeaDoc.partId);
+      const existingRevisions = existingCPs.map(cp => cp.rev);
+
+      // Get control template rows for all mapped processes
+      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
+      const controlTemplateRows = await storage.getControlTemplateRowsByProcessIds(processIds);
+
+      // Prepare generation
+      const { header, rows, stats, validation } = prepareControlPlanGeneration(
+        partDoc,
+        pfmeaDoc,
+        pfmeaDoc.rows,
+        controlTemplateRows,
+        {
+          partId: pfmeaDoc.partId,
+          pfmeaId: req.params.pfmeaId,
+          rev: input.rev || undefined,
+          type: input.type as ControlPlanType,
+          docNo: input.docNo,
+        },
+        existingRevisions
+      );
+
+      if (!validation.canGenerate) {
+        return res.status(400).json({
+          error: "Cannot generate Control Plan",
+          validation,
+        });
+      }
+
+      // Create Control Plan header
+      const newControlPlan = await storage.createControlPlan(header);
+
+      // Create all rows with controlPlanId
+      const rowsWithId = rows.map(row => ({
+        ...row,
+        controlPlanId: newControlPlan.id,
+      }));
+      const createdRows = await storage.createControlPlanRows(rowsWithId);
+
+      res.status(201).json({
+        success: true,
+        controlPlan: newControlPlan,
+        rows: createdRows,
+        stats,
+        validation,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error generating Control Plan:", error);
+      res.status(500).json({ error: "Failed to generate Control Plan" });
+    }
+  });
+
+  // Validate Control Plan for approval
+  app.get("/api/control-plans/:id/validate", async (req, res) => {
+    try {
+      const cpDoc = await storage.getControlPlanById(req.params.id);
+      if (!cpDoc) {
+        return res.status(404).json({ error: "Control Plan not found" });
+      }
+
+      const validation = validateControlPlanForApproval(cpDoc, cpDoc.rows);
+      res.json({ validation });
+    } catch (error) {
+      console.error("Error validating Control Plan:", error);
+      res.status(500).json({ error: "Failed to validate Control Plan" });
+    }
+  });
+
+  // Get Control Plan with full details including part info
+  app.get("/api/control-plans/:id/details", async (req, res) => {
+    try {
+      const cpDoc = await storage.getControlPlanWithDetails(req.params.id);
+      if (!cpDoc) {
+        return res.status(404).json({ error: "Control Plan not found" });
+      }
+      res.json(cpDoc);
+    } catch (error) {
+      console.error("Error fetching Control Plan details:", error);
+      res.status(500).json({ error: "Failed to fetch Control Plan details" });
+    }
+  });
+
+  // Update Control Plan header
+  app.patch("/api/control-plans/:id", async (req, res) => {
+    try {
+      const updates = insertControlPlanSchema.partial().parse(req.body);
+      const updatedCP = await storage.updateControlPlan(req.params.id, updates);
+      if (!updatedCP) {
+        return res.status(404).json({ error: "Control Plan not found" });
+      }
+      res.json(updatedCP);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating Control Plan:", error);
+      res.status(500).json({ error: "Failed to update Control Plan" });
+    }
+  });
+
+  // Delete Control Plan
+  app.delete("/api/control-plans/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteControlPlan(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Control Plan not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting Control Plan:", error);
+      res.status(500).json({ error: "Failed to delete Control Plan" });
+    }
+  });
+
+  // Delete Control Plan row
+  app.delete("/api/control-plan-rows/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteControlPlanRow(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Control Plan row not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting Control Plan row:", error);
+      res.status(500).json({ error: "Failed to delete Control Plan row" });
     }
   });
 
