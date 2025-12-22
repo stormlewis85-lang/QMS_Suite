@@ -129,9 +129,18 @@ export interface IStorage {
   // Control Plans
   getControlPlansByPartId(partId: string): Promise<ControlPlan[]>;
   getControlPlanById(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[] }) | undefined>;
+  getControlPlanWithDetails(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[]; part: Part }) | undefined>;
   createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan>;
+  updateControlPlan(id: string, updates: Partial<InsertControlPlan>): Promise<ControlPlan | undefined>;
+  deleteControlPlan(id: string): Promise<boolean>;
   createControlPlanRow(insertRow: InsertControlPlanRow): Promise<ControlPlanRow>;
+  createControlPlanRows(rows: InsertControlPlanRow[]): Promise<ControlPlanRow[]>;
   updateControlPlanRow(id: string, updates: Partial<InsertControlPlanRow>): Promise<ControlPlanRow | undefined>;
+  deleteControlPlanRow(id: string): Promise<boolean>;
+  getControlPlanRowById(id: string): Promise<ControlPlanRow | undefined>;
+  
+  // Control Template Rows by multiple processes (for Control Plan generation)
+  getControlTemplateRowsByProcessIds(processDefIds: string[]): Promise<ControlTemplateRow[]>;
   
   // Equipment Library
   getAllEquipment(): Promise<EquipmentLibrary[]>;
@@ -576,6 +585,53 @@ export class DatabaseStorage implements IStorage {
       .where(eq(controlPlanRow.id, id))
       .returning();
     return updatedRow || undefined;
+  }
+
+  async getControlPlanWithDetails(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[]; part: Part }) | undefined> {
+    const [cpDoc] = await db.select().from(controlPlan).where(eq(controlPlan.id, id));
+    if (!cpDoc) return undefined;
+
+    const [partDoc] = await db.select().from(part).where(eq(part.id, cpDoc.partId));
+    if (!partDoc) return undefined;
+
+    const rows = await db.select().from(controlPlanRow).where(eq(controlPlanRow.controlPlanId, id));
+    return { ...cpDoc, rows, part: partDoc };
+  }
+
+  async updateControlPlan(id: string, updates: Partial<InsertControlPlan>): Promise<ControlPlan | undefined> {
+    const [updated] = await db.update(controlPlan)
+      .set(updates)
+      .where(eq(controlPlan.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteControlPlan(id: string): Promise<boolean> {
+    const result = await db.delete(controlPlan).where(eq(controlPlan.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createControlPlanRows(rows: InsertControlPlanRow[]): Promise<ControlPlanRow[]> {
+    if (rows.length === 0) return [];
+    const newRows = await db.insert(controlPlanRow).values(rows).returning();
+    return newRows;
+  }
+
+  async deleteControlPlanRow(id: string): Promise<boolean> {
+    const result = await db.delete(controlPlanRow).where(eq(controlPlanRow.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getControlPlanRowById(id: string): Promise<ControlPlanRow | undefined> {
+    const [row] = await db.select().from(controlPlanRow).where(eq(controlPlanRow.id, id));
+    return row || undefined;
+  }
+
+  async getControlTemplateRowsByProcessIds(processDefIds: string[]): Promise<ControlTemplateRow[]> {
+    if (processDefIds.length === 0) return [];
+    return await db.select().from(controlTemplateRow)
+      .where(inArray(controlTemplateRow.processDefId, processDefIds))
+      .orderBy(controlTemplateRow.processDefId);
   }
 
   // Equipment Library
