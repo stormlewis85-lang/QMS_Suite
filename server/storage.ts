@@ -56,7 +56,7 @@ import {
   type ControlEffectiveness,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Parts
@@ -113,9 +113,18 @@ export interface IStorage {
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
   getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined>;
+  getPFMEAWithDetails(id: string): Promise<(PFMEA & { rows: PFMEARow[]; part: Part }) | undefined>;
   createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA>;
+  updatePFMEA(id: string, updates: Partial<InsertPFMEA>): Promise<PFMEA | undefined>;
+  deletePFMEA(id: string): Promise<boolean>;
   createPFMEARow(insertRow: InsertPFMEARow): Promise<PFMEARow>;
+  createPFMEARows(rows: InsertPFMEARow[]): Promise<PFMEARow[]>;
   updatePFMEARow(id: string, updates: Partial<InsertPFMEARow>): Promise<PFMEARow | undefined>;
+  deletePFMEARow(id: string): Promise<boolean>;
+  getPFMEARowById(id: string): Promise<PFMEARow | undefined>;
+  
+  // FMEA Template Rows by multiple processes (for PFMEA generation)
+  getFmeaTemplateRowsByProcessIds(processDefIds: string[]): Promise<FmeaTemplateRow[]>;
   
   // Control Plans
   getControlPlansByPartId(partId: string): Promise<ControlPlan[]>;
@@ -487,6 +496,53 @@ export class DatabaseStorage implements IStorage {
       .where(eq(pfmeaRow.id, id))
       .returning();
     return updatedRow || undefined;
+  }
+
+  async getPFMEAWithDetails(id: string): Promise<(PFMEA & { rows: PFMEARow[]; part: Part }) | undefined> {
+    const [pfmeaDoc] = await db.select().from(pfmea).where(eq(pfmea.id, id));
+    if (!pfmeaDoc) return undefined;
+
+    const [partDoc] = await db.select().from(part).where(eq(part.id, pfmeaDoc.partId));
+    if (!partDoc) return undefined;
+
+    const rows = await db.select().from(pfmeaRow).where(eq(pfmeaRow.pfmeaId, id));
+    return { ...pfmeaDoc, rows, part: partDoc };
+  }
+
+  async updatePFMEA(id: string, updates: Partial<InsertPFMEA>): Promise<PFMEA | undefined> {
+    const [updated] = await db.update(pfmea)
+      .set(updates)
+      .where(eq(pfmea.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePFMEA(id: string): Promise<boolean> {
+    const result = await db.delete(pfmea).where(eq(pfmea.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createPFMEARows(rows: InsertPFMEARow[]): Promise<PFMEARow[]> {
+    if (rows.length === 0) return [];
+    const newRows = await db.insert(pfmeaRow).values(rows).returning();
+    return newRows;
+  }
+
+  async deletePFMEARow(id: string): Promise<boolean> {
+    const result = await db.delete(pfmeaRow).where(eq(pfmeaRow.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getPFMEARowById(id: string): Promise<PFMEARow | undefined> {
+    const [row] = await db.select().from(pfmeaRow).where(eq(pfmeaRow.id, id));
+    return row || undefined;
+  }
+
+  async getFmeaTemplateRowsByProcessIds(processDefIds: string[]): Promise<FmeaTemplateRow[]> {
+    if (processDefIds.length === 0) return [];
+    return await db.select().from(fmeaTemplateRow)
+      .where(inArray(fmeaTemplateRow.processDefId, processDefIds))
+      .orderBy(fmeaTemplateRow.processDefId);
   }
 
   // Control Plans
