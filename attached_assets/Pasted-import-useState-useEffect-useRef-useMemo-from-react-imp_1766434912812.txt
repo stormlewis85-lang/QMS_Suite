@@ -1,0 +1,711 @@
+import { useState, useEffect, useRef, useMemo } from "react";
+import {
+  Share2,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Maximize2,
+  Minimize2,
+  ChevronDown,
+  Loader2,
+  AlertTriangle,
+  CheckCircle,
+  Info,
+  RefreshCw,
+  Settings2,
+  FileText,
+  Layers,
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import mermaid from "mermaid";
+
+// Types
+interface PFDProcess {
+  id: string;
+  name: string;
+  rev: string;
+  steps: PFDStep[];
+  sequence: number;
+}
+
+interface PFDStep {
+  id: string;
+  seq: number;
+  name: string;
+  area: string;
+  stepType: string;
+  equipment?: { name: string; model?: string }[];
+  branchTo?: string | null;
+  reworkTo?: string | null;
+}
+
+interface PFDValidation {
+  isValid: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+interface PFDData {
+  mermaid: string;
+  json: {
+    processes: PFDProcess[];
+    totalSteps: number;
+    areas: string[];
+    hasDecisions: boolean;
+    hasRework: boolean;
+  };
+  validation: PFDValidation;
+  part?: {
+    id: string;
+    partNumber: string;
+    partName: string;
+    customer: string;
+    program: string;
+    plant: string;
+  };
+}
+
+interface PFDViewerProps {
+  partId?: string;
+  processId?: string;
+  title?: string;
+  showControls?: boolean;
+  showStats?: boolean;
+  height?: string;
+  onStepClick?: (step: PFDStep) => void;
+}
+
+// Initialize Mermaid with default config
+mermaid.initialize({
+  startOnLoad: false,
+  theme: "default",
+  flowchart: {
+    useMaxWidth: true,
+    htmlLabels: true,
+    curve: "basis",
+  },
+  securityLevel: "loose",
+});
+
+// PFD Options type
+interface PFDOptions {
+  direction: 'TB' | 'LR' | 'BT' | 'RL';
+  showEquipment: boolean;
+  showAreas: boolean;
+  colorByArea: boolean;
+  theme: string;
+}
+
+const DEFAULT_OPTIONS: PFDOptions = {
+  direction: 'TB',
+  showEquipment: true,
+  showAreas: true,
+  colorByArea: true,
+  theme: 'default',
+};
+
+// Direction labels
+const DIRECTION_LABELS: Record<string, string> = {
+  'TB': 'Top to Bottom',
+  'LR': 'Left to Right',
+  'BT': 'Bottom to Top',
+  'RL': 'Right to Left',
+};
+
+// Theme labels
+const THEME_LABELS: Record<string, string> = {
+  'default': 'Default',
+  'neutral': 'Neutral',
+  'dark': 'Dark',
+  'forest': 'Forest',
+};
+
+export default function PFDViewer({
+  partId,
+  processId,
+  title,
+  showControls = true,
+  showStats = true,
+  height = "500px",
+  onStepClick,
+}: PFDViewerProps) {
+  const { toast } = useToast();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svgContent, setSvgContent] = useState<string>("");
+  const [isRendering, setIsRendering] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [options, setOptions] = useState<PFDOptions>(DEFAULT_OPTIONS);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Build query params from options
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('direction', options.direction);
+    params.set('showEquipment', String(options.showEquipment));
+    params.set('showAreas', String(options.showAreas));
+    params.set('colorByArea', String(options.colorByArea));
+    params.set('theme', options.theme);
+    return params.toString();
+  }, [options]);
+
+  // Fetch PFD data
+  const endpoint = partId 
+    ? `/api/parts/${partId}/pfd?${queryParams}`
+    : processId 
+      ? `/api/processes/${processId}/pfd?${queryParams}`
+      : null;
+
+  const { data: pfdData, isLoading, error, refetch } = useQuery<PFDData>({
+    queryKey: [endpoint],
+    queryFn: async () => {
+      if (!endpoint) throw new Error("No part or process ID provided");
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || error.error || "Failed to fetch PFD");
+      }
+      return response.json();
+    },
+    enabled: !!endpoint,
+    staleTime: 30000,
+  });
+
+  // Render Mermaid diagram when data changes
+  useEffect(() => {
+    if (!pfdData?.mermaid) return;
+
+    const renderDiagram = async () => {
+      setIsRendering(true);
+      setRenderError(null);
+
+      try {
+        // Generate unique ID for this render
+        const id = `pfd-${Date.now()}`;
+        
+        // Clear previous content
+        if (containerRef.current) {
+          containerRef.current.innerHTML = "";
+        }
+
+        // Render the diagram
+        const { svg } = await mermaid.render(id, pfdData.mermaid);
+        setSvgContent(svg);
+
+        // Insert into container
+        if (containerRef.current) {
+          containerRef.current.innerHTML = svg;
+
+          // Add click handlers to nodes if callback provided
+          if (onStepClick) {
+            const nodes = containerRef.current.querySelectorAll('.node');
+            nodes.forEach(node => {
+              node.style.cursor = 'pointer';
+              node.addEventListener('click', () => {
+                const nodeId = node.id;
+                // Extract step info from node ID (format: P0_S10 or S10)
+                const match = nodeId.match(/(?:P\d+_)?S(\d+)/);
+                if (match) {
+                  const seq = parseInt(match[1]);
+                  const step = pfdData.json.processes
+                    .flatMap(p => p.steps)
+                    .find(s => s.seq === seq);
+                  if (step) {
+                    onStepClick(step);
+                  }
+                }
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Mermaid render error:", err);
+        setRenderError(err instanceof Error ? err.message : "Failed to render diagram");
+      } finally {
+        setIsRendering(false);
+      }
+    };
+
+    renderDiagram();
+  }, [pfdData?.mermaid, onStepClick]);
+
+  // Handle zoom
+  const handleZoomIn = () => setZoom(z => Math.min(z + 0.25, 3));
+  const handleZoomOut = () => setZoom(z => Math.max(z - 0.25, 0.25));
+  const handleZoomReset = () => setZoom(1);
+
+  // Handle fullscreen
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // Handle download
+  const handleDownload = (format: 'svg' | 'png' | 'mermaid') => {
+    if (!pfdData) return;
+
+    if (format === 'mermaid') {
+      const blob = new Blob([pfdData.mermaid], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pfd-${partId || processId}.mmd`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Downloaded", description: "Mermaid source file downloaded" });
+    } else if (format === 'svg') {
+      const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pfd-${partId || processId}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Downloaded", description: "SVG file downloaded" });
+    } else if (format === 'png') {
+      // Convert SVG to PNG using canvas
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * 2; // Higher resolution
+        canvas.height = img.height * 2;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(2, 2);
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `pfd-${partId || processId}.png`;
+              a.click();
+              URL.revokeObjectURL(url);
+              toast({ title: "Downloaded", description: "PNG file downloaded" });
+            }
+          }, 'image/png');
+        }
+      };
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgContent)));
+    }
+  };
+
+  // Handle copy to clipboard
+  const handleCopyMermaid = async () => {
+    if (!pfdData?.mermaid) return;
+    try {
+      await navigator.clipboard.writeText(pfdData.mermaid);
+      toast({ title: "Copied", description: "Mermaid code copied to clipboard" });
+    } catch {
+      toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
+    }
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <span className="ml-3 text-muted-foreground">Generating PFD...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-8">
+          <div className="flex flex-col items-center justify-center text-center">
+            <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="font-semibold text-lg mb-2">Failed to Generate PFD</h3>
+            <p className="text-muted-foreground mb-4">
+              {error instanceof Error ? error.message : "An error occurred"}
+            </p>
+            <Button variant="outline" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // No data state
+  if (!pfdData) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          No PFD data available. Please ensure a part or process ID is provided.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const containerClasses = isFullscreen
+    ? "fixed inset-0 z-50 bg-background"
+    : "";
+
+  return (
+    <Card className={containerClasses}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              {title || (pfdData.part 
+                ? `PFD: ${pfdData.part.partNumber} - ${pfdData.part.partName}`
+                : "Process Flow Diagram"
+              )}
+            </CardTitle>
+            {pfdData.part && (
+              <CardDescription>
+                {pfdData.part.customer} • {pfdData.part.program} • {pfdData.part.plant}
+              </CardDescription>
+            )}
+          </div>
+
+          {showControls && (
+            <div className="flex items-center gap-2">
+              {/* Zoom Controls */}
+              <TooltipProvider>
+                <div className="flex items-center border rounded-md">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={handleZoomOut}>
+                        <ZoomOut className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Zoom Out</TooltipContent>
+                  </Tooltip>
+                  
+                  <span className="px-2 text-sm text-muted-foreground min-w-[60px] text-center">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={handleZoomIn}>
+                        <ZoomIn className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Zoom In</TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={handleZoomReset}>
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Reset Zoom</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
+
+              {/* Options Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Display Options</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  
+                  <DropdownMenuCheckboxItem
+                    checked={options.showEquipment}
+                    onCheckedChange={(checked) => setOptions(o => ({ ...o, showEquipment: checked }))}
+                  >
+                    Show Equipment
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={options.showAreas}
+                    onCheckedChange={(checked) => setOptions(o => ({ ...o, showAreas: checked }))}
+                  >
+                    Show Areas
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={options.colorByArea}
+                    onCheckedChange={(checked) => setOptions(o => ({ ...o, colorByArea: checked }))}
+                  >
+                    Color by Area
+                  </DropdownMenuCheckboxItem>
+                  
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Direction</DropdownMenuLabel>
+                  {(['TB', 'LR', 'BT', 'RL'] as const).map(dir => (
+                    <DropdownMenuCheckboxItem
+                      key={dir}
+                      checked={options.direction === dir}
+                      onCheckedChange={() => setOptions(o => ({ ...o, direction: dir }))}
+                    >
+                      {DIRECTION_LABELS[dir]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                  {Object.entries(THEME_LABELS).map(([key, label]) => (
+                    <DropdownMenuCheckboxItem
+                      key={key}
+                      checked={options.theme === key}
+                      onCheckedChange={() => setOptions(o => ({ ...o, theme: key }))}
+                    >
+                      {label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Download Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Export As</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleDownload('svg')}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    SVG Image
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownload('png')}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    PNG Image
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownload('mermaid')}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Mermaid Source
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleCopyMermaid}>
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Copy Mermaid Code
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Fullscreen Toggle */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" onClick={toggleFullscreen}>
+                      {isFullscreen ? (
+                        <Minimize2 className="h-4 w-4" />
+                      ) : (
+                        <Maximize2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Refresh */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" onClick={() => refetch()}>
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Refresh</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
+        </div>
+
+        {/* Stats Bar */}
+        {showStats && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Badge variant="secondary">
+              {pfdData.json.processes.length} Process{pfdData.json.processes.length !== 1 ? 'es' : ''}
+            </Badge>
+            <Badge variant="secondary">
+              {pfdData.json.totalSteps} Steps
+            </Badge>
+            <Badge variant="secondary">
+              {pfdData.json.areas.length} Areas
+            </Badge>
+            {pfdData.json.hasDecisions && (
+              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                Has Decisions
+              </Badge>
+            )}
+            {pfdData.json.hasRework && (
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                Has Rework Loops
+              </Badge>
+            )}
+            {pfdData.validation.isValid ? (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Valid
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                {pfdData.validation.errors.length} Error(s)
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Validation Warnings/Errors */}
+        {(pfdData.validation.warnings.length > 0 || pfdData.validation.errors.length > 0) && (
+          <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <Info className="h-4 w-4" />
+                {pfdData.validation.errors.length + pfdData.validation.warnings.length} Issue(s)
+                <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="space-y-2 text-sm">
+                {pfdData.validation.errors.map((error, i) => (
+                  <div key={`error-${i}`} className="flex items-start gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                ))}
+                {pfdData.validation.warnings.map((warning, i) => (
+                  <div key={`warning-${i}`} className="flex items-start gap-2 text-yellow-600">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{warning}</span>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </CardHeader>
+
+      <CardContent className="pt-0">
+        <Tabs defaultValue="diagram" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="diagram">Diagram</TabsTrigger>
+            <TabsTrigger value="processes">Process List</TabsTrigger>
+            <TabsTrigger value="source">Mermaid Source</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="diagram">
+            {/* Diagram Container */}
+            <div 
+              className="border rounded-lg bg-white overflow-auto"
+              style={{ height: isFullscreen ? 'calc(100vh - 200px)' : height }}
+            >
+              {isRendering ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : renderError ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                  <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">Render Error</h3>
+                  <p className="text-muted-foreground mb-4 max-w-md">{renderError}</p>
+                  <Button variant="outline" onClick={() => refetch()}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  ref={containerRef}
+                  className="p-4 flex items-center justify-center min-h-full"
+                  style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+                />
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="processes">
+            <ScrollArea className="border rounded-lg" style={{ height }}>
+              <div className="p-4 space-y-4">
+                {pfdData.json.processes.map((process, i) => (
+                  <div key={process.id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold">{i + 1}. {process.name}</h4>
+                        <p className="text-sm text-muted-foreground">Rev {process.rev}</p>
+                      </div>
+                      <Badge>{process.steps.length} steps</Badge>
+                    </div>
+                    <div className="space-y-2">
+                      {process.steps.map(step => (
+                        <div 
+                          key={step.id}
+                          className="flex items-center gap-3 p-2 rounded bg-muted/50 hover:bg-muted cursor-pointer"
+                          onClick={() => onStepClick?.(step)}
+                        >
+                          <span className="font-mono text-sm text-muted-foreground w-8">
+                            {step.seq}
+                          </span>
+                          <span className="flex-1">{step.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {step.area}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            {step.stepType}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="source">
+            <ScrollArea className="border rounded-lg bg-muted" style={{ height }}>
+              <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+                {pfdData.mermaid}
+              </pre>
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
