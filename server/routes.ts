@@ -9,6 +9,7 @@ import {
   insertPfmeaRowSchema,
   insertControlPlanSchema,
   insertControlPlanRowSchema,
+  insertPartProcessMapSchema,
   insertEquipmentLibrarySchema,
   insertEquipmentErrorProofingSchema,
   insertEquipmentControlMethodsSchema,
@@ -24,6 +25,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
+import { generateProcessPFD, generatePartPFD, validatePFD } from "./pfd-generator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Parts API
@@ -93,6 +95,189 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting part:", error);
       res.status(500).json({ error: "Failed to delete part" });
+    }
+  });
+
+  // ===========================================
+  // Part Process Mapping API (Section 2.4)
+  // ===========================================
+
+  // Get all process mappings for a part
+  app.get("/api/parts/:partId/process-maps", async (req, res) => {
+    try {
+      const maps = await storage.getPartProcessMapsByPartId(req.params.partId);
+      res.json(maps);
+    } catch (error) {
+      console.error("Error fetching part process maps:", error);
+      res.status(500).json({ error: "Failed to fetch part process maps" });
+    }
+  });
+
+  // Get part with all process mappings and process details
+  app.get("/api/parts/:partId/with-processes", async (req, res) => {
+    try {
+      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
+      if (!partWithMaps) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.json(partWithMaps);
+    } catch (error) {
+      console.error("Error fetching part with processes:", error);
+      res.status(500).json({ error: "Failed to fetch part with processes" });
+    }
+  });
+
+  // Create a process mapping for a part
+  app.post("/api/parts/:partId/process-maps", async (req, res) => {
+    try {
+      const validatedData = insertPartProcessMapSchema.parse({
+        ...req.body,
+        partId: req.params.partId,
+      });
+
+      const newMap = await storage.createPartProcessMap(validatedData);
+      res.status(201).json(newMap);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating part process map:", error);
+      res.status(500).json({ error: "Failed to create part process map" });
+    }
+  });
+
+  // Update a process mapping
+  app.patch("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const partialSchema = insertPartProcessMapSchema.partial();
+      const validatedData = partialSchema.parse(req.body);
+
+      const updated = await storage.updatePartProcessMap(req.params.id, validatedData);
+      if (!updated) {
+        return res.status(404).json({ error: "Part process map not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating part process map:", error);
+      res.status(500).json({ error: "Failed to update part process map" });
+    }
+  });
+
+  // Delete a process mapping
+  app.delete("/api/part-process-maps/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deletePartProcessMap(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Part process map not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting part process map:", error);
+      res.status(500).json({ error: "Failed to delete part process map" });
+    }
+  });
+
+  // Resequence process mappings for a part
+  app.post("/api/parts/:partId/process-maps/resequence", async (req, res) => {
+    try {
+      await storage.resequencePartProcessMaps(req.params.partId);
+      const maps = await storage.getPartProcessMapsByPartId(req.params.partId);
+      res.json(maps);
+    } catch (error) {
+      console.error("Error resequencing part process maps:", error);
+      res.status(500).json({ error: "Failed to resequence part process maps" });
+    }
+  });
+
+  // ===========================================
+  // PFD Generation API (Section 2.4)
+  // ===========================================
+
+  // Generate PFD for a single process
+  app.get("/api/processes/:processId/pfd", async (req, res) => {
+    try {
+      const process = await storage.getProcessWithSteps(req.params.processId);
+      if (!process) {
+        return res.status(404).json({ error: "Process not found" });
+      }
+
+      const options = {
+        direction: (req.query.direction as 'TB' | 'LR' | 'BT' | 'RL') || 'TB',
+        showEquipment: req.query.showEquipment !== 'false',
+        showAreas: req.query.showAreas !== 'false',
+        colorByArea: req.query.colorByArea !== 'false',
+        theme: (req.query.theme as string) || 'default',
+      };
+
+      const pfd = generateProcessPFD(process, options);
+      const validation = validatePFD(pfd);
+
+      res.json({
+        ...pfd,
+        validation,
+      });
+    } catch (error) {
+      console.error("Error generating process PFD:", error);
+      res.status(500).json({ error: "Failed to generate process PFD" });
+    }
+  });
+
+  // Generate PFD for a part (combines all mapped processes)
+  app.get("/api/parts/:partId/pfd", async (req, res) => {
+    try {
+      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
+      if (!partWithMaps) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+
+      if (partWithMaps.processMaps.length === 0) {
+        return res.status(400).json({ 
+          error: "No processes mapped to this part",
+          message: "Please add process mappings before generating a PFD"
+        });
+      }
+
+      const options = {
+        direction: (req.query.direction as 'TB' | 'LR' | 'BT' | 'RL') || 'TB',
+        showEquipment: req.query.showEquipment !== 'false',
+        showAreas: req.query.showAreas !== 'false',
+        colorByArea: req.query.colorByArea !== 'false',
+        theme: (req.query.theme as string) || 'default',
+      };
+
+      const processMaps = partWithMaps.processMaps.map(map => ({
+        process: map.process,
+        sequence: map.sequence,
+        assumptions: map.assumptions,
+      }));
+
+      const pfd = generatePartPFD(
+        `${partWithMaps.partNumber} - ${partWithMaps.partName}`,
+        processMaps,
+        options
+      );
+      const validation = validatePFD(pfd);
+
+      res.json({
+        part: {
+          id: partWithMaps.id,
+          partNumber: partWithMaps.partNumber,
+          partName: partWithMaps.partName,
+          customer: partWithMaps.customer,
+          program: partWithMaps.program,
+          plant: partWithMaps.plant,
+        },
+        ...pfd,
+        validation,
+      });
+    } catch (error) {
+      console.error("Error generating part PFD:", error);
+      res.status(500).json({ error: "Failed to generate part PFD" });
     }
   });
 
