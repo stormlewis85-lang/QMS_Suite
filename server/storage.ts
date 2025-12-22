@@ -9,6 +9,7 @@ import {
   pfmeaRow,
   controlPlan,
   controlPlanRow,
+  partProcessMap,
   equipmentLibrary,
   equipmentErrorProofing,
   equipmentControlMethods,
@@ -34,6 +35,8 @@ import {
   type InsertControlPlan,
   type ControlPlanRow,
   type InsertControlPlanRow,
+  type PartProcessMap,
+  type InsertPartProcessMap,
   type EquipmentLibrary,
   type InsertEquipmentLibrary,
   type EquipmentErrorProofing,
@@ -60,6 +63,17 @@ export interface IStorage {
   getAllParts(): Promise<Part[]>;
   getPartById(id: string): Promise<Part | undefined>;
   createPart(insertPart: InsertPart): Promise<Part>;
+  updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined>;
+  deletePart(id: string): Promise<boolean>;
+  
+  // Part Process Mapping
+  getPartProcessMapsByPartId(partId: string): Promise<PartProcessMap[]>;
+  getPartProcessMapById(id: string): Promise<PartProcessMap | undefined>;
+  createPartProcessMap(insertMap: InsertPartProcessMap): Promise<PartProcessMap>;
+  updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined>;
+  deletePartProcessMap(id: string): Promise<boolean>;
+  resequencePartProcessMaps(partId: string): Promise<void>;
+  getPartWithProcessMaps(partId: string): Promise<(Part & { processMaps: (PartProcessMap & { process: ProcessDef & { steps: ProcessStep[] } })[] }) | undefined>;
   
   // Processes
   getAllProcesses(): Promise<ProcessDef[]>;
@@ -164,6 +178,79 @@ export class DatabaseStorage implements IStorage {
   async createPart(insertPart: InsertPart): Promise<Part> {
     const [newPart] = await db.insert(part).values(insertPart).returning();
     return newPart;
+  }
+
+  async updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined> {
+    const [updated] = await db.update(part)
+      .set(updates)
+      .where(eq(part.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePart(id: string): Promise<boolean> {
+    const result = await db.delete(part).where(eq(part.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Part Process Mapping
+  async getPartProcessMapsByPartId(partId: string): Promise<PartProcessMap[]> {
+    return await db.select().from(partProcessMap)
+      .where(eq(partProcessMap.partId, partId))
+      .orderBy(partProcessMap.sequence);
+  }
+
+  async getPartProcessMapById(id: string): Promise<PartProcessMap | undefined> {
+    const [result] = await db.select().from(partProcessMap).where(eq(partProcessMap.id, id));
+    return result || undefined;
+  }
+
+  async createPartProcessMap(insertMap: InsertPartProcessMap): Promise<PartProcessMap> {
+    const [newMap] = await db.insert(partProcessMap).values(insertMap).returning();
+    return newMap;
+  }
+
+  async updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined> {
+    const [updated] = await db.update(partProcessMap)
+      .set(updates)
+      .where(eq(partProcessMap.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePartProcessMap(id: string): Promise<boolean> {
+    const result = await db.delete(partProcessMap).where(eq(partProcessMap.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async resequencePartProcessMaps(partId: string): Promise<void> {
+    const maps = await this.getPartProcessMapsByPartId(partId);
+    for (let i = 0; i < maps.length; i++) {
+      await db.update(partProcessMap)
+        .set({ sequence: (i + 1) * 10 })
+        .where(eq(partProcessMap.id, maps[i].id));
+    }
+  }
+
+  async getPartWithProcessMaps(partId: string): Promise<(Part & { processMaps: (PartProcessMap & { process: ProcessDef & { steps: ProcessStep[] } })[] }) | undefined> {
+    const partData = await this.getPartById(partId);
+    if (!partData) return undefined;
+
+    const maps = await this.getPartProcessMapsByPartId(partId);
+    const enrichedMaps = await Promise.all(
+      maps.map(async (map) => {
+        const process = await this.getProcessWithSteps(map.processDefId);
+        return {
+          ...map,
+          process: process!,
+        };
+      })
+    );
+
+    return {
+      ...partData,
+      processMaps: enrichedMaps.filter(m => m.process),
+    };
   }
 
   async getAllProcesses(): Promise<ProcessDef[]> {
