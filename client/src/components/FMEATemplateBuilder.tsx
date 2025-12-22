@@ -8,6 +8,7 @@ import {
   Loader2,
   AlertTriangle,
   Shield,
+  CheckCircle,
   ChevronDown,
   ChevronUp,
   Filter,
@@ -69,7 +70,9 @@ import type {
 } from "@shared/schema";
 import FMEATemplateRowDialog from "./FMEATemplateRowDialog";
 
+// AP Badge component with color coding
 function APBadge({ ap }: { ap: string }) {
+  const variant = ap === "H" ? "destructive" : ap === "M" ? "warning" : "success";
   const bgClass =
     ap === "H"
       ? "bg-red-100 text-red-800 border-red-200"
@@ -84,6 +87,7 @@ function APBadge({ ap }: { ap: string }) {
   );
 }
 
+// Rating badge with color coding
 function RatingBadge({ value, type }: { value: number; type: "S" | "O" | "D" }) {
   let bgClass = "bg-gray-100 text-gray-800";
   
@@ -106,13 +110,14 @@ function RatingBadge({ value, type }: { value: number; type: "S" | "O" | "D" }) 
   );
 }
 
+// CSR Symbol badge
 function CSRBadge({ symbol }: { symbol?: string | null }) {
   if (!symbol) return null;
   
   const colorMap: Record<string, string> = {
-    "Ⓢ": "bg-red-500 text-white",
-    "◆": "bg-blue-500 text-white",
-    "ⓒ": "bg-purple-500 text-white",
+    "Ⓢ": "bg-red-500 text-white", // Safety
+    "◆": "bg-blue-500 text-white", // Critical
+    "ⓒ": "bg-purple-500 text-white", // Compliance
   };
 
   return (
@@ -154,6 +159,7 @@ export default function FMEATemplateBuilder({
   const [deletingRow, setDeletingRow] = useState<FmeaTemplateRow | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  // Fetch FMEA template rows for this process
   const {
     data: templateRows = [],
     isLoading,
@@ -166,6 +172,7 @@ export default function FMEATemplateBuilder({
     },
   });
 
+  // Fetch failure modes for suggestions
   const { data: failureModes = [] } = useQuery<FailureModesLibrary[]>({
     queryKey: ["/api/failure-modes"],
     queryFn: async () => {
@@ -174,6 +181,7 @@ export default function FMEATemplateBuilder({
     },
   });
 
+  // Fetch controls library for suggestions
   const { data: controls = [] } = useQuery<ControlsLibrary[]>({
     queryKey: ["/api/controls-library"],
     queryFn: async () => {
@@ -182,6 +190,7 @@ export default function FMEATemplateBuilder({
     },
   });
 
+  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/fmea-template-rows/${id}`);
@@ -203,6 +212,7 @@ export default function FMEATemplateBuilder({
     },
   });
 
+  // Duplicate mutation
   const duplicateMutation = useMutation({
     mutationFn: async (row: FmeaTemplateRow) => {
       const newRow: InsertFmeaTemplateRow = {
@@ -242,14 +252,18 @@ export default function FMEATemplateBuilder({
     },
   });
 
+  // Filter and search rows
   const filteredRows = useMemo(() => {
     return templateRows.filter((row) => {
+      // Step filter
       if (selectedStepFilter !== "all" && row.stepId !== selectedStepFilter) {
         return false;
       }
+      // AP filter
       if (selectedApFilter !== "all" && row.ap !== selectedApFilter) {
         return false;
       }
+      // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
         return (
@@ -264,6 +278,7 @@ export default function FMEATemplateBuilder({
     });
   }, [templateRows, selectedStepFilter, selectedApFilter, searchTerm]);
 
+  // Group rows by step
   const rowsByStep = useMemo(() => {
     const grouped: Record<string, FmeaTemplateRow[]> = {};
     for (const row of filteredRows) {
@@ -275,11 +290,13 @@ export default function FMEATemplateBuilder({
     return grouped;
   }, [filteredRows]);
 
+  // Get step name by ID
   const getStepName = (stepId: string) => {
     const step = steps.find((s) => s.id === stepId);
     return step ? `${step.seq}: ${step.name}` : "Unknown Step";
   };
 
+  // Toggle row expansion
   const toggleRowExpansion = (rowId: string) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
@@ -292,6 +309,7 @@ export default function FMEATemplateBuilder({
     });
   };
 
+  // Statistics
   const stats = useMemo(() => {
     const highAP = templateRows.filter((r) => r.ap === "H").length;
     const mediumAP = templateRows.filter((r) => r.ap === "M").length;
@@ -302,7 +320,7 @@ export default function FMEATemplateBuilder({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64" data-testid="loading-fmea-template">
+      <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -310,7 +328,7 @@ export default function FMEATemplateBuilder({
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-64 text-red-500" data-testid="error-fmea-template">
+      <div className="flex items-center justify-center h-64 text-red-500">
         <AlertTriangle className="h-6 w-6 mr-2" />
         <span>Error loading FMEA template rows</span>
       </div>
@@ -319,41 +337,44 @@ export default function FMEATemplateBuilder({
 
   return (
     <div className="space-y-6">
+      {/* Statistics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card data-testid="card-stat-total">
+        <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Rows</CardDescription>
-            <CardTitle className="text-2xl" data-testid="text-stat-total">{stats.total}</CardTitle>
+            <CardTitle className="text-2xl">{stats.total}</CardTitle>
           </CardHeader>
         </Card>
-        <Card className="border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800" data-testid="card-stat-high">
+        <Card className="border-red-200 bg-red-50">
           <CardHeader className="pb-2">
-            <CardDescription className="text-red-700 dark:text-red-300">High AP</CardDescription>
-            <CardTitle className="text-2xl text-red-700 dark:text-red-300" data-testid="text-stat-high">{stats.highAP}</CardTitle>
+            <CardDescription className="text-red-700">High AP</CardDescription>
+            <CardTitle className="text-2xl text-red-700">{stats.highAP}</CardTitle>
           </CardHeader>
         </Card>
-        <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-950 dark:border-yellow-800" data-testid="card-stat-medium">
+        <Card className="border-yellow-200 bg-yellow-50">
           <CardHeader className="pb-2">
-            <CardDescription className="text-yellow-700 dark:text-yellow-300">Medium AP</CardDescription>
-            <CardTitle className="text-2xl text-yellow-700 dark:text-yellow-300" data-testid="text-stat-medium">{stats.mediumAP}</CardTitle>
+            <CardDescription className="text-yellow-700">Medium AP</CardDescription>
+            <CardTitle className="text-2xl text-yellow-700">{stats.mediumAP}</CardTitle>
           </CardHeader>
         </Card>
-        <Card className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800" data-testid="card-stat-low">
+        <Card className="border-green-200 bg-green-50">
           <CardHeader className="pb-2">
-            <CardDescription className="text-green-700 dark:text-green-300">Low AP</CardDescription>
-            <CardTitle className="text-2xl text-green-700 dark:text-green-300" data-testid="text-stat-low">{stats.lowAP}</CardTitle>
+            <CardDescription className="text-green-700">Low AP</CardDescription>
+            <CardTitle className="text-2xl text-green-700">{stats.lowAP}</CardTitle>
           </CardHeader>
         </Card>
-        <Card className="border-purple-200 bg-purple-50 dark:bg-purple-950 dark:border-purple-800" data-testid="card-stat-special">
+        <Card className="border-purple-200 bg-purple-50">
           <CardHeader className="pb-2">
-            <CardDescription className="text-purple-700 dark:text-purple-300">Special Chars</CardDescription>
-            <CardTitle className="text-2xl text-purple-700 dark:text-purple-300" data-testid="text-stat-special">{stats.specialChars}</CardTitle>
+            <CardDescription className="text-purple-700">Special Chars</CardDescription>
+            <CardTitle className="text-2xl text-purple-700">{stats.specialChars}</CardTitle>
           </CardHeader>
         </Card>
       </div>
 
+      {/* Toolbar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex flex-col md:flex-row gap-3 flex-1">
+          {/* Search */}
           <div className="relative w-full md:w-80">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -361,11 +382,11 @@ export default function FMEATemplateBuilder({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
-              data-testid="input-search-fmea"
             />
           </div>
+          {/* Step Filter */}
           <Select value={selectedStepFilter} onValueChange={setSelectedStepFilter}>
-            <SelectTrigger className="w-full md:w-48" data-testid="select-step-filter">
+            <SelectTrigger className="w-full md:w-48">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Filter by step" />
             </SelectTrigger>
@@ -378,8 +399,9 @@ export default function FMEATemplateBuilder({
               ))}
             </SelectContent>
           </Select>
+          {/* AP Filter */}
           <Select value={selectedApFilter} onValueChange={setSelectedApFilter}>
-            <SelectTrigger className="w-full md:w-36" data-testid="select-ap-filter">
+            <SelectTrigger className="w-full md:w-36">
               <SelectValue placeholder="Filter by AP" />
             </SelectTrigger>
             <SelectContent>
@@ -390,35 +412,35 @@ export default function FMEATemplateBuilder({
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setIsAddDialogOpen(true)} className="w-full md:w-auto" data-testid="button-add-fmea-row">
+        {/* Add Button */}
+        <Button onClick={() => setIsAddDialogOpen(true)} className="w-full md:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Add FMEA Row
         </Button>
       </div>
 
+      {/* FMEA Grid */}
       {templateRows.length === 0 ? (
-        <Card data-testid="card-empty-state">
+        <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">No FMEA Template Rows</h3>
             <p className="text-muted-foreground text-center mb-4">
               Start building your Process FMEA template by adding failure mode analysis rows.
             </p>
-            <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-row">
+            <Button onClick={() => setIsAddDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add First Row
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <Card data-testid="card-fmea-grid">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div>
-              <CardTitle>FMEA Template Grid</CardTitle>
-              <CardDescription>
-                {filteredRows.length} of {templateRows.length} rows shown
-              </CardDescription>
-            </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>FMEA Template Grid</CardTitle>
+            <CardDescription>
+              {filteredRows.length} of {templateRows.length} rows shown
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="w-full whitespace-nowrap">
@@ -443,149 +465,190 @@ export default function FMEATemplateBuilder({
                 </TableHeader>
                 <TableBody>
                   {filteredRows.map((row) => (
-                    <TableRow 
-                      key={row.id} 
-                      className={row.specialFlag ? "bg-purple-50 dark:bg-purple-950" : ""}
-                      data-testid={`row-fmea-${row.id}`}
-                    >
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleRowExpansion(row.id)}
-                          data-testid={`button-expand-${row.id}`}
-                        >
-                          {expandedRows.has(row.id) ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
+                    <>
+                      <TableRow key={row.id} className={row.specialFlag ? "bg-purple-50" : ""}>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleRowExpansion(row.id)}
+                          >
+                            {expandedRows.has(row.id) ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="font-medium">{getStepName(row.stepId)}</TableCell>
+                        <TableCell className="max-w-[150px] truncate" title={row.function}>
+                          {row.function}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate font-medium" title={row.failureMode}>
+                          {row.failureMode}
+                        </TableCell>
+                        <TableCell className="max-w-[150px] truncate" title={row.effect}>
+                          {row.effect}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <RatingBadge value={row.severity} type="S" />
+                        </TableCell>
+                        <TableCell className="max-w-[150px] truncate" title={row.cause}>
+                          {row.cause}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <RatingBadge value={row.occurrence} type="O" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {row.preventionControls?.slice(0, 2).map((ctrl, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs bg-blue-50 truncate max-w-[80px]">
+                                {ctrl}
+                              </Badge>
+                            ))}
+                            {(row.preventionControls?.length || 0) > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{(row.preventionControls?.length || 0) - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {row.detectionControls?.slice(0, 2).map((ctrl, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs bg-green-50 truncate max-w-[80px]">
+                                {ctrl}
+                              </Badge>
+                            ))}
+                            {(row.detectionControls?.length || 0) > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{(row.detectionControls?.length || 0) - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <RatingBadge value={row.detection} type="D" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <APBadge ap={row.ap} />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <CSRBadge symbol={row.csrSymbol} />
+                          {row.specialFlag && !row.csrSymbol && (
+                            <Shield className="h-4 w-4 text-purple-500" />
                           )}
-                        </Button>
-                      </TableCell>
-                      <TableCell className="font-medium">{getStepName(row.stepId)}</TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={row.function}>
-                        {row.function}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate font-medium" title={row.failureMode}>
-                        {row.failureMode}
-                      </TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={row.effect}>
-                        {row.effect}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <RatingBadge value={row.severity} type="S" />
-                      </TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={row.cause}>
-                        {row.cause}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <RatingBadge value={row.occurrence} type="O" />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {row.preventionControls?.slice(0, 2).map((ctrl, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950 truncate max-w-[80px]">
-                              {ctrl}
-                            </Badge>
-                          ))}
-                          {(row.preventionControls?.length || 0) > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{(row.preventionControls?.length || 0) - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {row.detectionControls?.slice(0, 2).map((ctrl, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs bg-green-50 dark:bg-green-950 truncate max-w-[80px]">
-                              {ctrl}
-                            </Badge>
-                          ))}
-                          {(row.detectionControls?.length || 0) > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{(row.detectionControls?.length || 0) - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <RatingBadge value={row.detection} type="D" />
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <APBadge ap={row.ap} />
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <CSRBadge symbol={row.csrSymbol} />
-                        {row.specialFlag && !row.csrSymbol && (
-                          <Shield className="h-4 w-4 text-purple-500" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setViewingRow(row)}
-                                  data-testid={`button-view-${row.id}`}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>View Details</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setEditingRow(row)}
-                                  data-testid={`button-edit-${row.id}`}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Edit</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => duplicateMutation.mutate(row)}
-                                  data-testid={`button-duplicate-${row.id}`}
-                                >
-                                  <Copy className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Duplicate</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setDeletingRow(row)}
-                                  data-testid={`button-delete-${row.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Delete</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setViewingRow(row)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>View Details</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setEditingRow(row)}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => duplicateMutation.mutate(row)}
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Duplicate</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-red-500 hover:text-red-700"
+                                    onClick={() => setDeletingRow(row)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {/* Expanded row details */}
+                      {expandedRows.has(row.id) && (
+                        <TableRow className="bg-slate-50">
+                          <TableCell colSpan={14}>
+                            <div className="p-4 space-y-3">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="text-sm font-semibold text-muted-foreground">Requirement</h4>
+                                  <p className="text-sm">{row.requirement}</p>
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-semibold text-muted-foreground">Notes</h4>
+                                  <p className="text-sm">{row.notes || "No notes"}</p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="text-sm font-semibold text-muted-foreground">Prevention Controls</h4>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {row.preventionControls?.map((ctrl, idx) => (
+                                      <Badge key={idx} variant="outline" className="bg-blue-50">
+                                        {ctrl}
+                                      </Badge>
+                                    ))}
+                                    {(!row.preventionControls || row.preventionControls.length === 0) && (
+                                      <span className="text-sm text-muted-foreground">None defined</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-semibold text-muted-foreground">Detection Controls</h4>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {row.detectionControls?.map((ctrl, idx) => (
+                                      <Badge key={idx} variant="outline" className="bg-green-50">
+                                        {ctrl}
+                                      </Badge>
+                                    ))}
+                                    {(!row.detectionControls || row.detectionControls.length === 0) && (
+                                      <span className="text-sm text-muted-foreground">None defined</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </>
                   ))}
                 </TableBody>
               </Table>
@@ -595,127 +658,151 @@ export default function FMEATemplateBuilder({
         </Card>
       )}
 
+      {/* Add/Edit Dialog */}
       <FMEATemplateRowDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
+        open={isAddDialogOpen || !!editingRow}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsAddDialogOpen(false);
+            setEditingRow(null);
+          }
+        }}
         processId={processId}
         steps={steps}
+        existingRow={editingRow}
         failureModes={failureModes}
         controls={controls}
       />
 
-      {editingRow && (
-        <FMEATemplateRowDialog
-          open={!!editingRow}
-          onOpenChange={(open: boolean) => !open && setEditingRow(null)}
-          processId={processId}
-          steps={steps}
-          failureModes={failureModes}
-          controls={controls}
-          existingRow={editingRow}
-        />
-      )}
-
+      {/* View Details Dialog */}
       <Dialog open={!!viewingRow} onOpenChange={(open) => !open && setViewingRow(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>FMEA Row Details</DialogTitle>
+            <DialogTitle>FMEA Template Row Details</DialogTitle>
             <DialogDescription>
-              Viewing failure mode analysis for {viewingRow?.failureMode}
+              Full details for this failure mode analysis
             </DialogDescription>
           </DialogHeader>
           {viewingRow && (
-            <div className="grid gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Process Step</label>
-                  <p className="text-sm">{getStepName(viewingRow.stepId)}</p>
+            <div className="space-y-6">
+              {/* Header with AP and ratings */}
+              <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">{viewingRow.failureMode}</h3>
+                  <p className="text-sm text-muted-foreground">Step: {getStepName(viewingRow.stepId)}</p>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Function</label>
-                  <p className="text-sm">{viewingRow.function}</p>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Requirement</label>
-                <p className="text-sm">{viewingRow.requirement}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Failure Mode</label>
-                  <p className="text-sm font-medium">{viewingRow.failureMode}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Effect</label>
-                  <p className="text-sm">{viewingRow.effect}</p>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Cause</label>
-                <p className="text-sm">{viewingRow.cause}</p>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                <div className="text-center">
-                  <label className="text-sm font-medium text-muted-foreground">Severity</label>
-                  <div className="mt-1"><RatingBadge value={viewingRow.severity} type="S" /></div>
-                </div>
-                <div className="text-center">
-                  <label className="text-sm font-medium text-muted-foreground">Occurrence</label>
-                  <div className="mt-1"><RatingBadge value={viewingRow.occurrence} type="O" /></div>
-                </div>
-                <div className="text-center">
-                  <label className="text-sm font-medium text-muted-foreground">Detection</label>
-                  <div className="mt-1"><RatingBadge value={viewingRow.detection} type="D" /></div>
-                </div>
-                <div className="text-center">
-                  <label className="text-sm font-medium text-muted-foreground">AP</label>
-                  <div className="mt-1"><APBadge ap={viewingRow.ap} /></div>
+                <div className="flex items-center gap-3">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">S</p>
+                    <RatingBadge value={viewingRow.severity} type="S" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">O</p>
+                    <RatingBadge value={viewingRow.occurrence} type="O" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">D</p>
+                    <RatingBadge value={viewingRow.detection} type="D" />
+                  </div>
+                  <div className="text-center border-l pl-3">
+                    <p className="text-xs text-muted-foreground">AP</p>
+                    <APBadge ap={viewingRow.ap} />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              {/* Details grid */}
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Prevention Controls</label>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">Function</h4>
+                  <p>{viewingRow.function}</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">Requirement</h4>
+                  <p>{viewingRow.requirement}</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">Effect</h4>
+                  <p>{viewingRow.effect}</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">Cause</h4>
+                  <p>{viewingRow.cause}</p>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-2">Prevention Controls</h4>
+                  <div className="flex flex-wrap gap-2">
                     {viewingRow.preventionControls?.map((ctrl, idx) => (
-                      <Badge key={idx} variant="outline" className="bg-blue-50 dark:bg-blue-950">
+                      <Badge key={idx} variant="secondary" className="bg-blue-100">
                         {ctrl}
                       </Badge>
                     ))}
+                    {(!viewingRow.preventionControls || viewingRow.preventionControls.length === 0) && (
+                      <span className="text-muted-foreground text-sm">None defined</span>
+                    )}
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Detection Controls</label>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-2">Detection Controls</h4>
+                  <div className="flex flex-wrap gap-2">
                     {viewingRow.detectionControls?.map((ctrl, idx) => (
-                      <Badge key={idx} variant="outline" className="bg-green-50 dark:bg-green-950">
+                      <Badge key={idx} variant="secondary" className="bg-green-100">
                         {ctrl}
                       </Badge>
                     ))}
+                    {(!viewingRow.detectionControls || viewingRow.detectionControls.length === 0) && (
+                      <span className="text-muted-foreground text-sm">None defined</span>
+                    )}
                   </div>
                 </div>
               </div>
-              {viewingRow.notes && (
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                  <p className="text-sm">{viewingRow.notes}</p>
+
+              {/* Special characteristics */}
+              {(viewingRow.specialFlag || viewingRow.csrSymbol) && (
+                <div className="p-4 bg-purple-50 rounded-lg">
+                  <h4 className="text-sm font-semibold text-purple-700 mb-2 flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Special Characteristics
+                  </h4>
+                  <div className="flex items-center gap-4">
+                    {viewingRow.csrSymbol && (
+                      <div className="flex items-center gap-2">
+                        <CSRBadge symbol={viewingRow.csrSymbol} />
+                        <span className="text-sm">
+                          {viewingRow.csrSymbol === "Ⓢ" && "Safety Characteristic"}
+                          {viewingRow.csrSymbol === "◆" && "Critical Characteristic"}
+                          {viewingRow.csrSymbol === "ⓒ" && "Compliance/Regulatory"}
+                        </span>
+                      </div>
+                    )}
+                    {viewingRow.specialFlag && !viewingRow.csrSymbol && (
+                      <span className="text-sm text-purple-700">Marked as special characteristic</span>
+                    )}
+                  </div>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                {viewingRow.specialFlag && (
-                  <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Special Characteristic
-                  </Badge>
-                )}
-                {viewingRow.csrSymbol && <CSRBadge symbol={viewingRow.csrSymbol} />}
-              </div>
+
+              {/* Notes */}
+              {viewingRow.notes && (
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">Notes</h4>
+                  <p className="text-sm bg-slate-50 p-3 rounded">{viewingRow.notes}</p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewingRow(null)} data-testid="button-close-view">
+            <Button variant="outline" onClick={() => setViewingRow(null)}>
               Close
             </Button>
-            <Button onClick={() => { setViewingRow(null); setEditingRow(viewingRow); }} data-testid="button-edit-from-view">
+            <Button onClick={() => {
+              setEditingRow(viewingRow);
+              setViewingRow(null);
+            }}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit
             </Button>
@@ -723,22 +810,26 @@ export default function FMEATemplateBuilder({
         </DialogContent>
       </Dialog>
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deletingRow} onOpenChange={(open) => !open && setDeletingRow(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete FMEA Row</AlertDialogTitle>
+            <AlertDialogTitle>Delete FMEA Template Row?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this FMEA row for "{deletingRow?.failureMode}"? 
-              This action cannot be undone.
+              This will permanently delete the failure mode "{deletingRow?.failureMode}". This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600"
               onClick={() => deletingRow && deleteMutation.mutate(deletingRow.id)}
-              className="bg-red-600 hover:bg-red-700"
-              data-testid="button-confirm-delete"
             >
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
