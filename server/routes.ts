@@ -26,6 +26,14 @@ import {
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
 import { generateProcessPFD, generatePartPFD, validatePFD } from "./pfd-generator";
+import { 
+  prepareGeneration, 
+  validatePartForPFMEA, 
+  previewPFMEAGeneration,
+  calculatePreviewStats,
+  recalculateAP,
+  type ProcessWithTemplates 
+} from "./pfmea-generator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Parts API
@@ -775,6 +783,252 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating PFMEA row:", error);
       res.status(500).json({ error: "Failed to update PFMEA row" });
+    }
+  });
+
+  // ===========================================
+  // PFMEA Generation API (Section 2.5)
+  // ===========================================
+
+  // Preview PFMEA generation - shows what rows would be generated
+  app.get("/api/parts/:partId/pfmea/preview", async (req, res) => {
+    try {
+      // Get part with process maps
+      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
+      if (!partWithMaps) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+
+      // Validate part for PFMEA
+      const partValidation = validatePartForPFMEA(
+        partWithMaps,
+        partWithMaps.processMaps
+      );
+
+      if (!partValidation.canGenerate) {
+        return res.status(400).json({
+          error: "Cannot generate PFMEA",
+          validation: partValidation,
+        });
+      }
+
+      // Get template rows for all mapped processes
+      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
+      const templateRows = await storage.getFmeaTemplateRowsByProcessIds(processIds);
+
+      // Build process with templates structure
+      const processesWithTemplates: ProcessWithTemplates[] = partWithMaps.processMaps.map(map => ({
+        process: map.process,
+        sequence: map.sequence,
+        templateRows: templateRows.filter(r => r.processDefId === map.processDefId),
+      }));
+
+      // Generate preview
+      const preview = previewPFMEAGeneration(processesWithTemplates);
+      const stats = calculatePreviewStats(preview);
+
+      res.json({
+        part: {
+          id: partWithMaps.id,
+          partNumber: partWithMaps.partNumber,
+          partName: partWithMaps.partName,
+          customer: partWithMaps.customer,
+          program: partWithMaps.program,
+          plant: partWithMaps.plant,
+        },
+        preview,
+        stats,
+        validation: partValidation,
+      });
+    } catch (error) {
+      console.error("Error previewing PFMEA generation:", error);
+      res.status(500).json({ error: "Failed to preview PFMEA generation" });
+    }
+  });
+
+  // Generate PFMEA from templates
+  const pfmeaGenerateSchema = z.object({
+    rev: z.string().optional(),
+    basis: z.string().default("AIAG-VDA 2019"),
+    docNo: z.string().optional(),
+    processSelections: z.array(z.object({
+      processDefId: z.string().uuid(),
+      includeAllRows: z.boolean().optional().default(true),
+      selectedRowIds: z.array(z.string().uuid()).optional(),
+    })).optional(),
+  });
+
+  app.post("/api/parts/:partId/pfmea/generate", async (req, res) => {
+    try {
+      const input = pfmeaGenerateSchema.parse(req.body);
+      
+      // Get part with process maps
+      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
+      if (!partWithMaps) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+
+      // Validate part for PFMEA
+      const partValidation = validatePartForPFMEA(
+        partWithMaps,
+        partWithMaps.processMaps
+      );
+
+      if (!partValidation.canGenerate) {
+        return res.status(400).json({
+          error: "Cannot generate PFMEA",
+          validation: partValidation,
+        });
+      }
+
+      // Get existing PFMEAs for revision tracking
+      const existingPFMEAs = await storage.getPFMEAsByPartId(req.params.partId);
+      const existingRevisions = existingPFMEAs.map(p => p.rev);
+
+      // Get template rows for all mapped processes
+      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
+      const templateRows = await storage.getFmeaTemplateRowsByProcessIds(processIds);
+
+      // Build process with templates structure
+      const processesWithTemplates: ProcessWithTemplates[] = partWithMaps.processMaps.map(map => ({
+        process: map.process,
+        sequence: map.sequence,
+        templateRows: templateRows.filter(r => r.processDefId === map.processDefId),
+      }));
+
+      // Prepare generation
+      const { header, rows, stats, validation } = prepareGeneration(
+        partWithMaps,
+        processesWithTemplates,
+        { 
+          partId: req.params.partId,
+          rev: input.rev || undefined,
+          basis: input.basis,
+          docNo: input.docNo,
+          processSelections: input.processSelections,
+        },
+        existingRevisions
+      );
+
+      if (!validation.canGenerate) {
+        return res.status(400).json({
+          error: "Cannot generate PFMEA",
+          validation,
+        });
+      }
+
+      // Create PFMEA header
+      const newPFMEA = await storage.createPFMEA(header);
+
+      // Create all rows with pfmeaId
+      const rowsWithId = rows.map(row => ({
+        ...row,
+        pfmeaId: newPFMEA.id,
+      }));
+      const createdRows = await storage.createPFMEARows(rowsWithId);
+
+      res.status(201).json({
+        success: true,
+        pfmea: newPFMEA,
+        rows: createdRows,
+        stats,
+        validation,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error generating PFMEA:", error);
+      res.status(500).json({ error: "Failed to generate PFMEA" });
+    }
+  });
+
+  // Recalculate AP for all rows in a PFMEA
+  app.post("/api/pfmeas/:id/recalculate-ap", async (req, res) => {
+    try {
+      const pfmeaDoc = await storage.getPFMEAById(req.params.id);
+      if (!pfmeaDoc) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+
+      const apChanges = recalculateAP(pfmeaDoc.rows);
+      const changedRows = apChanges.filter(c => c.changed);
+
+      // Update rows that changed
+      for (const change of changedRows) {
+        await storage.updatePFMEARow(change.rowId, { ap: change.newAP });
+      }
+
+      res.json({
+        totalRows: pfmeaDoc.rows.length,
+        changedRows: changedRows.length,
+        changes: apChanges,
+      });
+    } catch (error) {
+      console.error("Error recalculating AP:", error);
+      res.status(500).json({ error: "Failed to recalculate AP" });
+    }
+  });
+
+  // Get PFMEA with full details including part info
+  app.get("/api/pfmeas/:id/details", async (req, res) => {
+    try {
+      const pfmeaDoc = await storage.getPFMEAWithDetails(req.params.id);
+      if (!pfmeaDoc) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+      res.json(pfmeaDoc);
+    } catch (error) {
+      console.error("Error fetching PFMEA details:", error);
+      res.status(500).json({ error: "Failed to fetch PFMEA details" });
+    }
+  });
+
+  // Update PFMEA header
+  app.patch("/api/pfmeas/:id", async (req, res) => {
+    try {
+      const updates = insertPfmeaSchema.partial().parse(req.body);
+      const updatedPFMEA = await storage.updatePFMEA(req.params.id, updates);
+      if (!updatedPFMEA) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+      res.json(updatedPFMEA);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating PFMEA:", error);
+      res.status(500).json({ error: "Failed to update PFMEA" });
+    }
+  });
+
+  // Delete PFMEA
+  app.delete("/api/pfmeas/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deletePFMEA(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting PFMEA:", error);
+      res.status(500).json({ error: "Failed to delete PFMEA" });
+    }
+  });
+
+  // Delete PFMEA row
+  app.delete("/api/pfmea-rows/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deletePFMEARow(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "PFMEA row not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting PFMEA row:", error);
+      res.status(500).json({ error: "Failed to delete PFMEA row" });
     }
   });
 
