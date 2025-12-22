@@ -3,7 +3,6 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
   insertPartSchema,
-  insertPartProcessMapSchema,
   insertProcessDefSchema,
   insertProcessStepSchema,
   insertPfmeaSchema,
@@ -18,6 +17,7 @@ import {
   insertControlsLibrarySchema,
   insertControlPairingsSchema,
   insertFmeaTemplateRowSchema,
+  insertControlTemplateRowSchema,
   type FailureModeCategory,
   type ControlType,
   type ControlEffectiveness,
@@ -67,8 +67,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/parts/:id", async (req, res) => {
     try {
-      const validatedData = insertPartSchema.partial().parse(req.body);
-      const updatedPart = await storage.updatePart(req.params.id, validatedData);
+      const updates = insertPartSchema.partial().parse(req.body);
+      const updatedPart = await storage.updatePart(req.params.id, updates);
       if (!updatedPart) {
         return res.status(404).json({ error: "Part not found" });
       }
@@ -93,67 +93,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting part:", error);
       res.status(500).json({ error: "Failed to delete part" });
-    }
-  });
-
-  // Part-Process Mappings API
-  app.get("/api/part-process-maps", async (req, res) => {
-    try {
-      const partId = req.query.partId as string;
-      if (!partId) {
-        return res.status(400).json({ error: "partId query parameter is required" });
-      }
-      const maps = await storage.getPartProcessMaps(partId);
-      res.json(maps);
-    } catch (error) {
-      console.error("Error fetching part-process maps:", error);
-      res.status(500).json({ error: "Failed to fetch part-process maps" });
-    }
-  });
-
-  app.post("/api/part-process-maps", async (req, res) => {
-    try {
-      const validatedData = insertPartProcessMapSchema.parse(req.body);
-      const newMap = await storage.createPartProcessMap(validatedData);
-      res.status(201).json(newMap);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error creating part-process map:", error);
-      res.status(500).json({ error: "Failed to create part-process map" });
-    }
-  });
-
-  app.patch("/api/part-process-maps/:id", async (req, res) => {
-    try {
-      const validatedData = insertPartProcessMapSchema.partial().parse(req.body);
-      const updatedMap = await storage.updatePartProcessMap(req.params.id, validatedData);
-      if (!updatedMap) {
-        return res.status(404).json({ error: "Part-process map not found" });
-      }
-      res.json(updatedMap);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating part-process map:", error);
-      res.status(500).json({ error: "Failed to update part-process map" });
-    }
-  });
-
-  app.delete("/api/part-process-maps/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deletePartProcessMap(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Part-process map not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting part-process map:", error);
-      res.status(500).json({ error: "Failed to delete part-process map" });
     }
   });
 
@@ -337,8 +276,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!deleted) {
         return res.status(404).json({ error: "Process step not found" });
       }
-      // Resequence after deletion
+      
+      // Resequence remaining steps
       await storage.resequenceSteps(req.params.processId);
+      
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting process step:", error);
@@ -346,14 +287,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get child steps of a group
-  app.get("/api/processes/steps/:stepId/children", async (req, res) => {
+  // Bulk resequence steps
+  app.post("/api/processes/:processId/steps/resequence", async (req, res) => {
     try {
-      const children = await storage.getChildSteps(req.params.stepId);
-      res.json(children);
+      const { stepOrder } = req.body;
+      
+      if (!Array.isArray(stepOrder)) {
+        return res.status(400).json({ error: "stepOrder must be an array of step IDs" });
+      }
+      
+      // Update each step's sequence
+      for (let i = 0; i < stepOrder.length; i++) {
+        await storage.updateProcessStep(stepOrder[i], { seq: i + 1 });
+      }
+      
+      const updatedSteps = await storage.getStepsByProcessId(req.params.processId);
+      res.json(updatedSteps);
     } catch (error) {
-      console.error("Error fetching child steps:", error);
-      res.status(500).json({ error: "Failed to fetch child steps" });
+      console.error("Error resequencing steps:", error);
+      res.status(500).json({ error: "Failed to resequence steps" });
     }
   });
 
@@ -370,11 +322,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/processes/:processId/fmea-template-rows", async (req, res) => {
     try {
-      const validatedData = insertFmeaTemplateRowSchema.parse({
+      const rowData = insertFmeaTemplateRowSchema.parse({
         ...req.body,
         processDefId: req.params.processId,
       });
-      const newRow = await storage.createFmeaTemplateRow(validatedData);
+      
+      const newRow = await storage.createFmeaTemplateRow(rowData);
       res.status(201).json(newRow);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -430,16 +383,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/steps/:stepId/fmea-template-rows", async (req, res) => {
-    try {
-      const rows = await storage.getFmeaTemplateRowsByStepId(req.params.stepId);
-      res.json(rows);
-    } catch (error) {
-      console.error("Error fetching FMEA template rows by step:", error);
-      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
-    }
-  });
-
   app.post("/api/fmea-template-rows/:id/duplicate", async (req, res) => {
     try {
       const duplicatedRow = await storage.duplicateFmeaTemplateRow(req.params.id);
@@ -453,14 +396,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PFMEA API
-  app.get("/api/pfmea", async (req, res) => {
+  // Get FMEA template rows by step ID
+  app.get("/api/process-steps/:stepId/fmea-template-rows", async (req, res) => {
     try {
-      const partId = req.query.partId as string;
-      if (!partId) {
-        return res.status(400).json({ error: "partId query parameter is required" });
+      const rows = await storage.getFmeaTemplateRowsByStepId(req.params.stepId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching FMEA template rows by step:", error);
+      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
+    }
+  });
+
+  // ===========================================
+  // Control Template Row API (Section 2.3)
+  // ===========================================
+
+  // Get all control template rows for a process
+  app.get("/api/processes/:processId/control-template-rows", async (req, res) => {
+    try {
+      const rows = await storage.getControlTemplateRowsByProcessId(req.params.processId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching control template rows:", error);
+      res.status(500).json({ error: "Failed to fetch control template rows" });
+    }
+  });
+
+  // Create a new control template row
+  app.post("/api/processes/:processId/control-template-rows", async (req, res) => {
+    try {
+      const validatedData = insertControlTemplateRowSchema.parse({
+        ...req.body,
+        processDefId: req.params.processId,
+      });
+
+      const newRow = await storage.createControlTemplateRow(validatedData);
+      
+      // Invalidate relevant queries
+      res.status(201).json(newRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
       }
-      const pfmeas = await storage.getPFMEAsByPartId(partId);
+      console.error("Error creating control template row:", error);
+      res.status(500).json({ error: "Failed to create control template row" });
+    }
+  });
+
+  // Get a single control template row by ID
+  app.get("/api/control-template-rows/:id", async (req, res) => {
+    try {
+      const row = await storage.getControlTemplateRowById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.json(row);
+    } catch (error) {
+      console.error("Error fetching control template row:", error);
+      res.status(500).json({ error: "Failed to fetch control template row" });
+    }
+  });
+
+  // Update a control template row
+  app.patch("/api/control-template-rows/:id", async (req, res) => {
+    try {
+      const partialSchema = insertControlTemplateRowSchema.partial();
+      const validatedData = partialSchema.parse(req.body);
+
+      const updatedRow = await storage.updateControlTemplateRow(req.params.id, validatedData);
+      if (!updatedRow) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.json(updatedRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating control template row:", error);
+      res.status(500).json({ error: "Failed to update control template row" });
+    }
+  });
+
+  // Delete a control template row
+  app.delete("/api/control-template-rows/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteControlTemplateRow(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting control template row:", error);
+      res.status(500).json({ error: "Failed to delete control template row" });
+    }
+  });
+
+  // Duplicate a control template row
+  app.post("/api/control-template-rows/:id/duplicate", async (req, res) => {
+    try {
+      const duplicatedRow = await storage.duplicateControlTemplateRow(req.params.id);
+      if (!duplicatedRow) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.status(201).json(duplicatedRow);
+    } catch (error) {
+      console.error("Error duplicating control template row:", error);
+      res.status(500).json({ error: "Failed to duplicate control template row" });
+    }
+  });
+
+  // Get control template rows by source FMEA template row ID
+  app.get("/api/fmea-template-rows/:sourceRowId/control-template-rows", async (req, res) => {
+    try {
+      const rows = await storage.getControlTemplateRowsBySourceRowId(req.params.sourceRowId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching control template rows by source:", error);
+      res.status(500).json({ error: "Failed to fetch control template rows" });
+    }
+  });
+
+  // PFMEA API
+  app.get("/api/parts/:partId/pfmeas", async (req, res) => {
+    try {
+      const pfmeas = await storage.getPFMEAsByPartId(req.params.partId);
       res.json(pfmeas);
     } catch (error) {
       console.error("Error fetching PFMEAs:", error);
@@ -468,7 +529,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/pfmea/:id", async (req, res) => {
+  app.get("/api/pfmeas/:id", async (req, res) => {
     try {
       const pfmea = await storage.getPFMEAById(req.params.id);
       if (!pfmea) {
@@ -481,7 +542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/pfmea", async (req, res) => {
+  app.post("/api/pfmeas", async (req, res) => {
     try {
       const validatedData = insertPfmeaSchema.parse(req.body);
       const newPFMEA = await storage.createPFMEA(validatedData);
@@ -496,13 +557,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/pfmea/:id/rows", async (req, res) => {
+  app.post("/api/pfmeas/:pfmeaId/rows", async (req, res) => {
     try {
-      const pfmeaRow = insertPfmeaRowSchema.parse({
+      const rowData = insertPfmeaRowSchema.parse({
         ...req.body,
-        pfmeaId: req.params.id,
+        pfmeaId: req.params.pfmeaId,
       });
-      const newRow = await storage.createPFMEARow(pfmeaRow);
+      const newRow = await storage.createPFMEARow(rowData);
       res.status(201).json(newRow);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -533,13 +594,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Control Plans API
-  app.get("/api/control-plans", async (req, res) => {
+  app.get("/api/parts/:partId/control-plans", async (req, res) => {
     try {
-      const partId = req.query.partId as string;
-      if (!partId) {
-        return res.status(400).json({ error: "partId query parameter is required" });
-      }
-      const controlPlans = await storage.getControlPlansByPartId(partId);
+      const controlPlans = await storage.getControlPlansByPartId(req.params.partId);
       res.json(controlPlans);
     } catch (error) {
       console.error("Error fetching control plans:", error);
@@ -551,7 +608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const controlPlan = await storage.getControlPlanById(req.params.id);
       if (!controlPlan) {
-        return res.status(404).json({ error: "Control Plan not found" });
+        return res.status(404).json({ error: "Control plan not found" });
       }
       res.json(controlPlan);
     } catch (error) {
@@ -575,13 +632,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/control-plans/:id/rows", async (req, res) => {
+  app.post("/api/control-plans/:controlPlanId/rows", async (req, res) => {
     try {
-      const controlPlanRow = insertControlPlanRowSchema.parse({
+      const rowData = insertControlPlanRowSchema.parse({
         ...req.body,
-        controlPlanId: req.params.id,
+        controlPlanId: req.params.controlPlanId,
       });
-      const newRow = await storage.createControlPlanRow(controlPlanRow);
+      const newRow = await storage.createControlPlanRow(rowData);
       res.status(201).json(newRow);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -681,31 +738,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Equipment Error-Proofing Controls API
-  app.post("/api/equipment/:id/error-proofing", async (req, res) => {
+  // Equipment Error Proofing Controls
+  app.post("/api/equipment/:equipmentId/error-proofing", async (req, res) => {
     try {
-      const control = insertEquipmentErrorProofingSchema.parse({
+      const validatedData = insertEquipmentErrorProofingSchema.parse({
         ...req.body,
-        equipmentId: req.params.id,
+        equipmentId: req.params.equipmentId,
       });
-      const newControl = await storage.createErrorProofingControl(control);
+      const newControl = await storage.createErrorProofingControl(validatedData);
       res.status(201).json(newControl);
     } catch (error) {
       if (error instanceof z.ZodError) {
         const validationError = fromError(error);
         return res.status(400).json({ error: validationError.toString() });
       }
-      console.error("Error creating error-proofing control:", error);
-      res.status(500).json({ error: "Failed to create error-proofing control" });
+      console.error("Error creating error proofing control:", error);
+      res.status(500).json({ error: "Failed to create error proofing control" });
     }
   });
 
-  app.patch("/api/equipment-error-proofing/:id", async (req, res) => {
+  app.patch("/api/error-proofing/:id", async (req, res) => {
     try {
       const updates = insertEquipmentErrorProofingSchema.partial().parse(req.body);
       const updatedControl = await storage.updateErrorProofingControl(req.params.id, updates);
       if (!updatedControl) {
-        return res.status(404).json({ error: "Error-proofing control not found" });
+        return res.status(404).json({ error: "Error proofing control not found" });
       }
       res.json(updatedControl);
     } catch (error) {
@@ -713,32 +770,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const validationError = fromError(error);
         return res.status(400).json({ error: validationError.toString() });
       }
-      console.error("Error updating error-proofing control:", error);
-      res.status(500).json({ error: "Failed to update error-proofing control" });
+      console.error("Error updating error proofing control:", error);
+      res.status(500).json({ error: "Failed to update error proofing control" });
     }
   });
 
-  app.delete("/api/equipment-error-proofing/:id", async (req, res) => {
+  app.delete("/api/error-proofing/:id", async (req, res) => {
     try {
       const success = await storage.deleteErrorProofingControl(req.params.id);
       if (!success) {
-        return res.status(404).json({ error: "Error-proofing control not found" });
+        return res.status(404).json({ error: "Error proofing control not found" });
       }
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting error-proofing control:", error);
-      res.status(500).json({ error: "Failed to delete error-proofing control" });
+      console.error("Error deleting error proofing control:", error);
+      res.status(500).json({ error: "Failed to delete error proofing control" });
     }
   });
 
-  // Equipment Control Methods API
-  app.post("/api/equipment/:id/control-methods", async (req, res) => {
+  // Equipment Control Methods
+  app.post("/api/equipment/:equipmentId/control-methods", async (req, res) => {
     try {
-      const method = insertEquipmentControlMethodsSchema.parse({
+      const validatedData = insertEquipmentControlMethodsSchema.parse({
         ...req.body,
-        equipmentId: req.params.id,
+        equipmentId: req.params.equipmentId,
       });
-      const newMethod = await storage.createControlMethod(method);
+      const newMethod = await storage.createControlMethod(validatedData);
       res.status(201).json(newMethod);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -750,7 +807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/equipment-control-methods/:id", async (req, res) => {
+  app.patch("/api/control-methods/:id", async (req, res) => {
     try {
       const updates = insertEquipmentControlMethodsSchema.partial().parse(req.body);
       const updatedMethod = await storage.updateControlMethod(req.params.id, updates);
@@ -768,7 +825,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/equipment-control-methods/:id", async (req, res) => {
+  app.delete("/api/control-methods/:id", async (req, res) => {
     try {
       const success = await storage.deleteControlMethod(req.params.id);
       if (!success) {
@@ -1058,222 +1115,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting control pairing:", error);
       res.status(500).json({ error: "Failed to delete control pairing" });
-    }
-  });
-
-  // ============================================================================
-  // AP Calculator API Endpoints
-  // ============================================================================
-
-  app.post('/api/ap/calculate', async (req, res) => {
-    try {
-      const { severity, occurrence, detection } = req.body;
-      
-      if (!severity || !occurrence || !detection) {
-        return res.status(400).json({ error: 'severity, occurrence, and detection are required' });
-      }
-      
-      const s = parseInt(severity, 10);
-      const o = parseInt(occurrence, 10);
-      const d = parseInt(detection, 10);
-      
-      if (isNaN(s) || isNaN(o) || isNaN(d)) {
-        return res.status(400).json({ error: 'Ratings must be valid integers' });
-      }
-      
-      if (s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
-        return res.status(400).json({ error: 'Ratings must be between 1 and 10' });
-      }
-      
-      const rpn = s * o * d;
-      let ap: 'H' | 'M' | 'L';
-      let reason: string;
-      
-      // HIGH PRIORITY
-      if (s >= 9) {
-        ap = 'H';
-        reason = `Safety/Regulatory concern (Severity = ${s}). Immediate action required.`;
-      } else if (s >= 7 && s <= 8 && o >= 4) {
-        ap = 'H';
-        reason = `High severity (S=${s}) with significant occurrence (O=${o}).`;
-      } else if (s >= 7 && s <= 8 && d >= 7) {
-        ap = 'H';
-        reason = `High severity (S=${s}) with poor detection (D=${d}).`;
-      } else if (s >= 5 && s <= 6 && o >= 7 && d >= 6) {
-        ap = 'H';
-        reason = `Moderate severity with high occurrence and limited detection.`;
-      } else if (d >= 10 && o >= 4) {
-        ap = 'H';
-        reason = `No detection method (D=${d}) with occurrence ≥ 4.`;
-      }
-      // MEDIUM PRIORITY
-      else if (s >= 5 && s <= 6 && o >= 4 && o <= 6) {
-        ap = 'M';
-        reason = `Moderate severity (S=${s}) with moderate occurrence (O=${o}).`;
-      } else if (s >= 5 && s <= 6 && d >= 7) {
-        ap = 'M';
-        reason = `Moderate severity (S=${s}) with limited detection (D=${d}).`;
-      } else if (s >= 3 && s <= 4 && o >= 7) {
-        ap = 'M';
-        reason = `Lower severity but high occurrence (O=${o}).`;
-      } else if (s >= 7 && s <= 8 && o <= 3 && d >= 4 && d <= 6) {
-        ap = 'M';
-        reason = `High severity with low occurrence. Monitor and consider detection improvement.`;
-      } else if (d >= 6 && o >= 3 && s >= 4) {
-        ap = 'M';
-        reason = `Detection improvement opportunity (D=${d}).`;
-      }
-      // LOW PRIORITY
-      else {
-        ap = 'L';
-        reason = `Risk adequately controlled. Continue monitoring.`;
-      }
-      
-      res.json({ ap, reason, rpn, severity: s, occurrence: o, detection: d });
-    } catch (error) {
-      console.error('AP calculation error:', error);
-      res.status(500).json({ error: 'Failed to calculate AP' });
-    }
-  });
-
-  app.post('/api/ap/calculate-batch', async (req, res) => {
-    try {
-      const { rows } = req.body;
-      
-      if (!Array.isArray(rows)) {
-        return res.status(400).json({ error: 'rows must be an array' });
-      }
-      
-      const results = rows.map((row: { id: string; severity: number; occurrence: number; detection: number }) => {
-        const s = parseInt(String(row.severity), 10);
-        const o = parseInt(String(row.occurrence), 10);
-        const d = parseInt(String(row.detection), 10);
-        
-        if (isNaN(s) || isNaN(o) || isNaN(d) || 
-            s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
-          return { id: row.id, error: 'Invalid ratings' };
-        }
-        
-        const rpn = s * o * d;
-        let ap: 'H' | 'M' | 'L';
-        
-        if (s >= 9) ap = 'H';
-        else if (s >= 7 && (o >= 4 || d >= 7)) ap = 'H';
-        else if (s >= 5 && o >= 7 && d >= 6) ap = 'H';
-        else if (d >= 10 && o >= 4) ap = 'H';
-        else if (s >= 5 && (o >= 4 || d >= 7)) ap = 'M';
-        else if (s >= 3 && o >= 7) ap = 'M';
-        else if (d >= 6 && o >= 3 && s >= 4) ap = 'M';
-        else ap = 'L';
-        
-        return { id: row.id, ap, rpn };
-      });
-      
-      res.json({ results });
-    } catch (error) {
-      console.error('Batch AP calculation error:', error);
-      res.status(500).json({ error: 'Failed to calculate batch AP' });
-    }
-  });
-
-  app.get('/api/rating-scales', async (_req, res) => {
-    try {
-      const scales = {
-        severity: [
-          { rating: 10, description: 'Hazardous - without warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur without warning.' },
-          { rating: 9, description: 'Hazardous - with warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur with warning.' },
-          { rating: 8, description: 'Very High', criteria: 'Vehicle/item inoperable with loss of primary function. Customer very dissatisfied.' },
-          { rating: 7, description: 'High', criteria: 'Vehicle/item operable but at reduced level of performance. Customer dissatisfied.' },
-          { rating: 6, description: 'Moderate', criteria: 'Vehicle/item operable with comfort/convenience items inoperable. Customer experiences discomfort.' },
-          { rating: 5, description: 'Low', criteria: 'Vehicle/item operable with comfort/convenience items at reduced level. Customer experiences some dissatisfaction.' },
-          { rating: 4, description: 'Very Low', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by most customers.' },
-          { rating: 3, description: 'Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by average customers.' },
-          { rating: 2, description: 'Very Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by discriminating customers.' },
-          { rating: 1, description: 'None', criteria: 'No discernible effect.' },
-        ],
-        occurrence: [
-          { rating: 10, description: 'Very High', criteria: '≥1 in 2 — Cpk < 0.33 — Failure is almost inevitable' },
-          { rating: 9, description: 'Very High', criteria: '1 in 3 — Cpk ≥ 0.33 — Failures very likely' },
-          { rating: 8, description: 'High', criteria: '1 in 8 — Cpk ≥ 0.51 — Repeated failures' },
-          { rating: 7, description: 'High', criteria: '1 in 20 — Cpk ≥ 0.67 — Frequent failures' },
-          { rating: 6, description: 'Moderate', criteria: '1 in 80 — Cpk ≥ 0.83 — Occasional failures' },
-          { rating: 5, description: 'Moderate', criteria: '1 in 400 — Cpk ≥ 1.00 — Infrequent failures' },
-          { rating: 4, description: 'Moderate', criteria: '1 in 2,000 — Cpk ≥ 1.17 — Relatively few failures' },
-          { rating: 3, description: 'Low', criteria: '1 in 15,000 — Cpk ≥ 1.33 — Isolated failures' },
-          { rating: 2, description: 'Very Low', criteria: '1 in 150,000 — Cpk ≥ 1.50 — Only rare failures' },
-          { rating: 1, description: 'Remote', criteria: '<1 in 1,500,000 — Cpk ≥ 1.67 — Failure unlikely' },
-        ],
-        detection: [
-          { rating: 10, description: 'Absolute Uncertainty', criteria: 'No current control; cannot detect or not analyzed. No opportunity for detection.' },
-          { rating: 9, description: 'Very Remote', criteria: 'Control will probably not detect. Random checks only.' },
-          { rating: 8, description: 'Remote', criteria: 'Control has poor chance of detection. Visual inspection only.' },
-          { rating: 7, description: 'Very Low', criteria: 'Control has poor chance of detection. Double visual inspection.' },
-          { rating: 6, description: 'Low', criteria: 'Control may detect. Variable gauging after parts leave station.' },
-          { rating: 5, description: 'Moderate', criteria: 'Control may detect. Attribute gauging (go/no-go, manual torque check).' },
-          { rating: 4, description: 'Moderately High', criteria: 'Control has good chance to detect. Statistical process control (SPC).' },
-          { rating: 3, description: 'High', criteria: 'Control has good chance to detect. Improved detection controls.' },
-          { rating: 2, description: 'Very High', criteria: 'Control almost certain to detect. Automated in-station detection with automatic stop.' },
-          { rating: 1, description: 'Almost Certain', criteria: 'Control certain to detect. Error-proofing in process/product design (Poka-Yoke).' },
-        ],
-      };
-      res.json(scales);
-    } catch (error) {
-      console.error('Error fetching rating scales:', error);
-      res.status(500).json({ error: 'Failed to fetch rating scales' });
-    }
-  });
-
-  app.get('/api/rating-scales/:kind', async (req, res) => {
-    try {
-      const { kind } = req.params;
-      const scales: Record<string, Array<{ rating: number; description: string; criteria: string }>> = {
-        severity: [
-          { rating: 10, description: 'Hazardous - without warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur without warning.' },
-          { rating: 9, description: 'Hazardous - with warning', criteria: 'May endanger operator/assembly personnel. Failure mode affects safe vehicle operation and/or involves non-compliance with government regulations. Failure will occur with warning.' },
-          { rating: 8, description: 'Very High', criteria: 'Vehicle/item inoperable with loss of primary function. Customer very dissatisfied.' },
-          { rating: 7, description: 'High', criteria: 'Vehicle/item operable but at reduced level of performance. Customer dissatisfied.' },
-          { rating: 6, description: 'Moderate', criteria: 'Vehicle/item operable with comfort/convenience items inoperable. Customer experiences discomfort.' },
-          { rating: 5, description: 'Low', criteria: 'Vehicle/item operable with comfort/convenience items at reduced level. Customer experiences some dissatisfaction.' },
-          { rating: 4, description: 'Very Low', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by most customers.' },
-          { rating: 3, description: 'Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by average customers.' },
-          { rating: 2, description: 'Very Minor', criteria: 'Fit/finish or squeak/rattle item does not conform. Defect noticed by discriminating customers.' },
-          { rating: 1, description: 'None', criteria: 'No discernible effect.' },
-        ],
-        occurrence: [
-          { rating: 10, description: 'Very High', criteria: '≥1 in 2 — Cpk < 0.33 — Failure is almost inevitable' },
-          { rating: 9, description: 'Very High', criteria: '1 in 3 — Cpk ≥ 0.33 — Failures very likely' },
-          { rating: 8, description: 'High', criteria: '1 in 8 — Cpk ≥ 0.51 — Repeated failures' },
-          { rating: 7, description: 'High', criteria: '1 in 20 — Cpk ≥ 0.67 — Frequent failures' },
-          { rating: 6, description: 'Moderate', criteria: '1 in 80 — Cpk ≥ 0.83 — Occasional failures' },
-          { rating: 5, description: 'Moderate', criteria: '1 in 400 — Cpk ≥ 1.00 — Infrequent failures' },
-          { rating: 4, description: 'Moderate', criteria: '1 in 2,000 — Cpk ≥ 1.17 — Relatively few failures' },
-          { rating: 3, description: 'Low', criteria: '1 in 15,000 — Cpk ≥ 1.33 — Isolated failures' },
-          { rating: 2, description: 'Very Low', criteria: '1 in 150,000 — Cpk ≥ 1.50 — Only rare failures' },
-          { rating: 1, description: 'Remote', criteria: '<1 in 1,500,000 — Cpk ≥ 1.67 — Failure unlikely' },
-        ],
-        detection: [
-          { rating: 10, description: 'Absolute Uncertainty', criteria: 'No current control; cannot detect or not analyzed. No opportunity for detection.' },
-          { rating: 9, description: 'Very Remote', criteria: 'Control will probably not detect. Random checks only.' },
-          { rating: 8, description: 'Remote', criteria: 'Control has poor chance of detection. Visual inspection only.' },
-          { rating: 7, description: 'Very Low', criteria: 'Control has poor chance of detection. Double visual inspection.' },
-          { rating: 6, description: 'Low', criteria: 'Control may detect. Variable gauging after parts leave station.' },
-          { rating: 5, description: 'Moderate', criteria: 'Control may detect. Attribute gauging (go/no-go, manual torque check).' },
-          { rating: 4, description: 'Moderately High', criteria: 'Control has good chance to detect. Statistical process control (SPC).' },
-          { rating: 3, description: 'High', criteria: 'Control has good chance to detect. Improved detection controls.' },
-          { rating: 2, description: 'Very High', criteria: 'Control almost certain to detect. Automated in-station detection with automatic stop.' },
-          { rating: 1, description: 'Almost Certain', criteria: 'Control certain to detect. Error-proofing in process/product design (Poka-Yoke).' },
-        ],
-      };
-      
-      const scale = scales[kind.toLowerCase()];
-      if (!scale) {
-        return res.status(404).json({ error: 'Rating scale not found. Valid kinds: severity, occurrence, detection' });
-      }
-      
-      res.json(scale);
-    } catch (error) {
-      console.error('Error fetching rating scale:', error);
-      res.status(500).json({ error: 'Failed to fetch rating scale' });
     }
   });
 
