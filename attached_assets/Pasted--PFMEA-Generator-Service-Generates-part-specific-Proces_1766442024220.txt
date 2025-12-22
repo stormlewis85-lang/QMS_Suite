@@ -1,0 +1,558 @@
+/**
+ * PFMEA Generator Service
+ * 
+ * Generates part-specific Process Failure Mode and Effects Analysis (PFMEA)
+ * documents from process library templates. Follows AIAG-VDA 2019 methodology.
+ * 
+ * Key Features:
+ * - Pulls FMEA template rows from mapped processes
+ * - Calculates Action Priority (AP) using AIAG-VDA 2019 logic
+ * - Maintains traceability to parent templates for change propagation
+ * - Supports special characteristics (CSR) handling
+ * - Validates completeness before generation
+ */
+
+import type {
+  Part,
+  PartProcessMap,
+  ProcessDef,
+  ProcessStep,
+  FmeaTemplateRow,
+  PFMEA,
+  PFMEARow,
+  InsertPFMEA,
+  InsertPFMEARow,
+} from "@shared/schema";
+import { calculateAP, type ActionPriority, type APCalculationResult } from "./ap-calculator";
+
+// ============================================
+// Types
+// ============================================
+
+export interface ProcessWithTemplates {
+  process: ProcessDef & { steps: ProcessStep[] };
+  sequence: number;
+  templateRows: FmeaTemplateRow[];
+}
+
+export interface PFMEAGenerationInput {
+  partId: string;
+  rev: string;
+  basis?: string;
+  docNo?: string;
+  processSelections?: {
+    processDefId: string;
+    includeAllRows?: boolean;
+    selectedRowIds?: string[];
+  }[];
+}
+
+export interface PFMEAGenerationResult {
+  success: boolean;
+  pfmea: PFMEA | null;
+  rows: PFMEARow[];
+  stats: PFMEAGenerationStats;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface PFMEAGenerationStats {
+  totalTemplateRows: number;
+  generatedRows: number;
+  highAPCount: number;
+  mediumAPCount: number;
+  lowAPCount: number;
+  specialCharacteristics: number;
+  processesIncluded: number;
+  stepsWithCoverage: number;
+  stepsWithoutCoverage: number;
+}
+
+export interface PFMEARowPreview {
+  templateRow: FmeaTemplateRow;
+  processName: string;
+  stepName: string;
+  calculatedAP: APCalculationResult;
+  willInclude: boolean;
+}
+
+export interface PFMEAValidation {
+  isValid: boolean;
+  canGenerate: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+// ============================================
+// Validation Functions
+// ============================================
+
+/**
+ * Validate that a part has the necessary data for PFMEA generation
+ */
+export function validatePartForPFMEA(
+  part: Part,
+  processMaps: PartProcessMap[]
+): PFMEAValidation {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (!part) {
+    errors.push("Part not found");
+    return { isValid: false, canGenerate: false, warnings, errors };
+  }
+
+  if (!processMaps || processMaps.length === 0) {
+    errors.push("No processes mapped to this part. Add process mappings before generating PFMEA.");
+    return { isValid: false, canGenerate: false, warnings, errors };
+  }
+
+  // Check for CSR notes
+  if (part.csrNotes) {
+    warnings.push(`Part has CSR requirements: ${part.csrNotes}`);
+  }
+
+  return {
+    isValid: errors.length === 0,
+    canGenerate: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
+/**
+ * Validate template rows before generation
+ */
+export function validateTemplateRows(
+  templateRows: FmeaTemplateRow[],
+  processesWithTemplates: ProcessWithTemplates[]
+): PFMEAValidation {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (templateRows.length === 0) {
+    errors.push("No FMEA template rows found in the mapped processes. Add template rows to the process library first.");
+    return { isValid: false, canGenerate: false, warnings, errors };
+  }
+
+  // Check for steps without coverage
+  const stepsWithCoverage = new Set(templateRows.map(r => r.stepId));
+  const allSteps = processesWithTemplates.flatMap(p => p.process.steps);
+  const stepsWithoutCoverage = allSteps.filter(s => !stepsWithCoverage.has(s.id));
+
+  if (stepsWithoutCoverage.length > 0) {
+    warnings.push(
+      `${stepsWithoutCoverage.length} process step(s) have no FMEA coverage: ${stepsWithoutCoverage.map(s => s.name).slice(0, 3).join(", ")}${stepsWithoutCoverage.length > 3 ? "..." : ""}`
+    );
+  }
+
+  // Check for high severity items
+  const highSeverityRows = templateRows.filter(r => r.severity >= 9);
+  if (highSeverityRows.length > 0) {
+    warnings.push(
+      `${highSeverityRows.length} failure mode(s) have severity ≥ 9 (safety critical)`
+    );
+  }
+
+  // Check for detection-only controls
+  const detectionOnlyRows = templateRows.filter(
+    r => (!r.preventionControls || r.preventionControls.length === 0) && 
+         r.detectionControls && r.detectionControls.length > 0
+  );
+  if (detectionOnlyRows.length > 0) {
+    warnings.push(
+      `${detectionOnlyRows.length} row(s) have detection controls only - consider adding prevention`
+    );
+  }
+
+  // Check for special characteristics without proper controls
+  const specialRows = templateRows.filter(r => r.specialFlag || r.csrSymbol);
+  const specialWithoutProperDetection = specialRows.filter(r => r.detection > 4);
+  if (specialWithoutProperDetection.length > 0) {
+    warnings.push(
+      `${specialWithoutProperDetection.length} special characteristic(s) have detection rating > 4`
+    );
+  }
+
+  return {
+    isValid: errors.length === 0,
+    canGenerate: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
+// ============================================
+// Preview Functions
+// ============================================
+
+/**
+ * Preview what PFMEA rows would be generated
+ */
+export function previewPFMEAGeneration(
+  processesWithTemplates: ProcessWithTemplates[]
+): PFMEARowPreview[] {
+  const previews: PFMEARowPreview[] = [];
+
+  for (const { process, templateRows } of processesWithTemplates) {
+    for (const row of templateRows) {
+      const step = process.steps.find(s => s.id === row.stepId);
+      const apResult = calculateAP(row.severity, row.occurrence, row.detection);
+
+      previews.push({
+        templateRow: row,
+        processName: process.name,
+        stepName: step?.name || "Unknown Step",
+        calculatedAP: apResult,
+        willInclude: true,
+      });
+    }
+  }
+
+  // Sort by process sequence, then step sequence, then severity (desc)
+  previews.sort((a, b) => {
+    const procA = processesWithTemplates.findIndex(p => p.process.name === a.processName);
+    const procB = processesWithTemplates.findIndex(p => p.process.name === b.processName);
+    if (procA !== procB) return procA - procB;
+
+    if (a.templateRow.stepId !== b.templateRow.stepId) {
+      // Sort by step seq would require step lookup
+      return 0;
+    }
+
+    return b.templateRow.severity - a.templateRow.severity;
+  });
+
+  return previews;
+}
+
+/**
+ * Calculate generation statistics from preview
+ */
+export function calculatePreviewStats(previews: PFMEARowPreview[]): PFMEAGenerationStats {
+  const includedPreviews = previews.filter(p => p.willInclude);
+  
+  return {
+    totalTemplateRows: previews.length,
+    generatedRows: includedPreviews.length,
+    highAPCount: includedPreviews.filter(p => p.calculatedAP.ap === 'H').length,
+    mediumAPCount: includedPreviews.filter(p => p.calculatedAP.ap === 'M').length,
+    lowAPCount: includedPreviews.filter(p => p.calculatedAP.ap === 'L').length,
+    specialCharacteristics: includedPreviews.filter(
+      p => p.templateRow.specialFlag || p.templateRow.csrSymbol
+    ).length,
+    processesIncluded: new Set(includedPreviews.map(p => p.processName)).size,
+    stepsWithCoverage: new Set(includedPreviews.map(p => p.templateRow.stepId)).size,
+    stepsWithoutCoverage: 0, // Calculated separately in validation
+  };
+}
+
+// ============================================
+// Generation Functions
+// ============================================
+
+/**
+ * Build PFMEA row data from a template row
+ */
+export function buildPFMEARowFromTemplate(
+  pfmeaId: string,
+  templateRow: FmeaTemplateRow,
+  stepName: string
+): InsertPFMEARow {
+  const apResult = calculateAP(
+    templateRow.severity,
+    templateRow.occurrence,
+    templateRow.detection
+  );
+
+  return {
+    pfmeaId,
+    parentTemplateRowId: templateRow.id,
+    stepRef: stepName,
+    function: templateRow.function,
+    requirement: templateRow.requirement,
+    failureMode: templateRow.failureMode,
+    effect: templateRow.effect,
+    severity: templateRow.severity,
+    cause: templateRow.cause,
+    occurrence: templateRow.occurrence,
+    preventionControls: templateRow.preventionControls || [],
+    detectionControls: templateRow.detectionControls || [],
+    detection: templateRow.detection,
+    ap: apResult.ap,
+    specialFlag: templateRow.specialFlag || false,
+    csrSymbol: templateRow.csrSymbol || null,
+    overrideFlags: {},
+    notes: null,
+  };
+}
+
+/**
+ * Generate next revision number
+ */
+export function generateNextRevision(existingRevisions: string[]): string {
+  if (existingRevisions.length === 0) {
+    return "1.0";
+  }
+
+  // Sort revisions and get the latest
+  const sorted = existingRevisions
+    .map(rev => {
+      const parts = rev.split(".");
+      return {
+        original: rev,
+        major: parseInt(parts[0]) || 0,
+        minor: parseInt(parts[1]) || 0,
+      };
+    })
+    .sort((a, b) => {
+      if (a.major !== b.major) return b.major - a.major;
+      return b.minor - a.minor;
+    });
+
+  const latest = sorted[0];
+  
+  // Increment minor version
+  return `${latest.major}.${latest.minor + 1}`;
+}
+
+/**
+ * Build PFMEA header data
+ */
+export function buildPFMEAHeader(
+  partId: string,
+  rev: string,
+  basis: string = "AIAG-VDA 2019",
+  docNo?: string,
+  supersedesId?: string
+): InsertPFMEA {
+  return {
+    partId,
+    rev,
+    status: "draft",
+    basis,
+    docNo: docNo || null,
+    approvedBy: null,
+    approvedAt: null,
+    effectiveFrom: null,
+    supersedesId: supersedesId || null,
+  };
+}
+
+/**
+ * Main generation function - orchestrates the full PFMEA generation process
+ * 
+ * This is designed to be called by the route handler, which handles
+ * the actual database operations.
+ */
+export function prepareGeneration(
+  part: Part,
+  processesWithTemplates: ProcessWithTemplates[],
+  input: PFMEAGenerationInput,
+  existingRevisions: string[] = []
+): {
+  header: InsertPFMEA;
+  rows: Omit<InsertPFMEARow, "pfmeaId">[];
+  stats: PFMEAGenerationStats;
+  validation: PFMEAValidation;
+} {
+  // Collect all template rows from processes
+  let allTemplateRows: { row: FmeaTemplateRow; processName: string; stepName: string }[] = [];
+
+  for (const { process, templateRows, sequence } of processesWithTemplates) {
+    for (const row of templateRows) {
+      const step = process.steps.find(s => s.id === row.stepId);
+      
+      // Apply filters if specified
+      if (input.processSelections) {
+        const selection = input.processSelections.find(
+          s => s.processDefId === process.id
+        );
+        if (!selection) continue;
+        if (selection.selectedRowIds && !selection.selectedRowIds.includes(row.id)) {
+          continue;
+        }
+      }
+
+      allTemplateRows.push({
+        row,
+        processName: process.name,
+        stepName: step?.name || `Step ${row.stepId.substring(0, 8)}`,
+      });
+    }
+  }
+
+  // Sort by process sequence then step sequence
+  allTemplateRows.sort((a, b) => {
+    const seqA = processesWithTemplates.find(p => p.process.name === a.processName)?.sequence || 0;
+    const seqB = processesWithTemplates.find(p => p.process.name === b.processName)?.sequence || 0;
+    return seqA - seqB;
+  });
+
+  // Validate
+  const validation = validateTemplateRows(
+    allTemplateRows.map(t => t.row),
+    processesWithTemplates
+  );
+
+  // Determine revision
+  const rev = input.rev || generateNextRevision(existingRevisions);
+
+  // Build header
+  const header = buildPFMEAHeader(
+    input.partId,
+    rev,
+    input.basis || "AIAG-VDA 2019",
+    input.docNo
+  );
+
+  // Build rows (without pfmeaId - that gets added after header is created)
+  const rows: Omit<InsertPFMEARow, "pfmeaId">[] = allTemplateRows.map(({ row, stepName }) => {
+    const apResult = calculateAP(row.severity, row.occurrence, row.detection);
+    
+    return {
+      parentTemplateRowId: row.id,
+      stepRef: stepName,
+      function: row.function,
+      requirement: row.requirement,
+      failureMode: row.failureMode,
+      effect: row.effect,
+      severity: row.severity,
+      cause: row.cause,
+      occurrence: row.occurrence,
+      preventionControls: row.preventionControls || [],
+      detectionControls: row.detectionControls || [],
+      detection: row.detection,
+      ap: apResult.ap,
+      specialFlag: row.specialFlag || false,
+      csrSymbol: row.csrSymbol || null,
+      overrideFlags: {},
+      notes: null,
+    };
+  });
+
+  // Calculate stats
+  const stats: PFMEAGenerationStats = {
+    totalTemplateRows: allTemplateRows.length,
+    generatedRows: rows.length,
+    highAPCount: rows.filter(r => r.ap === 'H').length,
+    mediumAPCount: rows.filter(r => r.ap === 'M').length,
+    lowAPCount: rows.filter(r => r.ap === 'L').length,
+    specialCharacteristics: rows.filter(r => r.specialFlag || r.csrSymbol).length,
+    processesIncluded: processesWithTemplates.length,
+    stepsWithCoverage: new Set(rows.map(r => r.stepRef)).size,
+    stepsWithoutCoverage: 0, // Would need step count to calculate
+  };
+
+  return { header, rows, stats, validation };
+}
+
+/**
+ * Recalculate AP for all rows in a PFMEA
+ * Used when ratings are updated
+ */
+export function recalculateAP(
+  rows: PFMEARow[]
+): { rowId: string; oldAP: ActionPriority; newAP: ActionPriority; changed: boolean }[] {
+  return rows.map(row => {
+    const newAPResult = calculateAP(row.severity, row.occurrence, row.detection);
+    return {
+      rowId: row.id,
+      oldAP: row.ap as ActionPriority,
+      newAP: newAPResult.ap,
+      changed: row.ap !== newAPResult.ap,
+    };
+  });
+}
+
+/**
+ * Check if a PFMEA row has been modified from its template
+ */
+export function detectRowOverrides(
+  pfmeaRow: PFMEARow,
+  templateRow: FmeaTemplateRow | null
+): Record<string, boolean> {
+  if (!templateRow) {
+    return {}; // No template to compare against
+  }
+
+  const overrides: Record<string, boolean> = {};
+
+  if (pfmeaRow.function !== templateRow.function) overrides.function = true;
+  if (pfmeaRow.requirement !== templateRow.requirement) overrides.requirement = true;
+  if (pfmeaRow.failureMode !== templateRow.failureMode) overrides.failureMode = true;
+  if (pfmeaRow.effect !== templateRow.effect) overrides.effect = true;
+  if (pfmeaRow.severity !== templateRow.severity) overrides.severity = true;
+  if (pfmeaRow.cause !== templateRow.cause) overrides.cause = true;
+  if (pfmeaRow.occurrence !== templateRow.occurrence) overrides.occurrence = true;
+  if (pfmeaRow.detection !== templateRow.detection) overrides.detection = true;
+  
+  // Compare arrays
+  const prevControls = JSON.stringify(templateRow.preventionControls || []);
+  const currPrevControls = JSON.stringify(pfmeaRow.preventionControls || []);
+  if (prevControls !== currPrevControls) overrides.preventionControls = true;
+
+  const detControls = JSON.stringify(templateRow.detectionControls || []);
+  const currDetControls = JSON.stringify(pfmeaRow.detectionControls || []);
+  if (detControls !== currDetControls) overrides.detectionControls = true;
+
+  if (pfmeaRow.specialFlag !== templateRow.specialFlag) overrides.specialFlag = true;
+  if (pfmeaRow.csrSymbol !== templateRow.csrSymbol) overrides.csrSymbol = true;
+
+  return overrides;
+}
+
+/**
+ * Apply template changes to PFMEA row, respecting override flags
+ */
+export function applyTemplateChanges(
+  pfmeaRow: PFMEARow,
+  templateRow: FmeaTemplateRow,
+  adoptFields: string[] = []
+): Partial<InsertPFMEARow> {
+  const overrides = pfmeaRow.overrideFlags || {};
+  const updates: Partial<InsertPFMEARow> = {};
+
+  // Only update fields that are not overridden or are in the adopt list
+  const fieldsToUpdate = [
+    'function', 'requirement', 'failureMode', 'effect',
+    'severity', 'cause', 'occurrence',
+    'preventionControls', 'detectionControls', 'detection',
+    'specialFlag', 'csrSymbol'
+  ];
+
+  for (const field of fieldsToUpdate) {
+    const isOverridden = overrides[field] === true;
+    const shouldAdopt = adoptFields.includes(field);
+
+    if (!isOverridden || shouldAdopt) {
+      (updates as any)[field] = (templateRow as any)[field];
+    }
+  }
+
+  // Recalculate AP if severity, occurrence, or detection changed
+  if (updates.severity !== undefined || updates.occurrence !== undefined || updates.detection !== undefined) {
+    const newSeverity = updates.severity ?? pfmeaRow.severity;
+    const newOccurrence = updates.occurrence ?? pfmeaRow.occurrence;
+    const newDetection = updates.detection ?? pfmeaRow.detection;
+    
+    const apResult = calculateAP(newSeverity, newOccurrence, newDetection);
+    updates.ap = apResult.ap;
+  }
+
+  return updates;
+}
+
+export default {
+  validatePartForPFMEA,
+  validateTemplateRows,
+  previewPFMEAGeneration,
+  calculatePreviewStats,
+  buildPFMEARowFromTemplate,
+  buildPFMEAHeader,
+  generateNextRevision,
+  prepareGeneration,
+  recalculateAP,
+  detectRowOverrides,
+  applyTemplateChanges,
+};
