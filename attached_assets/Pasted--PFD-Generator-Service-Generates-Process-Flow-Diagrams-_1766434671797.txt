@@ -1,0 +1,531 @@
+/**
+ * PFD Generator Service
+ * 
+ * Generates Process Flow Diagrams (PFD) in Mermaid format from process steps.
+ * Supports AIAG-VDA flowchart symbols and automotive industry conventions.
+ * 
+ * Step Types:
+ * - operation: Standard operation (rectangle)
+ * - inspection: Quality inspection (hexagon)
+ * - transport: Material movement (parallelogram)
+ * - storage: Storage/queue (cylinder)
+ * - decision: Decision point (diamond)
+ * - group: Container for sub-steps (subgraph)
+ * - subprocess_ref: Reference to another process (stadium)
+ */
+
+import type { ProcessStep, ProcessDef, PartProcessMap } from "@shared/schema";
+
+// Types for PFD generation
+export interface PFDStep {
+  id: string;
+  seq: number;
+  name: string;
+  area: string;
+  stepType: string;
+  equipment?: { name: string; model?: string }[];
+  equipmentIds?: string[];
+  branchTo?: string | null;
+  reworkTo?: string | null;
+  parentStepId?: string | null;
+  subprocessRefId?: string | null;
+  subprocessRev?: string | null;
+  collapsed?: boolean;
+}
+
+export interface PFDProcess {
+  id: string;
+  name: string;
+  rev: string;
+  steps: PFDStep[];
+  sequence: number;
+}
+
+export interface PFDGenerationResult {
+  mermaid: string;
+  json: {
+    processes: PFDProcess[];
+    totalSteps: number;
+    areas: string[];
+    hasDecisions: boolean;
+    hasRework: boolean;
+  };
+}
+
+export interface PFDGeneratorOptions {
+  direction?: 'TB' | 'LR' | 'BT' | 'RL';
+  showEquipment?: boolean;
+  showAreas?: boolean;
+  colorByArea?: boolean;
+  theme?: 'default' | 'neutral' | 'dark' | 'forest';
+}
+
+// Default options
+const DEFAULT_OPTIONS: PFDGeneratorOptions = {
+  direction: 'TB',
+  showEquipment: true,
+  showAreas: true,
+  colorByArea: true,
+  theme: 'default',
+};
+
+// Area colors for visual grouping
+const AREA_COLORS: Record<string, string> = {
+  'Materials': '#e3f2fd',
+  'Molding': '#f3e5f5',
+  'Assembly': '#e8f5e9',
+  'Finishing': '#fff3e0',
+  'QC': '#fce4ec',
+  'Inspection': '#fce4ec',
+  'Shipping': '#e0f7fa',
+  'Packaging': '#e0f7fa',
+  'Receiving': '#e8eaf6',
+  'Testing': '#ede7f6',
+  'default': '#f5f5f5',
+};
+
+/**
+ * Get Mermaid node shape based on step type
+ */
+function getNodeShape(stepType: string, nodeId: string, label: string): string {
+  switch (stepType) {
+    case 'operation':
+      return `${nodeId}["${label}"]`;  // Rectangle
+    case 'inspection':
+      return `${nodeId}{{{"${label}"}}}`;  // Hexagon
+    case 'transport':
+      return `${nodeId}[/"${label}"/]`;  // Parallelogram
+    case 'storage':
+      return `${nodeId}[("${label}")]`;  // Cylinder
+    case 'decision':
+      return `${nodeId}{"${label}"}`;  // Diamond
+    case 'subprocess_ref':
+      return `${nodeId}(["${label}"])`;  // Stadium
+    case 'group':
+      return `${nodeId}[["${label}"]]`;  // Subroutine box
+    default:
+      return `${nodeId}["${label}"]`;  // Default to rectangle
+  }
+}
+
+/**
+ * Sanitize text for Mermaid (escape special characters)
+ */
+function sanitizeLabel(text: string): string {
+  return text
+    .replace(/"/g, "'")
+    .replace(/\n/g, '<br/>')
+    .replace(/[[\]{}()]/g, '')
+    .substring(0, 50);  // Limit label length
+}
+
+/**
+ * Generate a unique node ID from step
+ */
+function generateNodeId(processIndex: number, step: PFDStep): string {
+  return `P${processIndex}_S${step.seq}`;
+}
+
+/**
+ * Generate PFD from a single process definition
+ */
+export function generateProcessPFD(
+  process: ProcessDef & { steps: ProcessStep[] },
+  options: PFDGeneratorOptions = {}
+): PFDGenerationResult {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const steps = (process.steps || []).sort((a, b) => a.seq - b.seq);
+  
+  // Filter to top-level steps (not children of groups)
+  const topLevelSteps = steps.filter(s => !s.parentStepId);
+  
+  // Collect unique areas
+  const areas = [...new Set(steps.map(s => s.area))];
+  
+  // Check for decisions and rework
+  const hasDecisions = steps.some(s => s.stepType === 'decision');
+  const hasRework = steps.some(s => s.reworkTo);
+  
+  // Build Mermaid diagram
+  let mermaid = `flowchart ${opts.direction}\n`;
+  
+  // Add theme directive
+  if (opts.theme !== 'default') {
+    mermaid = `%%{init: {'theme': '${opts.theme}'}}%%\n` + mermaid;
+  }
+  
+  // Add start node
+  mermaid += `  Start([Start]) --> `;
+  
+  if (topLevelSteps.length === 0) {
+    mermaid += `End([End])\n`;
+    return {
+      mermaid,
+      json: {
+        processes: [{
+          id: process.id,
+          name: process.name,
+          rev: process.rev,
+          steps: [],
+          sequence: 1,
+        }],
+        totalSteps: 0,
+        areas: [],
+        hasDecisions: false,
+        hasRework: false,
+      },
+    };
+  }
+  
+  // First step connection
+  const firstStep = topLevelSteps[0];
+  const firstNodeId = `S${firstStep.seq}`;
+  mermaid += `${firstNodeId}\n`;
+  
+  // Generate nodes and connections
+  for (let i = 0; i < topLevelSteps.length; i++) {
+    const step = topLevelSteps[i];
+    const nodeId = `S${step.seq}`;
+    const nextStep = topLevelSteps[i + 1];
+    const nextNodeId = nextStep ? `S${nextStep.seq}` : 'End';
+    
+    // Build label
+    let label = `${step.seq}: ${sanitizeLabel(step.name)}`;
+    if (opts.showAreas) {
+      label += `<br/><small>${step.area}</small>`;
+    }
+    if (opts.showEquipment && step.equipment && step.equipment.length > 0) {
+      const equipmentNames = step.equipment.map(e => e.name).slice(0, 2).join(', ');
+      label += `<br/><small>📦 ${equipmentNames}</small>`;
+    }
+    
+    // Node definition
+    const nodeShape = getNodeShape(step.stepType || 'operation', nodeId, label);
+    mermaid += `  ${nodeShape}\n`;
+    
+    // Handle decision branching
+    if (step.stepType === 'decision') {
+      // Decision has Yes/No paths
+      if (nextStep) {
+        mermaid += `  ${nodeId} -->|Yes| ${nextNodeId}\n`;
+      }
+      if (step.branchTo) {
+        const branchTarget = topLevelSteps.find(s => s.name.toLowerCase().includes(step.branchTo!.toLowerCase()));
+        if (branchTarget) {
+          mermaid += `  ${nodeId} -->|No| S${branchTarget.seq}\n`;
+        } else {
+          mermaid += `  ${nodeId} -->|No| Rework_${step.seq}[Rework: ${step.branchTo}]\n`;
+        }
+      }
+    } else {
+      // Normal flow
+      if (nextStep) {
+        mermaid += `  ${nodeId} --> ${nextNodeId}\n`;
+      } else {
+        mermaid += `  ${nodeId} --> End([End])\n`;
+      }
+    }
+    
+    // Handle rework loops
+    if (step.reworkTo) {
+      const reworkTarget = topLevelSteps.find(s => s.name.toLowerCase().includes(step.reworkTo!.toLowerCase()));
+      if (reworkTarget) {
+        mermaid += `  ${nodeId} -.->|Rework| S${reworkTarget.seq}\n`;
+      }
+    }
+  }
+  
+  // Add styling by area if enabled
+  if (opts.colorByArea) {
+    mermaid += '\n  %% Styling by area\n';
+    const areaStyles: string[] = [];
+    
+    steps.forEach(step => {
+      const nodeId = `S${step.seq}`;
+      const color = AREA_COLORS[step.area] || AREA_COLORS['default'];
+      areaStyles.push(`  style ${nodeId} fill:${color},stroke:#333`);
+    });
+    
+    mermaid += areaStyles.join('\n') + '\n';
+  }
+  
+  return {
+    mermaid,
+    json: {
+      processes: [{
+        id: process.id,
+        name: process.name,
+        rev: process.rev,
+        steps: steps.map(s => ({
+          id: s.id,
+          seq: s.seq,
+          name: s.name,
+          area: s.area,
+          stepType: s.stepType || 'operation',
+          equipment: s.equipment || undefined,
+          equipmentIds: s.equipmentIds || undefined,
+          branchTo: s.branchTo,
+          reworkTo: s.reworkTo,
+          parentStepId: s.parentStepId,
+          subprocessRefId: s.subprocessRefId,
+          subprocessRev: s.subprocessRev,
+          collapsed: s.collapsed,
+        })),
+        sequence: 1,
+      }],
+      totalSteps: steps.length,
+      areas,
+      hasDecisions,
+      hasRework,
+    },
+  };
+}
+
+/**
+ * Generate PFD for a part with multiple processes
+ * Combines all mapped processes into a single flow diagram
+ */
+export function generatePartPFD(
+  partName: string,
+  processMaps: {
+    process: ProcessDef & { steps: ProcessStep[] };
+    sequence: number;
+    assumptions?: string | null;
+  }[],
+  options: PFDGeneratorOptions = {}
+): PFDGenerationResult {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  
+  // Sort by sequence
+  const sortedMaps = [...processMaps].sort((a, b) => a.sequence - b.sequence);
+  
+  // Collect all areas and stats
+  const allAreas = new Set<string>();
+  let totalSteps = 0;
+  let hasDecisions = false;
+  let hasRework = false;
+  
+  // Build Mermaid diagram
+  let mermaid = `flowchart ${opts.direction}\n`;
+  
+  // Add theme and title
+  if (opts.theme !== 'default') {
+    mermaid = `%%{init: {'theme': '${opts.theme}'}}%%\n` + mermaid;
+  }
+  
+  mermaid += `  %% Process Flow Diagram for: ${sanitizeLabel(partName)}\n\n`;
+  
+  // Add start
+  mermaid += `  Start([Start])\n`;
+  
+  const processes: PFDProcess[] = [];
+  let prevLastNodeId = 'Start';
+  let globalStepIndex = 0;
+  
+  sortedMaps.forEach((map, processIndex) => {
+    const process = map.process;
+    const steps = (process.steps || []).sort((a, b) => a.seq - b.seq);
+    const topLevelSteps = steps.filter(s => !s.parentStepId);
+    
+    // Update stats
+    totalSteps += steps.length;
+    steps.forEach(s => {
+      allAreas.add(s.area);
+      if (s.stepType === 'decision') hasDecisions = true;
+      if (s.reworkTo) hasRework = true;
+    });
+    
+    // Add subgraph for each process
+    mermaid += `\n  subgraph ${sanitizeLabel(process.name)} [" ${process.name} (Rev ${process.rev})"]\n`;
+    mermaid += `    direction ${opts.direction}\n`;
+    
+    if (topLevelSteps.length > 0) {
+      // Generate nodes for this process
+      topLevelSteps.forEach((step, stepIndex) => {
+        const nodeId = `P${processIndex}_S${step.seq}`;
+        const nextStep = topLevelSteps[stepIndex + 1];
+        const nextNodeId = nextStep ? `P${processIndex}_S${nextStep.seq}` : null;
+        
+        // Build label
+        let label = `${step.seq}: ${sanitizeLabel(step.name)}`;
+        if (opts.showAreas) {
+          label += `<br/><small>${step.area}</small>`;
+        }
+        
+        // Node definition
+        const nodeShape = getNodeShape(step.stepType || 'operation', nodeId, label);
+        mermaid += `    ${nodeShape}\n`;
+        
+        // Connections within process
+        if (step.stepType === 'decision') {
+          if (nextStep) {
+            mermaid += `    ${nodeId} -->|Pass| ${nextNodeId}\n`;
+          }
+          if (step.branchTo) {
+            mermaid += `    ${nodeId} -.->|Fail| Rework_${processIndex}_${step.seq}((Rework))\n`;
+          }
+        } else if (nextStep) {
+          mermaid += `    ${nodeId} --> ${nextNodeId}\n`;
+        }
+        
+        globalStepIndex++;
+      });
+    }
+    
+    mermaid += `  end\n`;
+    
+    // Connect to previous process or start
+    if (topLevelSteps.length > 0) {
+      const firstNodeId = `P${processIndex}_S${topLevelSteps[0].seq}`;
+      const lastNodeId = `P${processIndex}_S${topLevelSteps[topLevelSteps.length - 1].seq}`;
+      
+      mermaid += `  ${prevLastNodeId} --> ${firstNodeId}\n`;
+      prevLastNodeId = lastNodeId;
+    }
+    
+    // Add to processes array
+    processes.push({
+      id: process.id,
+      name: process.name,
+      rev: process.rev,
+      steps: steps.map(s => ({
+        id: s.id,
+        seq: s.seq,
+        name: s.name,
+        area: s.area,
+        stepType: s.stepType || 'operation',
+        equipment: s.equipment || undefined,
+        equipmentIds: s.equipmentIds || undefined,
+        branchTo: s.branchTo,
+        reworkTo: s.reworkTo,
+        parentStepId: s.parentStepId,
+        subprocessRefId: s.subprocessRefId,
+        subprocessRev: s.subprocessRev,
+        collapsed: s.collapsed,
+      })),
+      sequence: map.sequence,
+    });
+  });
+  
+  // Connect to end
+  mermaid += `  ${prevLastNodeId} --> End([End])\n`;
+  
+  // Add styling by area
+  if (opts.colorByArea) {
+    mermaid += '\n  %% Styling\n';
+    let styleIndex = 0;
+    
+    sortedMaps.forEach((map, processIndex) => {
+      const steps = map.process.steps || [];
+      steps.forEach(step => {
+        const nodeId = `P${processIndex}_S${step.seq}`;
+        const color = AREA_COLORS[step.area] || AREA_COLORS['default'];
+        mermaid += `  style ${nodeId} fill:${color},stroke:#333\n`;
+        styleIndex++;
+      });
+    });
+  }
+  
+  return {
+    mermaid,
+    json: {
+      processes,
+      totalSteps,
+      areas: Array.from(allAreas),
+      hasDecisions,
+      hasRework,
+    },
+  };
+}
+
+/**
+ * Generate a simple sequential PFD without subgraphs
+ * Used for simpler views or exports
+ */
+export function generateSimplePFD(
+  steps: PFDStep[],
+  options: PFDGeneratorOptions = {}
+): string {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const sortedSteps = [...steps].sort((a, b) => a.seq - b.seq);
+  
+  let mermaid = `flowchart ${opts.direction}\n`;
+  mermaid += `  Start([Start])`;
+  
+  if (sortedSteps.length === 0) {
+    mermaid += ` --> End([End])\n`;
+    return mermaid;
+  }
+  
+  mermaid += ` --> S${sortedSteps[0].seq}\n`;
+  
+  sortedSteps.forEach((step, i) => {
+    const nodeId = `S${step.seq}`;
+    const label = `${step.seq}: ${sanitizeLabel(step.name)}`;
+    const nodeShape = getNodeShape(step.stepType, nodeId, label);
+    
+    mermaid += `  ${nodeShape}\n`;
+    
+    const nextStep = sortedSteps[i + 1];
+    if (nextStep) {
+      mermaid += `  ${nodeId} --> S${nextStep.seq}\n`;
+    } else {
+      mermaid += `  ${nodeId} --> End([End])\n`;
+    }
+  });
+  
+  return mermaid;
+}
+
+/**
+ * Validate PFD for completeness
+ */
+export function validatePFD(result: PFDGenerationResult): {
+  isValid: boolean;
+  warnings: string[];
+  errors: string[];
+} {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  
+  // Check for empty processes
+  if (result.json.processes.length === 0) {
+    errors.push('No processes defined');
+  }
+  
+  // Check for empty steps
+  if (result.json.totalSteps === 0) {
+    errors.push('No process steps defined');
+  }
+  
+  // Check for orphaned decision branches
+  result.json.processes.forEach(process => {
+    process.steps.forEach(step => {
+      if (step.stepType === 'decision' && !step.branchTo) {
+        warnings.push(`Decision step "${step.name}" has no branch target defined`);
+      }
+    });
+  });
+  
+  // Check for missing areas
+  result.json.processes.forEach(process => {
+    process.steps.forEach(step => {
+      if (!step.area) {
+        warnings.push(`Step "${step.name}" has no area assigned`);
+      }
+    });
+  });
+  
+  return {
+    isValid: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
+export default {
+  generateProcessPFD,
+  generatePartPFD,
+  generateSimplePFD,
+  validatePFD,
+};
