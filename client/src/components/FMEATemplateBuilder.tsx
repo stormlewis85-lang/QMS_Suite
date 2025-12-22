@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import {
   Plus,
   Search,
@@ -465,8 +465,8 @@ export default function FMEATemplateBuilder({
                 </TableHeader>
                 <TableBody>
                   {filteredRows.map((row) => (
-                    <>
-                      <TableRow key={row.id} className={row.specialFlag ? "bg-purple-50" : ""}>
+                    <Fragment key={row.id}>
+                      <TableRow className={row.specialFlag ? "bg-purple-50" : ""}>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -648,7 +648,7 @@ export default function FMEATemplateBuilder({
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>
