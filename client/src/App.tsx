@@ -8,7 +8,6 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import Dashboard from "@/pages/Dashboard";
 import Parts from "@/pages/Parts";
-import PartDetail from "@/pages/PartDetail";
 import Processes from "@/pages/Processes";
 import ProcessDetail from "@/pages/ProcessDetail";
 import PFMEA from "@/pages/PFMEA";
@@ -24,7 +23,6 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/parts" component={Parts} />
-      <Route path="/parts/:id" component={PartDetail} />
       <Route path="/processes" component={Processes} />
       <Route path="/processes/:id" component={ProcessDetail} />
       <Route path="/pfmea" component={PFMEA} />
@@ -51,7 +49,7 @@ function App() {
           <div className="flex h-screen w-full">
             <AppSidebar />
             <div className="flex flex-col flex-1 overflow-hidden">
-              <header className="flex items-center justify-between p-4 border-b bg-background">
+              <header className="flex items-center justify-between gap-4 p-4 border-b bg-background">
                 <SidebarTrigger data-testid="button-sidebar-toggle" />
                 <ThemeToggle />
               </header>
