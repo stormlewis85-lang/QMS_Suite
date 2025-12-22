@@ -3,7 +3,8 @@ import {
   part,
   processDef,
   processStep,
-  partProcessMap,
+  fmeaTemplateRow,
+  controlTemplateRow,
   pfmea,
   pfmeaRow,
   controlPlan,
@@ -15,16 +16,16 @@ import {
   fmeaTemplateCatalogLink,
   controlsLibrary,
   controlPairings,
-  ratingScale,
-  fmeaTemplateRow,
   type Part,
   type InsertPart,
   type ProcessDef,
   type InsertProcessDef,
   type ProcessStep,
   type InsertProcessStep,
-  type PartProcessMap,
-  type InsertPartProcessMap,
+  type FmeaTemplateRow,
+  type InsertFmeaTemplateRow,
+  type ControlTemplateRow,
+  type InsertControlTemplateRow,
   type PFMEA,
   type InsertPFMEA,
   type PFMEARow,
@@ -50,9 +51,6 @@ import {
   type InsertControlPairings,
   type ControlType,
   type ControlEffectiveness,
-  type RatingScale,
-  type FmeaTemplateRow,
-  type InsertFmeaTemplateRow,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
@@ -62,15 +60,6 @@ export interface IStorage {
   getAllParts(): Promise<Part[]>;
   getPartById(id: string): Promise<Part | undefined>;
   createPart(insertPart: InsertPart): Promise<Part>;
-  updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined>;
-  deletePart(id: string): Promise<boolean>;
-  
-  // Part-Process Mappings
-  getPartProcessMaps(partId: string): Promise<(PartProcessMap & { process?: ProcessDef })[]>;
-  getPartProcessMapById(id: string): Promise<PartProcessMap | undefined>;
-  createPartProcessMap(insertMap: InsertPartProcessMap): Promise<PartProcessMap>;
-  updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined>;
-  deletePartProcessMap(id: string): Promise<boolean>;
   
   // Processes
   getAllProcesses(): Promise<ProcessDef[]>;
@@ -88,6 +77,24 @@ export interface IStorage {
   getStepsByProcessId(processDefId: string): Promise<ProcessStep[]>;
   getChildSteps(parentStepId: string): Promise<ProcessStep[]>;
   resequenceSteps(processDefId: string): Promise<void>;
+  
+  // FMEA Template Rows
+  getFmeaTemplateRowsByProcessId(processDefId: string): Promise<FmeaTemplateRow[]>;
+  getFmeaTemplateRowById(id: string): Promise<FmeaTemplateRow | undefined>;
+  getFmeaTemplateRowsByStepId(stepId: string): Promise<FmeaTemplateRow[]>;
+  createFmeaTemplateRow(insertRow: InsertFmeaTemplateRow): Promise<FmeaTemplateRow>;
+  updateFmeaTemplateRow(id: string, updates: Partial<InsertFmeaTemplateRow>): Promise<FmeaTemplateRow | undefined>;
+  deleteFmeaTemplateRow(id: string): Promise<boolean>;
+  duplicateFmeaTemplateRow(id: string): Promise<FmeaTemplateRow | undefined>;
+  
+  // Control Template Rows
+  getControlTemplateRowsByProcessId(processDefId: string): Promise<ControlTemplateRow[]>;
+  getControlTemplateRowById(id: string): Promise<ControlTemplateRow | undefined>;
+  getControlTemplateRowsBySourceRowId(sourceTemplateRowId: string): Promise<ControlTemplateRow[]>;
+  createControlTemplateRow(insertRow: InsertControlTemplateRow): Promise<ControlTemplateRow>;
+  updateControlTemplateRow(id: string, updates: Partial<InsertControlTemplateRow>): Promise<ControlTemplateRow | undefined>;
+  deleteControlTemplateRow(id: string): Promise<boolean>;
+  duplicateControlTemplateRow(id: string): Promise<ControlTemplateRow | undefined>;
   
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
@@ -142,17 +149,6 @@ export interface IStorage {
   getControlPairingsByFailureModeId(failureModeId: string): Promise<ControlPairings[]>;
   createControlPairing(insertPairing: InsertControlPairings): Promise<ControlPairings>;
   deleteControlPairing(id: string): Promise<boolean>;
-  
-  // Rating Scales
-  getRatingScales(): Promise<RatingScale[]>;
-  getRatingScale(version: string, kind: string): Promise<RatingScale | undefined>;
-  
-  // FMEA Template Rows
-  getFmeaTemplateRowsByProcessId(processDefId: string): Promise<FmeaTemplateRow[]>;
-  getFmeaTemplateRowById(id: string): Promise<FmeaTemplateRow | undefined>;
-  createFmeaTemplateRow(insertRow: InsertFmeaTemplateRow): Promise<FmeaTemplateRow>;
-  updateFmeaTemplateRow(id: string, updates: Partial<InsertFmeaTemplateRow>): Promise<FmeaTemplateRow | undefined>;
-  deleteFmeaTemplateRow(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -168,57 +164,6 @@ export class DatabaseStorage implements IStorage {
   async createPart(insertPart: InsertPart): Promise<Part> {
     const [newPart] = await db.insert(part).values(insertPart).returning();
     return newPart;
-  }
-
-  async updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined> {
-    const [updatedPart] = await db.update(part)
-      .set(updates)
-      .where(eq(part.id, id))
-      .returning();
-    return updatedPart || undefined;
-  }
-
-  async deletePart(id: string): Promise<boolean> {
-    const result = await db.delete(part).where(eq(part.id, id));
-    return result.rowCount !== null && result.rowCount > 0;
-  }
-
-  // Part-Process Mappings
-  async getPartProcessMaps(partId: string): Promise<(PartProcessMap & { process?: ProcessDef })[]> {
-    const maps = await db.select().from(partProcessMap)
-      .where(eq(partProcessMap.partId, partId))
-      .orderBy(partProcessMap.sequence);
-    
-    const mapsWithProcess = await Promise.all(
-      maps.map(async (m) => {
-        const [process] = await db.select().from(processDef).where(eq(processDef.id, m.processDefId));
-        return { ...m, process };
-      })
-    );
-    return mapsWithProcess;
-  }
-
-  async getPartProcessMapById(id: string): Promise<PartProcessMap | undefined> {
-    const [result] = await db.select().from(partProcessMap).where(eq(partProcessMap.id, id));
-    return result || undefined;
-  }
-
-  async createPartProcessMap(insertMap: InsertPartProcessMap): Promise<PartProcessMap> {
-    const [newMap] = await db.insert(partProcessMap).values(insertMap).returning();
-    return newMap;
-  }
-
-  async updatePartProcessMap(id: string, updates: Partial<InsertPartProcessMap>): Promise<PartProcessMap | undefined> {
-    const [updatedMap] = await db.update(partProcessMap)
-      .set(updates)
-      .where(eq(partProcessMap.id, id))
-      .returning();
-    return updatedMap || undefined;
-  }
-
-  async deletePartProcessMap(id: string): Promise<boolean> {
-    const result = await db.delete(partProcessMap).where(eq(partProcessMap.id, id));
-    return result.rowCount !== null && result.rowCount > 0;
   }
 
   async getAllProcesses(): Promise<ProcessDef[]> {
@@ -278,7 +223,6 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  // Individual process step operations
   async createProcessStep(step: InsertProcessStep): Promise<ProcessStep> {
     const [newStep] = await db.insert(processStep).values(step).returning();
     return newStep;
@@ -293,7 +237,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProcessStep(id: string): Promise<boolean> {
-    await db.delete(processStep).where(eq(processStep.id, id));
+    const result = await db.delete(processStep)
+      .where(eq(processStep.id, id));
     return true;
   }
 
@@ -303,35 +248,140 @@ export class DatabaseStorage implements IStorage {
       .orderBy(processStep.seq);
   }
 
-  // Get child steps for a group
   async getChildSteps(parentStepId: string): Promise<ProcessStep[]> {
     return await db.select().from(processStep)
       .where(eq(processStep.parentStepId, parentStepId))
       .orderBy(processStep.seq);
   }
 
-  // Resequence steps after insert/delete
   async resequenceSteps(processDefId: string): Promise<void> {
     const steps = await this.getStepsByProcessId(processDefId);
+    
     for (let i = 0; i < steps.length; i++) {
-      if (steps[i].seq !== i + 1) {
+      const newSeq = (i + 1) * 10;
+      if (steps[i].seq !== newSeq) {
         await db.update(processStep)
-          .set({ seq: i + 1 })
+          .set({ seq: newSeq })
           .where(eq(processStep.id, steps[i].id));
       }
     }
   }
 
+  // FMEA Template Rows
+  async getFmeaTemplateRowsByProcessId(processDefId: string): Promise<FmeaTemplateRow[]> {
+    return await db.select().from(fmeaTemplateRow)
+      .where(eq(fmeaTemplateRow.processDefId, processDefId))
+      .orderBy(fmeaTemplateRow.stepId);
+  }
+
+  async getFmeaTemplateRowById(id: string): Promise<FmeaTemplateRow | undefined> {
+    const [result] = await db.select().from(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
+    return result || undefined;
+  }
+
+  async getFmeaTemplateRowsByStepId(stepId: string): Promise<FmeaTemplateRow[]> {
+    return await db.select().from(fmeaTemplateRow)
+      .where(eq(fmeaTemplateRow.stepId, stepId));
+  }
+
+  async createFmeaTemplateRow(insertRow: InsertFmeaTemplateRow): Promise<FmeaTemplateRow> {
+    const [newRow] = await db.insert(fmeaTemplateRow).values(insertRow).returning();
+    return newRow;
+  }
+
+  async updateFmeaTemplateRow(id: string, updates: Partial<InsertFmeaTemplateRow>): Promise<FmeaTemplateRow | undefined> {
+    const [updatedRow] = await db.update(fmeaTemplateRow)
+      .set(updates)
+      .where(eq(fmeaTemplateRow.id, id))
+      .returning();
+    return updatedRow || undefined;
+  }
+
+  async deleteFmeaTemplateRow(id: string): Promise<boolean> {
+    const result = await db.delete(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async duplicateFmeaTemplateRow(id: string): Promise<FmeaTemplateRow | undefined> {
+    const original = await this.getFmeaTemplateRowById(id);
+    if (!original) return undefined;
+
+    const { id: _, ...rowData } = original;
+    const duplicate = {
+      ...rowData,
+      failureMode: `${rowData.failureMode} (Copy)`,
+    };
+    
+    return await this.createFmeaTemplateRow(duplicate);
+  }
+
+  // Control Template Rows
+  async getControlTemplateRowsByProcessId(processDefId: string): Promise<ControlTemplateRow[]> {
+    return await db.select().from(controlTemplateRow)
+      .where(eq(controlTemplateRow.processDefId, processDefId))
+      .orderBy(controlTemplateRow.charId);
+  }
+
+  async getControlTemplateRowById(id: string): Promise<ControlTemplateRow | undefined> {
+    const [result] = await db.select().from(controlTemplateRow).where(eq(controlTemplateRow.id, id));
+    return result || undefined;
+  }
+
+  async getControlTemplateRowsBySourceRowId(sourceTemplateRowId: string): Promise<ControlTemplateRow[]> {
+    return await db.select().from(controlTemplateRow)
+      .where(eq(controlTemplateRow.sourceTemplateRowId, sourceTemplateRowId));
+  }
+
+  async createControlTemplateRow(insertRow: InsertControlTemplateRow): Promise<ControlTemplateRow> {
+    const [newRow] = await db.insert(controlTemplateRow).values(insertRow).returning();
+    return newRow;
+  }
+
+  async updateControlTemplateRow(id: string, updates: Partial<InsertControlTemplateRow>): Promise<ControlTemplateRow | undefined> {
+    const [updatedRow] = await db.update(controlTemplateRow)
+      .set(updates)
+      .where(eq(controlTemplateRow.id, id))
+      .returning();
+    return updatedRow || undefined;
+  }
+
+  async deleteControlTemplateRow(id: string): Promise<boolean> {
+    const result = await db.delete(controlTemplateRow).where(eq(controlTemplateRow.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async duplicateControlTemplateRow(id: string): Promise<ControlTemplateRow | undefined> {
+    const original = await this.getControlTemplateRowById(id);
+    if (!original) return undefined;
+
+    const { id: _, ...rowData } = original;
+    // Generate new char ID
+    const prefix = "C";
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    const newCharId = `${prefix}-${num}`;
+    
+    const duplicate = {
+      ...rowData,
+      charId: newCharId,
+      characteristicName: `${rowData.characteristicName} (Copy)`,
+    };
+    
+    return await this.createControlTemplateRow(duplicate);
+  }
+
+  // PFMEA
   async getPFMEAsByPartId(partId: string): Promise<PFMEA[]> {
-    return await db.select().from(pfmea).where(eq(pfmea.partId, partId)).orderBy(desc(pfmea.rev));
+    return await db.select().from(pfmea)
+      .where(eq(pfmea.partId, partId))
+      .orderBy(desc(pfmea.rev));
   }
 
   async getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined> {
-    const [pfmeaRecord] = await db.select().from(pfmea).where(eq(pfmea.id, id));
-    if (!pfmeaRecord) return undefined;
-    
+    const [pfmeaDoc] = await db.select().from(pfmea).where(eq(pfmea.id, id));
+    if (!pfmeaDoc) return undefined;
+
     const rows = await db.select().from(pfmeaRow).where(eq(pfmeaRow.pfmeaId, id));
-    return { ...pfmeaRecord, rows };
+    return { ...pfmeaDoc, rows };
   }
 
   async createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA> {
@@ -352,21 +402,24 @@ export class DatabaseStorage implements IStorage {
     return updatedRow || undefined;
   }
 
+  // Control Plans
   async getControlPlansByPartId(partId: string): Promise<ControlPlan[]> {
-    return await db.select().from(controlPlan).where(eq(controlPlan.partId, partId)).orderBy(desc(controlPlan.rev));
+    return await db.select().from(controlPlan)
+      .where(eq(controlPlan.partId, partId))
+      .orderBy(desc(controlPlan.rev));
   }
 
   async getControlPlanById(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[] }) | undefined> {
-    const [plan] = await db.select().from(controlPlan).where(eq(controlPlan.id, id));
-    if (!plan) return undefined;
-    
+    const [cpDoc] = await db.select().from(controlPlan).where(eq(controlPlan.id, id));
+    if (!cpDoc) return undefined;
+
     const rows = await db.select().from(controlPlanRow).where(eq(controlPlanRow.controlPlanId, id));
-    return { ...plan, rows };
+    return { ...cpDoc, rows };
   }
 
   async createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan> {
-    const [newControlPlan] = await db.insert(controlPlan).values(insertControlPlan).returning();
-    return newControlPlan;
+    const [newCP] = await db.insert(controlPlan).values(insertControlPlan).returning();
+    return newCP;
   }
 
   async createControlPlanRow(insertRow: InsertControlPlanRow): Promise<ControlPlanRow> {
@@ -384,16 +437,20 @@ export class DatabaseStorage implements IStorage {
 
   // Equipment Library
   async getAllEquipment(): Promise<EquipmentLibrary[]> {
-    return await db.select().from(equipmentLibrary).orderBy(equipmentLibrary.name);
+    return await db.select().from(equipmentLibrary)
+      .orderBy(equipmentLibrary.type, equipmentLibrary.name);
   }
 
   async getEquipmentById(id: string): Promise<(EquipmentLibrary & { errorProofingControls: EquipmentErrorProofing[]; controlMethods: EquipmentControlMethods[] }) | undefined> {
     const [equipment] = await db.select().from(equipmentLibrary).where(eq(equipmentLibrary.id, id));
     if (!equipment) return undefined;
-    
-    const errorProofingControls = await db.select().from(equipmentErrorProofing).where(eq(equipmentErrorProofing.equipmentId, id));
-    const controlMethods = await db.select().from(equipmentControlMethods).where(eq(equipmentControlMethods.equipmentId, id));
-    
+
+    const errorProofingControls = await db.select().from(equipmentErrorProofing)
+      .where(eq(equipmentErrorProofing.equipmentId, id));
+
+    const controlMethods = await db.select().from(equipmentControlMethods)
+      .where(eq(equipmentControlMethods.equipmentId, id));
+
     return { ...equipment, errorProofingControls, controlMethods };
   }
 
@@ -453,7 +510,7 @@ export class DatabaseStorage implements IStorage {
 
   // Failure Modes Library
   async getAllFailureModes(filters?: { category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]> {
-    const conditions = [];
+    const conditions: any[] = [];
     
     if (filters?.category) {
       conditions.push(eq(failureModesLibrary.category, filters.category));
@@ -467,8 +524,9 @@ export class DatabaseStorage implements IStorage {
       const searchTerm = `%${filters.search}%`;
       conditions.push(
         or(
-          ilike(failureModesLibrary.failureMode, searchTerm),
-          ilike(failureModesLibrary.genericEffect, searchTerm)
+          ilike(failureModesLibrary.name, searchTerm),
+          ilike(failureModesLibrary.effect, searchTerm),
+          ilike(failureModesLibrary.typicalCauses, searchTerm)
         )
       );
     }
@@ -476,11 +534,11 @@ export class DatabaseStorage implements IStorage {
     if (conditions.length > 0) {
       return await db.select().from(failureModesLibrary)
         .where(and(...conditions))
-        .orderBy(failureModesLibrary.category, failureModesLibrary.failureMode);
+        .orderBy(failureModesLibrary.category, failureModesLibrary.name);
     }
     
     return await db.select().from(failureModesLibrary)
-      .orderBy(failureModesLibrary.category, failureModesLibrary.failureMode);
+      .orderBy(failureModesLibrary.category, failureModesLibrary.name);
   }
 
   async getFailureModeById(id: string): Promise<FailureModesLibrary | undefined> {
@@ -530,7 +588,7 @@ export class DatabaseStorage implements IStorage {
 
   // Controls Library
   async getAllControls(filters?: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]> {
-    const conditions = [];
+    const conditions: any[] = [];
     
     if (filters?.type) {
       conditions.push(eq(controlsLibrary.type, filters.type));
@@ -611,64 +669,6 @@ export class DatabaseStorage implements IStorage {
   async deleteControlPairing(id: string): Promise<boolean> {
     const result = await db.delete(controlPairings).where(eq(controlPairings.id, id));
     return result.rowCount !== null && result.rowCount > 0;
-  }
-
-  // Rating Scales
-  async getRatingScales(): Promise<RatingScale[]> {
-    return await db.select().from(ratingScale).orderBy(ratingScale.version, ratingScale.kind);
-  }
-
-  async getRatingScale(version: string, kind: string): Promise<RatingScale | undefined> {
-    const [scale] = await db.select().from(ratingScale)
-      .where(and(eq(ratingScale.version, version), eq(ratingScale.kind, kind)));
-    return scale;
-  }
-
-  // FMEA Template Rows
-  async getFmeaTemplateRowsByProcessId(processDefId: string): Promise<FmeaTemplateRow[]> {
-    return await db.select().from(fmeaTemplateRow)
-      .where(eq(fmeaTemplateRow.processDefId, processDefId))
-      .orderBy(fmeaTemplateRow.stepId);
-  }
-
-  async getFmeaTemplateRowById(id: string): Promise<FmeaTemplateRow | undefined> {
-    const [row] = await db.select().from(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
-    return row;
-  }
-
-  async createFmeaTemplateRow(insertRow: InsertFmeaTemplateRow): Promise<FmeaTemplateRow> {
-    const [newRow] = await db.insert(fmeaTemplateRow).values(insertRow).returning();
-    return newRow;
-  }
-
-  async updateFmeaTemplateRow(id: string, updates: Partial<InsertFmeaTemplateRow>): Promise<FmeaTemplateRow | undefined> {
-    const [updatedRow] = await db.update(fmeaTemplateRow)
-      .set(updates)
-      .where(eq(fmeaTemplateRow.id, id))
-      .returning();
-    return updatedRow;
-  }
-
-  async deleteFmeaTemplateRow(id: string): Promise<boolean> {
-    const result = await db.delete(fmeaTemplateRow).where(eq(fmeaTemplateRow.id, id));
-    return result.rowCount !== null && result.rowCount > 0;
-  }
-
-  async getFmeaTemplateRowsByStepId(stepId: string): Promise<FmeaTemplateRow[]> {
-    return await db.select().from(fmeaTemplateRow)
-      .where(eq(fmeaTemplateRow.stepId, stepId));
-  }
-
-  async duplicateFmeaTemplateRow(id: string): Promise<FmeaTemplateRow | undefined> {
-    const original = await this.getFmeaTemplateRowById(id);
-    if (!original) return undefined;
-    
-    const { id: _id, createdAt: _createdAt, ...rowData } = original;
-    const [duplicated] = await db.insert(fmeaTemplateRow).values({
-      ...rowData,
-      function: `${rowData.function} (Copy)`,
-    }).returning();
-    return duplicated;
   }
 }
 
