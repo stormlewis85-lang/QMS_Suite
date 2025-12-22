@@ -50,20 +50,99 @@ export function validateRatings(severity: number, occurrence: number, detection:
   };
 }
 
+// ============================================================================
+// AIAG-VDA 2019 Action Priority Matrix Tables
+// Rows = Detection (1-10), Columns = Occurrence (1-10)
+// ============================================================================
+
+const L: ActionPriority = 'L';
+const M: ActionPriority = 'M';
+const H: ActionPriority = 'H';
+
+// Severity 1-4: Low severity bracket
+const AP_MATRIX_S1_4: ActionPriority[][] = [
+  [L,L,L,L,L,L,L,L,M,M], // D=1
+  [L,L,L,L,L,L,L,L,M,M], // D=2
+  [L,L,L,L,L,L,L,M,M,M], // D=3
+  [L,L,L,L,L,L,M,M,M,M], // D=4
+  [L,L,L,L,L,M,M,M,M,H], // D=5
+  [L,L,L,L,M,M,M,M,H,H], // D=6
+  [L,L,L,M,M,M,M,H,H,H], // D=7
+  [L,L,M,M,M,M,H,H,H,H], // D=8
+  [L,M,M,M,M,H,H,H,H,H], // D=9
+  [M,M,M,M,H,H,H,H,H,H], // D=10
+];
+
+// Severity 5-6: Moderate severity bracket
+const AP_MATRIX_S5_6: ActionPriority[][] = [
+  [L,L,L,L,L,L,M,M,M,M], // D=1
+  [L,L,L,L,L,M,M,M,M,H], // D=2
+  [L,L,L,L,M,M,M,M,H,H], // D=3
+  [L,L,L,M,M,M,M,H,H,H], // D=4
+  [L,L,M,M,M,M,H,H,H,H], // D=5
+  [L,M,M,M,M,H,H,H,H,H], // D=6
+  [M,M,M,M,H,H,H,H,H,H], // D=7
+  [M,M,M,H,H,H,H,H,H,H], // D=8
+  [M,M,H,H,H,H,H,H,H,H], // D=9
+  [M,H,H,H,H,H,H,H,H,H], // D=10
+];
+
+// Severity 7-8: High severity bracket
+const AP_MATRIX_S7_8: ActionPriority[][] = [
+  [M,M,M,M,M,M,H,H,H,H], // D=1
+  [M,M,M,M,M,H,H,H,H,H], // D=2
+  [M,M,M,M,H,H,H,H,H,H], // D=3
+  [M,M,M,H,H,H,H,H,H,H], // D=4
+  [M,M,H,H,H,H,H,H,H,H], // D=5
+  [M,H,H,H,H,H,H,H,H,H], // D=6
+  [H,H,H,H,H,H,H,H,H,H], // D=7
+  [H,H,H,H,H,H,H,H,H,H], // D=8
+  [H,H,H,H,H,H,H,H,H,H], // D=9
+  [H,H,H,H,H,H,H,H,H,H], // D=10
+];
+
+// Severity 9-10: Critical severity bracket (safety/regulatory)
+const AP_MATRIX_S9_10: ActionPriority[][] = [
+  [M,M,M,M,H,H,H,H,H,H], // D=1
+  [M,M,M,H,H,H,H,H,H,H], // D=2
+  [M,M,H,H,H,H,H,H,H,H], // D=3
+  [M,H,H,H,H,H,H,H,H,H], // D=4
+  [H,H,H,H,H,H,H,H,H,H], // D=5
+  [H,H,H,H,H,H,H,H,H,H], // D=6
+  [H,H,H,H,H,H,H,H,H,H], // D=7
+  [H,H,H,H,H,H,H,H,H,H], // D=8
+  [H,H,H,H,H,H,H,H,H,H], // D=9
+  [H,H,H,H,H,H,H,H,H,H], // D=10
+];
+
+/**
+ * Get the appropriate AP matrix based on severity bracket
+ */
+function getAPMatrix(severity: number): ActionPriority[][] {
+  if (severity >= 9) return AP_MATRIX_S9_10;
+  if (severity >= 7) return AP_MATRIX_S7_8;
+  if (severity >= 5) return AP_MATRIX_S5_6;
+  return AP_MATRIX_S1_4;
+}
+
+/**
+ * Get severity bracket description for reasoning
+ */
+function getSeverityBracket(severity: number): string {
+  if (severity >= 9) return 'Critical (safety/regulatory)';
+  if (severity >= 7) return 'High';
+  if (severity >= 5) return 'Moderate';
+  return 'Low';
+}
+
 /**
  * Calculate Action Priority (AP) based on AIAG-VDA 2019 guidelines
  * 
+ * Uses official matrix lookup tables for each severity bracket.
  * The AP rating prioritizes actions based on the combination of S, O, and D:
  * - HIGH (H): Requires immediate action - safety/regulatory critical or high risk combination
  * - MEDIUM (M): Action should be taken with priority - moderate risk combination
  * - LOW (L): May be addressed with standard controls - lower risk combination
- * 
- * Key principles:
- * 1. Safety-critical failures (S ≥ 9) always get HIGH priority
- * 2. High severity with either high occurrence or poor detection gets HIGH
- * 3. Detection alone ≥ 9 indicates no control exists, so HIGH priority
- * 4. Moderate combinations get MEDIUM
- * 5. Well-controlled low severity gets LOW
  */
 export function calculateAP(
   severity: number, 
@@ -76,90 +155,35 @@ export function calculateAP(
     throw new Error(`Invalid ratings: ${validation.errors.join(', ')}`);
   }
 
-  // Priority 1: Safety/Regulatory Critical (S ≥ 9)
-  // Regardless of O or D, if S is 9 or 10, immediate action is required
-  if (severity >= 9) {
-    return {
-      ap: 'H',
-      reason: `Severity ≥ 9 (S=${severity}): Safety/regulatory critical failure mode requires immediate action`,
-      color: 'red',
-      requiresAction: true,
-    };
+  // Table lookup: matrix is indexed by detection (row) and occurrence (column)
+  // Arrays are 0-indexed, ratings are 1-10, so subtract 1
+  const matrix = getAPMatrix(severity);
+  const ap = matrix[detection - 1][occurrence - 1];
+  
+  const bracket = getSeverityBracket(severity);
+  const colorMap: Record<ActionPriority, string> = { H: 'red', M: 'yellow', L: 'green' };
+  
+  // Generate contextual reason based on AP level
+  let reason: string;
+  if (ap === 'H') {
+    if (severity >= 9) {
+      reason = `${bracket} severity (S=${severity}): Safety/regulatory critical - immediate action required`;
+    } else if (severity >= 7) {
+      reason = `${bracket} severity (S=${severity}) with O=${occurrence}, D=${detection}: Significant risk - prioritize action`;
+    } else {
+      reason = `Risk combination S=${severity}/O=${occurrence}/D=${detection}: High priority action needed`;
+    }
+  } else if (ap === 'M') {
+    reason = `${bracket} severity (S=${severity}) with O=${occurrence}, D=${detection}: Monitor and consider improvements`;
+  } else {
+    reason = `${bracket} severity (S=${severity}) with O=${occurrence}, D=${detection}: Current controls adequate`;
   }
 
-  // Priority 2: High severity with high occurrence
-  // S = 7-8 combined with O ≥ 7 means failure likely to occur with significant effect
-  if (severity >= 7 && severity <= 8 && occurrence >= 7) {
-    return {
-      ap: 'H',
-      reason: `High severity (S=${severity}) with high occurrence (O=${occurrence}): Significant failure likely to occur`,
-      color: 'red',
-      requiresAction: true,
-    };
-  }
-
-  // Priority 3: High severity with poor detection
-  // S = 7-8 combined with D ≥ 7 means significant failure may not be caught
-  if (severity >= 7 && severity <= 8 && detection >= 7) {
-    return {
-      ap: 'H',
-      reason: `High severity (S=${severity}) with poor detection (D=${detection}): Significant failure may escape`,
-      color: 'red',
-      requiresAction: true,
-    };
-  }
-
-  // Priority 4: No detection capability
-  // D ≥ 9 means essentially no control to detect the failure
-  if (detection >= 9) {
-    return {
-      ap: 'H',
-      reason: `Detection ≥ 9 (D=${detection}): No effective detection control exists`,
-      color: 'red',
-      requiresAction: true,
-    };
-  }
-
-  // Priority 5: Moderate severity with high O or D
-  // S = 5-6 with either O ≥ 7 or D ≥ 7 warrants medium priority
-  if (severity >= 5 && severity <= 6 && (occurrence >= 7 || detection >= 7)) {
-    return {
-      ap: 'M',
-      reason: `Moderate severity (S=${severity}) with ${occurrence >= 7 ? `high occurrence (O=${occurrence})` : `poor detection (D=${detection})`}`,
-      color: 'yellow',
-      requiresAction: true,
-    };
-  }
-
-  // Priority 6: High severity with moderate O and D
-  // S = 7-8 with moderate O (4-6) and moderate D (4-6)
-  if (severity >= 7 && severity <= 8 && occurrence >= 4 && occurrence <= 6 && detection >= 4 && detection <= 6) {
-    return {
-      ap: 'M',
-      reason: `High severity (S=${severity}) with moderate occurrence (O=${occurrence}) and detection (D=${detection})`,
-      color: 'yellow',
-      requiresAction: true,
-    };
-  }
-
-  // Priority 7: Moderate combinations
-  // Various combinations that warrant attention but not urgent action
-  if (severity >= 5 && (occurrence >= 5 || detection >= 5)) {
-    return {
-      ap: 'M',
-      reason: `Moderate risk combination (S=${severity}, O=${occurrence}, D=${detection}): Standard controls may be enhanced`,
-      color: 'yellow',
-      requiresAction: true,
-    };
-  }
-
-  // Default: Low priority
-  // Well-controlled low to moderate severity
   return {
-    ap: 'L',
-    reason: `Low risk (S=${severity}, O=${occurrence}, D=${detection}): Effective controls in place`,
-    color: 'green',
-    requiresAction: false,
+    ap,
+    reason,
+    color: colorMap[ap],
+    requiresAction: ap !== 'L',
   };
 }
 
