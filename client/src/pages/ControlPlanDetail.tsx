@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -8,7 +9,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -17,14 +27,77 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
-import type { Part, ControlPlan, ControlPlanRow } from "@shared/schema";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
+import {
+  ArrowLeft,
+  Save,
+  RefreshCw,
+  MoreHorizontal,
+  Trash2,
+  Edit,
+  Plus,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  FileCheck,
+  ChevronDown,
+  ChevronUp,
+  Shield,
+  Copy,
+  FileText,
+  Target,
+  Ruler,
+  Activity,
+  ClipboardCheck,
+} from "lucide-react";
+import type { Part, ControlPlan, ControlPlanRow, InsertControlPlanRow } from "@shared/schema";
 
+// Types
 interface ControlPlanWithDetails extends ControlPlan {
   rows: ControlPlanRow[];
   part: Part;
 }
 
+interface RowEditState {
+  [rowId: string]: Partial<ControlPlanRow>;
+}
+
+// Status and type badges
 function getStatusBadge(status: string) {
   switch (status) {
     case "draft":
@@ -53,132 +126,952 @@ function getStatusBadge(status: string) {
   }
 }
 
-export default function ControlPlanDetail() {
-  const params = useParams<{ id: string }>();
+function getTypeBadge(type: string) {
+  switch (type) {
+    case "Prototype":
+      return <Badge className="bg-purple-500">Prototype</Badge>;
+    case "Pre-Launch":
+      return <Badge className="bg-blue-500">Pre-Launch</Badge>;
+    case "Production":
+      return <Badge className="bg-green-500">Production</Badge>;
+    default:
+      return <Badge variant="outline">{type}</Badge>;
+  }
+}
 
+function CSRSymbolBadge({ symbol }: { symbol: string | null }) {
+  if (!symbol) return null;
+
+  const colors: Record<string, string> = {
+    "Ⓢ": "bg-red-100 text-red-800 border-red-300",
+    "◆": "bg-purple-100 text-purple-800 border-purple-300",
+    "ⓒ": "bg-blue-100 text-blue-800 border-blue-300",
+  };
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger>
+          <Badge variant="outline" className={`${colors[symbol] || ""} text-lg px-2`}>
+            {symbol}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          {symbol === "Ⓢ" && "Safety Critical"}
+          {symbol === "◆" && "Significant Characteristic"}
+          {symbol === "ⓒ" && "Critical Characteristic"}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function CharacteristicTypeBadge({ type }: { type: string }) {
+  return (
+    <Badge
+      variant="outline"
+      className={
+        type === "Product"
+          ? "bg-blue-50 text-blue-700 border-blue-200"
+          : "bg-orange-50 text-orange-700 border-orange-200"
+      }
+    >
+      {type}
+    </Badge>
+  );
+}
+
+// Row Editor Dialog
+function RowEditorDialog({
+  open,
+  onOpenChange,
+  row,
+  onSave,
+  isSaving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  row: ControlPlanRow | null;
+  onSave: (data: Partial<InsertControlPlanRow>) => void;
+  isSaving: boolean;
+}) {
+  const [formData, setFormData] = useState<Partial<InsertControlPlanRow>>({});
+
+  useEffect(() => {
+    if (row) {
+      setFormData({
+        charId: row.charId,
+        characteristicName: row.characteristicName,
+        type: row.type,
+        target: row.target,
+        tolerance: row.tolerance,
+        specialFlag: row.specialFlag,
+        csrSymbol: row.csrSymbol,
+        measurementSystem: row.measurementSystem,
+        gageDetails: row.gageDetails,
+        sampleSize: row.sampleSize,
+        frequency: row.frequency,
+        controlMethod: row.controlMethod,
+        acceptanceCriteria: row.acceptanceCriteria,
+        reactionPlan: row.reactionPlan,
+      });
+    }
+  }, [row]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Control Plan Characteristic</DialogTitle>
+          <DialogDescription>
+            Modify characteristic details, specifications, and control methods.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-6 py-4">
+          {/* Left Column - Identification & Specification */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              Identification
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Char ID</Label>
+                <Input
+                  value={formData.charId || ""}
+                  onChange={(e) => setFormData({ ...formData, charId: e.target.value })}
+                  placeholder="C-001"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select
+                  value={formData.type || "Product"}
+                  onValueChange={(v) => setFormData({ ...formData, type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Product">Product</SelectItem>
+                    <SelectItem value="Process">Process</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Characteristic Name</Label>
+              <Textarea
+                value={formData.characteristicName || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, characteristicName: e.target.value })
+                }
+                rows={2}
+              />
+            </div>
+
+            <Separator />
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              Specification
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Target</Label>
+                <Input
+                  value={formData.target || ""}
+                  onChange={(e) => setFormData({ ...formData, target: e.target.value })}
+                  placeholder="3.50 mm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tolerance</Label>
+                <Input
+                  value={formData.tolerance || ""}
+                  onChange={(e) => setFormData({ ...formData, tolerance: e.target.value })}
+                  placeholder="±0.20 mm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Special Characteristic</Label>
+                <div className="flex items-center gap-2 pt-2">
+                  <Switch
+                    checked={formData.specialFlag || false}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, specialFlag: checked })
+                    }
+                  />
+                  <span className="text-sm">Mark as special</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>CSR Symbol</Label>
+                <Select
+                  value={formData.csrSymbol || "none"}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, csrSymbol: v === "none" ? null : v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="Ⓢ">Ⓢ Safety</SelectItem>
+                    <SelectItem value="◆">◆ Significant</SelectItem>
+                    <SelectItem value="ⓒ">ⓒ Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Control Method */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              Measurement
+            </h3>
+
+            <div className="space-y-2">
+              <Label>Measurement System</Label>
+              <Input
+                value={formData.measurementSystem || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, measurementSystem: e.target.value })
+                }
+                placeholder="CMM, Caliper, Visual, etc."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Gage Details</Label>
+              <Input
+                value={formData.gageDetails || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, gageDetails: e.target.value })
+                }
+                placeholder="Gage ID, resolution, etc."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Sample Size</Label>
+                <Input
+                  value={formData.sampleSize || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sampleSize: e.target.value })
+                  }
+                  placeholder="5 pcs, 100%"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Frequency</Label>
+                <Input
+                  value={formData.frequency || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, frequency: e.target.value })
+                  }
+                  placeholder="1/shift, 1/hour"
+                />
+              </div>
+            </div>
+
+            <Separator />
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              Control
+            </h3>
+
+            <div className="space-y-2">
+              <Label>Control Method</Label>
+              <Textarea
+                value={formData.controlMethod || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, controlMethod: e.target.value })
+                }
+                rows={2}
+                placeholder="X̄-R Chart, Visual inspection, etc."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Acceptance Criteria</Label>
+              <Textarea
+                value={formData.acceptanceCriteria || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, acceptanceCriteria: e.target.value })
+                }
+                rows={2}
+                placeholder="Cpk ≥ 1.33, No defects, etc."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reaction Plan</Label>
+              <Textarea
+                value={formData.reactionPlan || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, reactionPlan: e.target.value })
+                }
+                rows={2}
+                placeholder="Contain → Adjust → Verify..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => onSave(formData)} disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function ControlPlanDetail() {
+  const { id } = useParams<{ id: string }>();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // State
+  const [editingRow, setEditingRow] = useState<ControlPlanRow | null>(null);
+  const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [inlineEdits, setInlineEdits] = useState<RowEditState>({});
+
+  // Fetch Control Plan details
   const { data: controlPlan, isLoading } = useQuery<ControlPlanWithDetails>({
-    queryKey: ["/api/control-plans", params.id],
+    queryKey: ["/api/control-plans", id, "details"],
     queryFn: async () => {
-      const res = await fetch(`/api/control-plans/${params.id}`);
-      if (!res.ok) throw new Error("Failed to fetch control plan");
-      return res.json();
+      const response = await fetch(`/api/control-plans/${id}/details`);
+      if (!response.ok) throw new Error("Failed to fetch Control Plan");
+      return response.json();
     },
-    enabled: !!params.id,
+    enabled: !!id,
   });
+
+  // Update row mutation
+  const updateRowMutation = useMutation({
+    mutationFn: async ({
+      rowId,
+      data,
+    }: {
+      rowId: string;
+      data: Partial<InsertControlPlanRow>;
+    }) => {
+      const response = await fetch(`/api/control-plan-rows/${rowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error("Failed to update row");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", id, "details"] });
+      toast({
+        title: "Row Updated",
+        description: "Characteristic has been updated successfully.",
+      });
+      setEditingRow(null);
+      setInlineEdits({});
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update characteristic. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete row mutation
+  const deleteRowMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      const response = await fetch(`/api/control-plan-rows/${rowId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Failed to delete row");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", id, "details"] });
+      toast({
+        title: "Row Deleted",
+        description: "Characteristic has been deleted.",
+      });
+      setDeleteRowId(null);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete characteristic.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Validate mutation
+  const validateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/control-plans/${id}/validate`);
+      if (!response.ok) throw new Error("Failed to validate");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const { validation } = data;
+      if (validation.isValid) {
+        toast({
+          title: "Validation Passed",
+          description: "Control Plan is ready for approval.",
+        });
+      } else {
+        const messages = [...validation.errors, ...validation.warnings];
+        toast({
+          title: "Validation Issues",
+          description: messages.slice(0, 2).join("; "),
+          variant: validation.errors.length > 0 ? "destructive" : "default",
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to validate Control Plan.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async (status: string) => {
+      const response = await fetch(`/api/control-plans/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error("Failed to update status");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", id, "details"] });
+      toast({
+        title: "Status Updated",
+        description: "Control Plan status has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update status.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle inline text change
+  const handleInlineChange = (
+    rowId: string,
+    field: keyof ControlPlanRow,
+    value: string
+  ) => {
+    setInlineEdits({
+      ...inlineEdits,
+      [rowId]: {
+        ...(inlineEdits[rowId] || {}),
+        [field]: value,
+      },
+    });
+  };
+
+  // Save inline edits
+  const saveInlineEdits = (rowId: string) => {
+    const edits = inlineEdits[rowId];
+    if (!edits) return;
+    updateRowMutation.mutate({ rowId, data: edits });
+  };
+
+  // Toggle row expansion
+  const toggleRowExpansion = (rowId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(rowId)) {
+      newExpanded.delete(rowId);
+    } else {
+      newExpanded.add(rowId);
+    }
+    setExpandedRows(newExpanded);
+  };
+
+  // Calculate summary stats
+  const stats = controlPlan?.rows.reduce(
+    (acc, row) => {
+      acc.total++;
+      if (row.type === "Product") acc.product++;
+      else acc.process++;
+      if (row.specialFlag || row.csrSymbol) acc.special++;
+      if (row.reactionPlan) acc.withReactionPlan++;
+      if (row.acceptanceCriteria) acc.withAcceptance++;
+      return acc;
+    },
+    { total: 0, product: 0, process: 0, special: 0, withReactionPlan: 0, withAcceptance: 0 }
+  ) || { total: 0, product: 0, process: 0, special: 0, withReactionPlan: 0, withAcceptance: 0 };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex items-center justify-center h-screen">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (!controlPlan) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-muted-foreground">Control Plan not found</p>
-        <Link href="/control-plans">
-          <Button variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Control Plans
-          </Button>
-        </Link>
+      <div className="flex flex-col items-center justify-center h-screen">
+        <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold">Control Plan Not Found</h2>
+        <p className="text-muted-foreground mb-4">
+          The requested Control Plan could not be found.
+        </p>
+        <Button asChild>
+          <Link href="/control-plans">Back to Control Plans</Link>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-6 p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/control-plans">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/control-plans">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Link>
+          </Button>
           <div>
-            <h1 className="text-2xl font-bold">Control Plan Detail</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">
+                {controlPlan.part.partNumber} - Control Plan
+              </h1>
+              <Badge variant="outline" className="text-lg">
+                Rev {controlPlan.rev}
+              </Badge>
+              {getTypeBadge(controlPlan.type)}
+              {getStatusBadge(controlPlan.status)}
+            </div>
             <p className="text-muted-foreground">
-              Rev {controlPlan.rev} - {controlPlan.type}
+              {controlPlan.part.partName} • {controlPlan.part.customer} •{" "}
+              {controlPlan.docNo || "No Doc Number"}
             </p>
           </div>
         </div>
-        {getStatusBadge(controlPlan.status)}
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => validateMutation.mutate()}
+            disabled={validateMutation.isPending}
+          >
+            <ClipboardCheck className="h-4 w-4 mr-2" />
+            Validate
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                Status: {controlPlan.status}
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => updateStatusMutation.mutate("draft")}>
+                Draft
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => updateStatusMutation.mutate("review")}>
+                Review
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => updateStatusMutation.mutate("effective")}>
+                Effective
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => updateStatusMutation.mutate("superseded")}>
+                Superseded
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => updateStatusMutation.mutate("obsolete")}>
+                Obsolete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Characteristics</CardDescription>
+            <CardTitle className="text-2xl">{stats.total}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-blue-200">
+          <CardHeader className="pb-2">
+            <CardDescription className="text-blue-600">Product</CardDescription>
+            <CardTitle className="text-2xl text-blue-600">{stats.product}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-orange-200">
+          <CardHeader className="pb-2">
+            <CardDescription className="text-orange-600">Process</CardDescription>
+            <CardTitle className="text-2xl text-orange-600">{stats.process}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-purple-200">
+          <CardHeader className="pb-2">
+            <CardDescription className="text-purple-600">Special</CardDescription>
+            <CardTitle className="text-2xl text-purple-600">{stats.special}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-green-200">
+          <CardHeader className="pb-2">
+            <CardDescription className="text-green-600">With Reaction Plan</CardDescription>
+            <CardTitle className="text-2xl text-green-600">{stats.withReactionPlan}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>With Acceptance</CardDescription>
+            <CardTitle className="text-2xl">{stats.withAcceptance}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {/* Control Plan Grid */}
       <Card>
         <CardHeader>
-          <CardTitle>Part Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Part Number</p>
-              <p className="font-medium">{controlPlan.part?.partNumber || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Part Name</p>
-              <p className="font-medium">{controlPlan.part?.partName || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Customer</p>
-              <p className="font-medium">{controlPlan.part?.customer || "N/A"}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Document No</p>
-              <p className="font-medium">{controlPlan.docNo || "N/A"}</p>
+          <div className="flex items-center justify-between">
+            <CardTitle>Characteristics</CardTitle>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Click row to expand • Edit fields inline</span>
             </div>
           </div>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="w-full">
+            <div className="min-w-[1600px]">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead className="w-[80px]">Char ID</TableHead>
+                    <TableHead className="w-[60px]">Type</TableHead>
+                    <TableHead className="w-[180px]">Characteristic</TableHead>
+                    <TableHead className="w-[100px]">Target</TableHead>
+                    <TableHead className="w-[100px]">Tolerance</TableHead>
+                    <TableHead className="w-12">CSR</TableHead>
+                    <TableHead className="w-[120px]">Measurement</TableHead>
+                    <TableHead className="w-[80px]">Sample</TableHead>
+                    <TableHead className="w-[80px]">Frequency</TableHead>
+                    <TableHead className="w-[120px]">Control Method</TableHead>
+                    <TableHead className="w-[120px]">Acceptance</TableHead>
+                    <TableHead className="w-20 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {controlPlan.rows.map((row) => {
+                    const isExpanded = expandedRows.has(row.id);
+                    const hasEdits = !!inlineEdits[row.id];
+                    const currentEdits = inlineEdits[row.id] || {};
+                    const isSpecial = row.specialFlag || row.csrSymbol;
+
+                    return (
+                      <>
+                        <TableRow
+                          key={row.id}
+                          className={`
+                            ${isSpecial ? "bg-purple-50/50" : ""}
+                            ${!row.reactionPlan && isSpecial ? "border-l-4 border-l-red-400" : ""}
+                            hover:bg-muted/50 cursor-pointer
+                          `}
+                          onClick={() => toggleRowExpansion(row.id)}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm font-medium">
+                            {row.charId}
+                          </TableCell>
+                          <TableCell>
+                            <CharacteristicTypeBadge type={row.type} />
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {row.characteristicName}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              value={
+                                currentEdits.target !== undefined
+                                  ? currentEdits.target as string
+                                  : row.target || ""
+                              }
+                              onChange={(e) =>
+                                handleInlineChange(row.id, "target", e.target.value)
+                              }
+                              className="h-8 text-sm"
+                              placeholder="—"
+                            />
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              value={
+                                currentEdits.tolerance !== undefined
+                                  ? currentEdits.tolerance as string
+                                  : row.tolerance || ""
+                              }
+                              onChange={(e) =>
+                                handleInlineChange(row.id, "tolerance", e.target.value)
+                              }
+                              className="h-8 text-sm"
+                              placeholder="—"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <CSRSymbolBadge symbol={row.csrSymbol} />
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.measurementSystem || "—"}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              value={
+                                currentEdits.sampleSize !== undefined
+                                  ? currentEdits.sampleSize as string
+                                  : row.sampleSize || ""
+                              }
+                              onChange={(e) =>
+                                handleInlineChange(row.id, "sampleSize", e.target.value)
+                              }
+                              className="h-8 text-sm"
+                              placeholder="—"
+                            />
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              value={
+                                currentEdits.frequency !== undefined
+                                  ? currentEdits.frequency as string
+                                  : row.frequency || ""
+                              }
+                              onChange={(e) =>
+                                handleInlineChange(row.id, "frequency", e.target.value)
+                              }
+                              className="h-8 text-sm"
+                              placeholder="—"
+                            />
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {row.controlMethod || (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {row.acceptanceCriteria || (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className="text-right"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-end gap-1">
+                              {hasEdits && (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => saveInlineEdits(row.id)}
+                                  disabled={updateRowMutation.isPending}
+                                >
+                                  <Save className="h-3 w-3" />
+                                </Button>
+                              )}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setEditingRow(row)}>
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit Full Row
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem>
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    Duplicate
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-red-600"
+                                    onClick={() => setDeleteRowId(row.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expanded Row Details */}
+                        {isExpanded && (
+                          <TableRow className="bg-muted/30">
+                            <TableCell colSpan={13}>
+                              <div className="grid grid-cols-3 gap-6 p-4">
+                                <div className="space-y-3">
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      Gage Details
+                                    </Label>
+                                    <p className="text-sm">{row.gageDetails || "—"}</p>
+                                  </div>
+                                  {row.sourcePfmeaRowId && (
+                                    <div>
+                                      <Label className="text-xs text-muted-foreground">
+                                        PFMEA Link
+                                      </Label>
+                                      <Badge variant="outline" className="text-xs">
+                                        Linked to PFMEA Row
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="space-y-3">
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      Control Method
+                                    </Label>
+                                    <p className="text-sm">{row.controlMethod || "—"}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      Acceptance Criteria
+                                    </Label>
+                                    <p className="text-sm">{row.acceptanceCriteria || "—"}</p>
+                                  </div>
+                                </div>
+                                <div className="space-y-3">
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      Reaction Plan
+                                    </Label>
+                                    <p className="text-sm">
+                                      {row.reactionPlan || (
+                                        <span className="text-red-500 flex items-center gap-1">
+                                          <AlertTriangle className="h-3 w-3" />
+                                          Missing
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                  {row.parentControlTemplateRowId && (
+                                    <div>
+                                      <Label className="text-xs text-muted-foreground">
+                                        Template Link
+                                      </Label>
+                                      <Badge variant="outline" className="text-xs">
+                                        From Control Template
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+
+          {controlPlan.rows.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Target className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold">No Characteristics Yet</h3>
+              <p className="text-muted-foreground">
+                This Control Plan has no characteristics defined.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Control Plan Rows ({controlPlan.rows.length})</CardTitle>
-          <CardDescription>
-            Quality control characteristics and methods
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Char ID</TableHead>
-                <TableHead>Characteristic</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Tolerance</TableHead>
-                <TableHead>Control Method</TableHead>
-                <TableHead>Frequency</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {controlPlan.rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    No control plan rows
-                  </TableCell>
-                </TableRow>
-              ) : (
-                controlPlan.rows.map((row) => (
-                  <TableRow key={row.id} data-testid={`row-control-plan-${row.id}`}>
-                    <TableCell className="font-mono">{row.charId}</TableCell>
-                    <TableCell>{row.characteristicName}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{row.type}</Badge>
-                    </TableCell>
-                    <TableCell>{row.target || "-"}</TableCell>
-                    <TableCell>{row.tolerance || "-"}</TableCell>
-                    <TableCell>{row.controlMethod || "-"}</TableCell>
-                    <TableCell>{row.frequency || "-"}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* Row Editor Dialog */}
+      <RowEditorDialog
+        open={!!editingRow}
+        onOpenChange={(open) => !open && setEditingRow(null)}
+        row={editingRow}
+        onSave={(data) => {
+          if (editingRow) {
+            updateRowMutation.mutate({ rowId: editingRow.id, data });
+          }
+        }}
+        isSaving={updateRowMutation.isPending}
+      />
+
+      {/* Delete Row Dialog */}
+      <AlertDialog
+        open={!!deleteRowId}
+        onOpenChange={(open) => !open && setDeleteRowId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Characteristic?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this characteristic from the Control
+              Plan. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteRowId && deleteRowMutation.mutate(deleteRowId)}
+            >
+              {deleteRowMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
