@@ -1,30 +1,16 @@
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
-import { Package, Plus, Search, Eye, Pencil, Trash2, Loader2, Factory, Users, Layers, Car } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription,
-} from "@/components/ui/form";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -41,10 +27,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -58,623 +51,514 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  Search,
+  Plus,
+  Package,
+  MoreHorizontal,
+  Eye,
+  Edit,
+  Trash2,
+  RefreshCw,
+  Factory,
+  Users,
+  FileText,
+  ClipboardList,
+  Wand2,
+  ChevronRight,
+} from "lucide-react";
 import type { Part, InsertPart } from "@shared/schema";
-import { insertPartSchema } from "@shared/schema";
-import { z } from "zod";
 
-// Common customers for automotive industry
+// Common customers for automotive
 const CUSTOMERS = [
   "Ford",
   "GM",
-  "Tesla",
   "Stellantis",
+  "Tesla",
   "Toyota",
   "Honda",
   "BMW",
   "Mercedes-Benz",
   "Volkswagen",
   "Kautex",
-  "ABC Technologies",
-  "Plastic Omnium",
+  "Magna",
   "Other",
 ];
 
-// Common plants/locations
 const PLANTS = [
-  "Detroit",
-  "Arlington",
-  "Austin",
-  "Flat Rock",
   "Fraser",
-  "Windsor",
+  "Detroit",
+  "Toledo",
   "Louisville",
-  "Bowling Green",
   "Spring Hill",
-  "San Antonio",
+  "Fremont",
   "Other",
 ];
-
-// Extended part type with related documents count
-interface PartWithDetails extends Part {
-  pfmeasCount?: number;
-  controlPlansCount?: number;
-}
-
-// Form schema with validation
-const partFormSchema = insertPartSchema.extend({
-  customer: z.string().min(1, "Customer is required"),
-  program: z.string().min(1, "Program is required"),
-  partNumber: z.string().min(1, "Part number is required"),
-  partName: z.string().min(1, "Part name is required"),
-  plant: z.string().min(1, "Plant is required"),
-  csrNotes: z.string().optional(),
-});
-
-type PartFormValues = z.infer<typeof partFormSchema>;
-
-// Part form dialog (shared by Create and Edit)
-function PartFormDialog({
-  part,
-  open,
-  onOpenChange,
-}: {
-  part?: Part;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { toast } = useToast();
-  const isEditing = !!part;
-  const [customCustomer, setCustomCustomer] = useState(false);
-  const [customPlant, setCustomPlant] = useState(false);
-
-  const form = useForm<PartFormValues>({
-    resolver: zodResolver(partFormSchema),
-    defaultValues: {
-      customer: "",
-      program: "",
-      partNumber: "",
-      partName: "",
-      plant: "",
-      csrNotes: "",
-    },
-  });
-
-  useEffect(() => {
-    if (part && open) {
-      const isCustomCustomer = !CUSTOMERS.includes(part.customer);
-      const isCustomPlant = !PLANTS.includes(part.plant);
-      setCustomCustomer(isCustomCustomer);
-      setCustomPlant(isCustomPlant);
-      
-      form.reset({
-        customer: part.customer,
-        program: part.program,
-        partNumber: part.partNumber,
-        partName: part.partName,
-        plant: part.plant,
-        csrNotes: part.csrNotes || "",
-      });
-    } else if (!open) {
-      setCustomCustomer(false);
-      setCustomPlant(false);
-      form.reset({
-        customer: "",
-        program: "",
-        partNumber: "",
-        partName: "",
-        plant: "",
-        csrNotes: "",
-      });
-    }
-  }, [part, open, form]);
-
-  const mutation = useMutation({
-    mutationFn: async (data: PartFormValues) => {
-      const url = isEditing ? `/api/parts/${part.id}` : "/api/parts";
-      const method = isEditing ? "PATCH" : "POST";
-      const res = await apiRequest(method, url, data);
-      return (await res.json()) as Part;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parts"] });
-      toast({
-        title: isEditing ? "Part updated" : "Part created",
-        description: `The part has been successfully ${isEditing ? "updated" : "created"}.`,
-      });
-      onOpenChange(false);
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || `Failed to ${isEditing ? "update" : "create"} part`,
-      });
-    },
-  });
-
-  const onSubmit = (data: PartFormValues) => {
-    mutation.mutate(data);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Part" : "Create New Part"}</DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Update part details. Changes will be tracked for quality audit."
-              : "Add a new part to the system. This will create a part record that can have PFMEAs and Control Plans generated."}
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="customer"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Customer</FormLabel>
-                    {customCustomer ? (
-                      <div className="flex gap-2">
-                        <FormControl>
-                          <Input
-                            placeholder="Enter customer name"
-                            {...field}
-                            data-testid="input-part-customer"
-                          />
-                        </FormControl>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setCustomCustomer(false);
-                            field.onChange("");
-                          }}
-                          data-testid="button-customer-list"
-                        >
-                          List
-                        </Button>
-                      </div>
-                    ) : (
-                      <Select
-                        onValueChange={(value) => {
-                          if (value === "Other") {
-                            setCustomCustomer(true);
-                            field.onChange("");
-                          } else {
-                            field.onChange(value);
-                          }
-                        }}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-part-customer">
-                            <SelectValue placeholder="Select customer" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {CUSTOMERS.map((customer) => (
-                            <SelectItem key={customer} value={customer}>
-                              {customer}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="program"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Program</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., F-150, Model Y"
-                        {...field}
-                        data-testid="input-part-program"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="partNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Part Number</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., WHL-2024-001"
-                        {...field}
-                        disabled={isEditing} // Part numbers typically shouldn't change
-                        data-testid="input-part-number"
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {isEditing ? "Part number cannot be changed" : "Unique identifier for this part"}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="partName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Part Name</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., Wheel Assembly"
-                        {...field}
-                        data-testid="input-part-name"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="plant"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Manufacturing Plant</FormLabel>
-                  {customPlant ? (
-                    <div className="flex gap-2">
-                      <FormControl>
-                        <Input
-                          placeholder="Enter plant location"
-                          {...field}
-                          data-testid="input-part-plant"
-                        />
-                      </FormControl>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setCustomPlant(false);
-                          field.onChange("");
-                        }}
-                        data-testid="button-plant-list"
-                      >
-                        List
-                      </Button>
-                    </div>
-                  ) : (
-                    <Select
-                      onValueChange={(value) => {
-                        if (value === "Other") {
-                          setCustomPlant(true);
-                          field.onChange("");
-                        } else {
-                          field.onChange(value);
-                        }
-                      }}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-part-plant">
-                          <SelectValue placeholder="Select plant" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {PLANTS.map((plant) => (
-                          <SelectItem key={plant} value={plant}>
-                            {plant}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="csrNotes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>CSR Notes</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Customer-specific requirements, special characteristics, or critical notes..."
-                      rows={3}
-                      {...field}
-                      data-testid="textarea-csr-notes"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Document any customer-specific requirements (CSR) or special characteristics
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                data-testid="button-part-cancel"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={mutation.isPending} data-testid="button-part-submit">
-                {mutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isEditing ? "Save Changes" : "Create Part"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Delete confirmation dialog
-function DeletePartDialog({
-  part,
-  open,
-  onOpenChange,
-  onConfirm,
-  isPending,
-}: {
-  part: Part | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-  isPending: boolean;
-}) {
-  if (!part) return null;
-
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete Part</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete <strong>{part.partName}</strong> (
-            {part.partNumber})? This action cannot be undone and will also delete
-            all associated PFMEAs and Control Plans.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            disabled={isPending}
-            data-testid="button-delete-confirm"
-          >
-            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Delete Part
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
 
 export default function PartsPage() {
-  const [, setLocation] = useLocation();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // State
+  const [searchTerm, setSearchTerm] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
   const [plantFilter, setPlantFilter] = useState<string>("all");
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingPart, setEditingPart] = useState<Part | undefined>();
-  const [newPartOpen, setNewPartOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [partToDelete, setPartToDelete] = useState<Part | null>(null);
-  const { toast } = useToast();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editingPart, setEditingPart] = useState<Part | null>(null);
+  const [deletePartId, setDeletePartId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<InsertPart>>({});
 
+  // Fetch parts
   const { data: parts = [], isLoading } = useQuery<Part[]>({
     queryKey: ["/api/parts"],
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/parts/${id}`);
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: InsertPart) => {
+      const response = await fetch("/api/parts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create part");
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parts"] });
       toast({
-        title: "Part deleted",
-        description: "The part and all associated documents have been deleted.",
+        title: "Part Created",
+        description: "The part has been created successfully.",
       });
-      setDeleteOpen(false);
-      setPartToDelete(null);
+      setCreateDialogOpen(false);
+      setFormData({});
     },
     onError: (error: Error) => {
       toast({
-        variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to delete part",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
 
-  const handleViewDetails = (part: Part) => {
-    setLocation(`/parts/${part.id}`);
-  };
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InsertPart> }) => {
+      const response = await fetch(`/api/parts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error("Failed to update part");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parts"] });
+      toast({
+        title: "Part Updated",
+        description: "The part has been updated successfully.",
+      });
+      setEditingPart(null);
+      setFormData({});
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update part. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
-  const handleEdit = (part: Part) => {
-    setEditingPart(part);
-    setEditOpen(true);
-  };
-
-  const handleDelete = (part: Part) => {
-    setPartToDelete(part);
-    setDeleteOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (partToDelete) {
-      deleteMutation.mutate(partToDelete.id);
-    }
-  };
-
-  // Get unique customers and plants for filters
-  const uniqueCustomers = Array.from(new Set(parts.map((p) => p.customer))).sort();
-  const uniquePlants = Array.from(new Set(parts.map((p) => p.plant))).sort();
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/parts/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Failed to delete part");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parts"] });
+      toast({
+        title: "Part Deleted",
+        description: "The part has been deleted successfully.",
+      });
+      setDeletePartId(null);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete part. It may have associated documents.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Filter parts
   const filteredParts = parts.filter((part) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      part.partNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.partName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.program.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesCustomer =
-      customerFilter === "all" || part.customer === customerFilter;
-    const matchesPlant = plantFilter === "all" || part.plant === plantFilter;
-
-    return matchesSearch && matchesCustomer && matchesPlant;
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      if (
+        !part.partNumber.toLowerCase().includes(search) &&
+        !part.partName.toLowerCase().includes(search) &&
+        !part.program?.toLowerCase().includes(search)
+      ) {
+        return false;
+      }
+    }
+    if (customerFilter !== "all" && part.customer !== customerFilter) return false;
+    if (plantFilter !== "all" && part.plant !== plantFilter) return false;
+    return true;
   });
 
+  // Get unique values for filters
+  const uniqueCustomers = [...new Set(parts.map((p) => p.customer))];
+  const uniquePlants = [...new Set(parts.map((p) => p.plant))];
+
   // Summary stats
-  const customerCount = uniqueCustomers.length;
-  const plantCount = uniquePlants.length;
+  const stats = {
+    total: parts.length,
+    customers: uniqueCustomers.length,
+    plants: uniquePlants.length,
+  };
+
+  // Open edit dialog
+  const openEditDialog = (part: Part) => {
+    setEditingPart(part);
+    setFormData({
+      customer: part.customer,
+      program: part.program,
+      partNumber: part.partNumber,
+      partName: part.partName,
+      plant: part.plant,
+      csrNotes: part.csrNotes,
+    });
+  };
+
+  // Handle form submit
+  const handleSubmit = () => {
+    if (!formData.partNumber || !formData.partName || !formData.customer || !formData.plant) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (editingPart) {
+      updateMutation.mutate({ id: editingPart.id, data: formData });
+    } else {
+      createMutation.mutate(formData as InsertPart);
+    }
+  };
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="p-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Package className="h-8 w-8" />
-              Parts
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Manage parts with associated PFMEAs and Control Plans
-            </p>
-          </div>
-          <Button onClick={() => setNewPartOpen(true)} data-testid="button-new-part">
-            <Plus className="h-4 w-4 mr-2" />
-            New Part
-          </Button>
+    <div className="flex flex-col gap-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Parts</h1>
+          <p className="text-muted-foreground">
+            Manage parts and generate quality documents
+          </p>
         </div>
+        <Button onClick={() => setCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Part
+        </Button>
+      </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Package className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{parts.length}</p>
-                  <p className="text-sm text-muted-foreground">Total Parts</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-blue-500/10 rounded-lg">
-                  <Users className="h-6 w-6 text-blue-500" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{customerCount}</p>
-                  <p className="text-sm text-muted-foreground">Customers</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-green-500/10 rounded-lg">
-                  <Factory className="h-6 w-6 text-green-500" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{plantCount}</p>
-                  <p className="text-sm text-muted-foreground">Plants</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-orange-500/10 rounded-lg">
-                  <Car className="h-6 w-6 text-orange-500" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {Array.from(new Set(parts.map((p) => p.program))).length}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Programs</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Search and Filters */}
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <CardHeader className="pb-2">
+            <CardDescription>Total Parts</CardDescription>
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <Package className="h-5 w-5 text-muted-foreground" />
+              {stats.total}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Customers</CardDescription>
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              {stats.customers}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Plants</CardDescription>
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <Factory className="h-5 w-5 text-muted-foreground" />
+              {stats.plants}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by part number, name, customer, or program..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                  data-testid="input-search-parts"
+                  placeholder="Search by part number, name, or program..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
                 />
               </div>
-              <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                <SelectTrigger className="w-[180px]" data-testid="select-filter-customer">
-                  <SelectValue placeholder="All Customers" />
+            </div>
+
+            <Select value={customerFilter} onValueChange={setCustomerFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Customer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Customers</SelectItem>
+                {uniqueCustomers.map((customer) => (
+                  <SelectItem key={customer} value={customer}>
+                    {customer}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={plantFilter} onValueChange={setPlantFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Plant" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Plants</SelectItem>
+                {uniquePlants.map((plant) => (
+                  <SelectItem key={plant} value={plant}>
+                    {plant}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Parts Table */}
+      <Card>
+        <CardContent className="pt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredParts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Package className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold">No Parts Found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchTerm || customerFilter !== "all" || plantFilter !== "all"
+                  ? "Try adjusting your filters"
+                  : "Add your first part to get started"}
+              </p>
+              {!searchTerm && customerFilter === "all" && plantFilter === "all" && (
+                <Button onClick={() => setCreateDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Part
+                </Button>
+              )}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Part Number</TableHead>
+                  <TableHead>Part Name</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Program</TableHead>
+                  <TableHead>Plant</TableHead>
+                  <TableHead>Documents</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredParts.map((part) => (
+                  <TableRow key={part.id} className="group">
+                    <TableCell>
+                      <Link href={`/parts/${part.id}`}>
+                        <span className="font-medium text-primary hover:underline cursor-pointer">
+                          {part.partNumber}
+                        </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell>{part.partName}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{part.customer}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {part.program || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{part.plant}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Badge variant="outline" className="text-xs">
+                          <FileText className="h-3 w-3 mr-1" />
+                          PFMEA
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          <ClipboardList className="h-3 w-3 mr-1" />
+                          CP
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Link href={`/parts/${part.id}`}>
+                            <Wand2 className="h-4 w-4 mr-1" />
+                            Generate
+                            <ChevronRight className="h-4 w-4 ml-1" />
+                          </Link>
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/parts/${part.id}`}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(part)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => setDeletePartId(part.id)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create/Edit Dialog */}
+      <Dialog
+        open={createDialogOpen || !!editingPart}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreateDialogOpen(false);
+            setEditingPart(null);
+            setFormData({});
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingPart ? "Edit Part" : "Add New Part"}</DialogTitle>
+            <DialogDescription>
+              {editingPart
+                ? "Update the part information below."
+                : "Enter the part details to add it to the system."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Part Number *</Label>
+              <Input
+                value={formData.partNumber || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, partNumber: e.target.value })
+                }
+                placeholder="e.g., 3004-XYZ"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Part Name *</Label>
+              <Input
+                value={formData.partName || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, partName: e.target.value })
+                }
+                placeholder="e.g., Stiffener Assembly"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Customer *</Label>
+              <Select
+                value={formData.customer || ""}
+                onValueChange={(v) => setFormData({ ...formData, customer: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Customers</SelectItem>
-                  {uniqueCustomers.map((customer) => (
+                  {CUSTOMERS.map((customer) => (
                     <SelectItem key={customer} value={customer}>
                       {customer}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={plantFilter} onValueChange={setPlantFilter}>
-                <SelectTrigger className="w-[180px]" data-testid="select-filter-plant">
-                  <SelectValue placeholder="All Plants" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Program</Label>
+              <Input
+                value={formData.program || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, program: e.target.value })
+                }
+                placeholder="e.g., EOS, F-150"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Plant *</Label>
+              <Select
+                value={formData.plant || ""}
+                onValueChange={(v) => setFormData({ ...formData, plant: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select plant" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Plants</SelectItem>
-                  {uniquePlants.map((plant) => (
+                  {PLANTS.map((plant) => (
                     <SelectItem key={plant} value={plant}>
                       {plant}
                     </SelectItem>
@@ -682,126 +566,74 @@ export default function PartsPage() {
                 </SelectContent>
               </Select>
             </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredParts.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Part Number</TableHead>
-                    <TableHead>Part Name</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Program</TableHead>
-                    <TableHead>Plant</TableHead>
-                    <TableHead>CSR</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredParts.map((part) => (
-                    <TableRow key={part.id} data-testid={`row-part-${part.id}`}>
-                      <TableCell className="font-mono font-medium">
-                        {part.partNumber}
-                      </TableCell>
-                      <TableCell>{part.partName}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{part.customer}</Badge>
-                      </TableCell>
-                      <TableCell>{part.program}</TableCell>
-                      <TableCell>{part.plant}</TableCell>
-                      <TableCell>
-                        {part.csrNotes ? (
-                          <Badge variant="secondary" className="text-xs">
-                            Has CSR
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`button-actions-${part.id}`}
-                            >
-                              <Layers className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleViewDetails(part)}
-                              data-testid={`menu-view-${part.id}`}
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(part)}
-                              data-testid={`menu-edit-${part.id}`}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit Part
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(part)}
-                              data-testid={`menu-delete-${part.id}`}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Part
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                {searchQuery || customerFilter !== "all" || plantFilter !== "all"
-                  ? "No parts found matching your filters."
-                  : "No parts found. Create your first part to get started."}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Dialogs */}
-        <PartFormDialog
-          part={undefined}
-          open={newPartOpen}
-          onOpenChange={setNewPartOpen}
-        />
+            <div className="col-span-2 space-y-2">
+              <Label>CSR Notes</Label>
+              <Textarea
+                value={formData.csrNotes || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, csrNotes: e.target.value })
+                }
+                placeholder="Special characteristic requirements, customer-specific notes..."
+                rows={3}
+              />
+            </div>
+          </div>
 
-        <PartFormDialog
-          part={editingPart}
-          open={editOpen}
-          onOpenChange={(open) => {
-            setEditOpen(open);
-            if (!open) {
-              setEditingPart(undefined);
-            }
-          }}
-        />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateDialogOpen(false);
+                setEditingPart(null);
+                setFormData({});
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={createMutation.isPending || updateMutation.isPending}
+            >
+              {createMutation.isPending || updateMutation.isPending ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : editingPart ? (
+                "Update Part"
+              ) : (
+                "Create Part"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        <DeletePartDialog
-          part={partToDelete}
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          onConfirm={confirmDelete}
-          isPending={deleteMutation.isPending}
-        />
-      </div>
+      {/* Delete Confirmation */}
+      <AlertDialog
+        open={!!deletePartId}
+        onOpenChange={(open) => !open && setDeletePartId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Part?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the part and may affect associated
+              documents. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deletePartId && deleteMutation.mutate(deletePartId)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
