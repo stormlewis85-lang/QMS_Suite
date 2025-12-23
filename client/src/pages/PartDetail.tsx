@@ -1,47 +1,18 @@
 import { useState, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useParams, Link } from "wouter";
 import {
-  Package,
-  ArrowLeft,
-  Plus,
-  GripVertical,
-  Pencil,
-  Trash2,
-  Loader2,
-  Factory,
-  Users,
-  Car,
-  FileText,
-  ClipboardList,
-  Layers,
-  ChevronRight,
-  Settings2,
-  Unlink,
-} from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription,
-} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -58,812 +29,1126 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Part, ProcessDef, PartProcessMap, PFMEA, ControlPlan } from "@shared/schema";
-import { insertPartProcessMapSchema } from "@shared/schema";
-import { z } from "zod";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  RefreshCw,
+  Package,
+  FileText,
+  ClipboardList,
+  Wand2,
+  GitBranch,
+  Settings,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  ChevronRight,
+  GripVertical,
+  Trash2,
+  Plus,
+  Eye,
+  Download,
+  Play,
+} from "lucide-react";
+import type { Part, ProcessDef, PFMEA, ControlPlan, PFD } from "@shared/schema";
 
-interface PartProcessMapWithProcess extends PartProcessMap {
-  process?: ProcessDef;
+// Types
+interface ProcessSelection {
+  processDefId: string;
+  rev: string;
+  sequence: number;
 }
 
-const processMapFormSchema = insertPartProcessMapSchema.extend({
-  processDefId: z.string().min(1, "Please select a process"),
-  processRev: z.string().min(1, "Process revision is required"),
-  sequence: z.number().int().positive("Sequence must be a positive number"),
-  assumptions: z.string().optional(),
-});
+interface GenerationResult {
+  pfd?: {
+    id: string;
+    rev: string;
+    mermaid: string;
+  };
+  pfmea?: {
+    id: string;
+    rev: string;
+    rowCount: number;
+  };
+  controlPlan?: {
+    id: string;
+    rev: string;
+    rowCount: number;
+  };
+}
 
-type ProcessMapFormValues = z.infer<typeof processMapFormSchema>;
+// Wizard steps
+const WIZARD_STEPS = [
+  { id: "processes", label: "Select Processes", icon: Settings },
+  { id: "preview", label: "Preview PFD", icon: GitBranch },
+  { id: "options", label: "Generation Options", icon: Wand2 },
+  { id: "generate", label: "Generate", icon: Play },
+];
 
-function ProcessMapFormDialog({
-  partId,
-  mapping,
-  existingSequences,
-  open,
-  onOpenChange,
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "draft":
+      return (
+        <Badge variant="outline" className="bg-gray-50">
+          <Clock className="h-3 w-3 mr-1" />
+          Draft
+        </Badge>
+      );
+    case "effective":
+      return (
+        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Effective
+        </Badge>
+      );
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+}
+
+// Process Selection Step
+function ProcessSelectionStep({
+  processes,
+  selectedProcesses,
+  onSelectionChange,
 }: {
-  partId: string;
-  mapping?: PartProcessMapWithProcess;
-  existingSequences: number[];
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  processes: ProcessDef[];
+  selectedProcesses: ProcessSelection[];
+  onSelectionChange: (selections: ProcessSelection[]) => void;
 }) {
-  const { toast } = useToast();
-  const isEditing = !!mapping;
+  const effectiveProcesses = processes.filter((p) => p.status === "effective");
 
-  const { data: processes = [] } = useQuery<ProcessDef[]>({
-    queryKey: ["/api/processes"],
-    enabled: open,
-  });
-
-  const availableProcesses = processes.filter(
-    (p) => p.status === "effective" || (isEditing && p.id === mapping?.processDefId)
-  );
-
-  const form = useForm<ProcessMapFormValues>({
-    resolver: zodResolver(processMapFormSchema),
-    defaultValues: {
-      partId: partId,
-      processDefId: "",
-      processRev: "",
-      sequence: Math.max(0, ...existingSequences) + 10,
-      assumptions: "",
-    },
-  });
-
-  const selectedProcessId = form.watch("processDefId");
-  useEffect(() => {
-    if (selectedProcessId && !isEditing) {
-      const selectedProcess = processes.find((p) => p.id === selectedProcessId);
-      if (selectedProcess) {
-        form.setValue("processRev", selectedProcess.rev);
-      }
+  const toggleProcess = (process: ProcessDef) => {
+    const existing = selectedProcesses.find((s) => s.processDefId === process.id);
+    if (existing) {
+      onSelectionChange(selectedProcesses.filter((s) => s.processDefId !== process.id));
+    } else {
+      const newSelection: ProcessSelection = {
+        processDefId: process.id,
+        rev: process.rev,
+        sequence: selectedProcesses.length + 1,
+      };
+      onSelectionChange([...selectedProcesses, newSelection]);
     }
-  }, [selectedProcessId, processes, form, isEditing]);
+  };
 
-  useEffect(() => {
-    if (mapping && open) {
-      form.reset({
-        partId: partId,
-        processDefId: mapping.processDefId,
-        processRev: mapping.processRev,
-        sequence: mapping.sequence,
-        assumptions: mapping.assumptions || "",
-      });
-    } else if (!open) {
-      form.reset({
-        partId: partId,
-        processDefId: "",
-        processRev: "",
-        sequence: Math.max(0, ...existingSequences) + 10,
-        assumptions: "",
-      });
+  const moveProcess = (index: number, direction: "up" | "down") => {
+    if (
+      (direction === "up" && index === 0) ||
+      (direction === "down" && index === selectedProcesses.length - 1)
+    ) {
+      return;
     }
-  }, [mapping, open, form, partId, existingSequences]);
 
-  const mutation = useMutation({
-    mutationFn: async (data: ProcessMapFormValues) => {
-      const url = isEditing
-        ? `/api/part-process-maps/${mapping.id}`
-        : "/api/part-process-maps";
-      const method = isEditing ? "PATCH" : "POST";
-      const res = await apiRequest(method, url, data);
-      return (await res.json()) as PartProcessMap;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/part-process-maps", partId] });
-      toast({
-        title: isEditing ? "Process mapping updated" : "Process mapped",
-        description: `The process has been successfully ${isEditing ? "updated" : "mapped to this part"}.`,
-      });
-      onOpenChange(false);
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || `Failed to ${isEditing ? "update" : "create"} process mapping`,
-      });
-    },
-  });
+    const newSelections = [...selectedProcesses];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    [newSelections[index], newSelections[targetIndex]] = [
+      newSelections[targetIndex],
+      newSelections[index],
+    ];
 
-  const onSubmit = (data: ProcessMapFormValues) => {
-    mutation.mutate(data);
+    // Update sequence numbers
+    newSelections.forEach((s, i) => {
+      s.sequence = i + 1;
+    });
+
+    onSelectionChange(newSelections);
+  };
+
+  const removeProcess = (processDefId: string) => {
+    const newSelections = selectedProcesses
+      .filter((s) => s.processDefId !== processDefId)
+      .map((s, i) => ({ ...s, sequence: i + 1 }));
+    onSelectionChange(newSelections);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? "Edit Process Mapping" : "Map Process to Part"}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Update the process mapping details."
-              : "Select a process to map to this part. The sequence determines the order of processes in the flow."}
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="processDefId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Process</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    disabled={isEditing}
+    <div className="grid grid-cols-2 gap-6">
+      {/* Available Processes */}
+      <div className="space-y-4">
+        <h3 className="font-semibold">Available Processes</h3>
+        <p className="text-sm text-muted-foreground">
+          Select processes to include in the part's process flow
+        </p>
+        <ScrollArea className="h-[400px] border rounded-lg p-4">
+          <div className="space-y-2">
+            {effectiveProcesses.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                No effective processes available
+              </p>
+            ) : (
+              effectiveProcesses.map((process) => {
+                const isSelected = selectedProcesses.some(
+                  (s) => s.processDefId === process.id
+                );
+                return (
+                  <div
+                    key={process.id}
+                    className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                      isSelected
+                        ? "bg-primary/10 border-primary"
+                        : "hover:bg-muted/50"
+                    }`}
+                    onClick={() => toggleProcess(process)}
                   >
-                    <FormControl>
-                      <SelectTrigger data-testid="select-process">
-                        <SelectValue placeholder="Select a process" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {availableProcesses.map((process) => (
-                        <SelectItem key={process.id} value={process.id}>
-                          <div className="flex items-center gap-2">
-                            <span>{process.name}</span>
-                            <Badge variant="outline" className="text-xs">
-                              Rev {process.rev}
-                            </Badge>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {isEditing && (
-                    <FormDescription>
-                      Process cannot be changed. Delete and create a new mapping instead.
-                    </FormDescription>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <Checkbox checked={isSelected} />
+                    <div className="flex-1">
+                      <p className="font-medium">{process.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Rev {process.rev} • {process.steps?.length || 0} steps
+                      </p>
+                    </div>
+                    {getStatusBadge(process.status)}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </ScrollArea>
+      </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="processRev"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Process Revision</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g., 2.1.0" data-testid="input-process-rev" />
-                    </FormControl>
-                    <FormDescription>
-                      Locked revision for this part
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="sequence"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sequence</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                        data-testid="input-sequence"
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Order in flow (10, 20, 30...)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      {/* Selected Process Order */}
+      <div className="space-y-4">
+        <h3 className="font-semibold">Process Flow Order</h3>
+        <p className="text-sm text-muted-foreground">
+          Drag or use arrows to reorder the process sequence
+        </p>
+        <ScrollArea className="h-[400px] border rounded-lg p-4">
+          {selectedProcesses.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <Settings className="h-8 w-8 mb-2" />
+              <p>No processes selected</p>
+              <p className="text-sm">Select processes from the left panel</p>
             </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedProcesses.map((selection, index) => {
+                const process = processes.find(
+                  (p) => p.id === selection.processDefId
+                );
+                if (!process) return null;
 
-            <FormField
-              control={form.control}
-              name="assumptions"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Assumptions / Notes</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Any assumptions or part-specific notes for this process..."
-                      rows={3}
-                      {...field}
-                      data-testid="textarea-assumptions"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                data-testid="button-mapping-cancel"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={mutation.isPending} data-testid="button-mapping-submit">
-                {mutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isEditing ? "Save Changes" : "Map Process"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+                return (
+                  <div
+                    key={selection.processDefId}
+                    className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30"
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                    <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{process.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Rev {selection.rev}
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => moveProcess(index, "up")}
+                        disabled={index === 0}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => moveProcess(index, "down")}
+                        disabled={index === selectedProcesses.length - 1}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => removeProcess(selection.processDefId)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+    </div>
   );
 }
 
-function DeleteMappingDialog({
-  mapping,
-  open,
-  onOpenChange,
-  onConfirm,
-  isPending,
+// PFD Preview Step
+function PFDPreviewStep({
+  mermaidCode,
+  isLoading,
 }: {
-  mapping: PartProcessMapWithProcess | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-  isPending: boolean;
+  mermaidCode: string | null;
+  isLoading: boolean;
 }) {
-  if (!mapping) return null;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!mermaidCode) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
+        <GitBranch className="h-12 w-12 mb-4" />
+        <p>No process flow to preview</p>
+        <p className="text-sm">Select processes in the previous step</p>
+      </div>
+    );
+  }
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Remove Process Mapping</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to remove{" "}
-            <strong>{mapping.process?.name || "this process"}</strong> from this
-            part? This will not affect any generated PFMEAs or Control Plans.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel data-testid="button-mapping-delete-cancel">Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            disabled={isPending}
-            data-testid="button-mapping-delete-confirm"
-          >
-            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Remove Mapping
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">Process Flow Diagram Preview</h3>
+        <Badge variant="outline">Mermaid Flowchart</Badge>
+      </div>
+
+      <div className="border rounded-lg p-6 bg-muted/30 min-h-[300px]">
+        {/* In a real implementation, this would render the Mermaid diagram */}
+        <div className="flex flex-col items-center justify-center">
+          <GitBranch className="h-16 w-16 text-primary mb-4" />
+          <p className="text-lg font-medium mb-2">PFD Will Be Generated Here</p>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            The process flow diagram will be rendered as an interactive Mermaid
+            flowchart showing the sequence of manufacturing steps.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Mermaid Source Code</Label>
+        <Textarea
+          value={mermaidCode}
+          readOnly
+          className="font-mono text-sm h-[150px]"
+        />
+      </div>
+    </div>
   );
 }
 
-export default function PartDetailPage() {
+// Generation Options Step
+function GenerationOptionsStep({
+  options,
+  onOptionsChange,
+}: {
+  options: {
+    generatePFD: boolean;
+    generatePFMEA: boolean;
+    generateControlPlan: boolean;
+    pfmeaBasis: string;
+    controlPlanType: string;
+    rev: string;
+  };
+  onOptionsChange: (options: any) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <h3 className="font-semibold">Documents to Generate</h3>
+        <div className="grid grid-cols-3 gap-4">
+          <Card
+            className={`cursor-pointer transition-colors ${
+              options.generatePFD ? "border-primary bg-primary/5" : ""
+            }`}
+            onClick={() =>
+              onOptionsChange({ ...options, generatePFD: !options.generatePFD })
+            }
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <GitBranch className="h-8 w-8 text-primary" />
+                <Checkbox checked={options.generatePFD} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">PFD</CardTitle>
+              <CardDescription>Process Flow Diagram</CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card
+            className={`cursor-pointer transition-colors ${
+              options.generatePFMEA ? "border-primary bg-primary/5" : ""
+            }`}
+            onClick={() =>
+              onOptionsChange({
+                ...options,
+                generatePFMEA: !options.generatePFMEA,
+              })
+            }
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <FileText className="h-8 w-8 text-primary" />
+                <Checkbox checked={options.generatePFMEA} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">PFMEA</CardTitle>
+              <CardDescription>Failure Mode Analysis</CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card
+            className={`cursor-pointer transition-colors ${
+              options.generateControlPlan ? "border-primary bg-primary/5" : ""
+            }`}
+            onClick={() =>
+              onOptionsChange({
+                ...options,
+                generateControlPlan: !options.generateControlPlan,
+              })
+            }
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <ClipboardList className="h-8 w-8 text-primary" />
+                <Checkbox checked={options.generateControlPlan} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">Control Plan</CardTitle>
+              <CardDescription>Process Controls</CardDescription>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="space-y-2">
+          <Label>Document Revision</Label>
+          <Input
+            value={options.rev}
+            onChange={(e) => onOptionsChange({ ...options, rev: e.target.value })}
+            placeholder="1.0.0"
+          />
+          <p className="text-xs text-muted-foreground">
+            Applied to all generated documents
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label>PFMEA Basis</Label>
+          <Select
+            value={options.pfmeaBasis}
+            onValueChange={(v) => onOptionsChange({ ...options, pfmeaBasis: v })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="AIAG-VDA 2019">AIAG-VDA 2019</SelectItem>
+              <SelectItem value="AIAG 4th Edition">AIAG 4th Edition</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Control Plan Type</Label>
+          <Select
+            value={options.controlPlanType}
+            onValueChange={(v) =>
+              onOptionsChange({ ...options, controlPlanType: v })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Prototype">Prototype</SelectItem>
+              <SelectItem value="Pre-Launch">Pre-Launch</SelectItem>
+              <SelectItem value="Production">Production</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Card className="bg-blue-50 border-blue-200">
+        <CardContent className="pt-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-blue-600 mt-0.5" />
+            <div>
+              <p className="font-medium text-blue-900">Generation Info</p>
+              <p className="text-sm text-blue-700">
+                Documents will be generated from process templates. PFMEA rows
+                will include AP calculations per {options.pfmeaBasis}. Control
+                Plan characteristics will link to PFMEA rows with special
+                characteristics flagged.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Generation Results Step
+function GenerationResultsStep({
+  result,
+  isGenerating,
+  error,
+  partId,
+}: {
+  result: GenerationResult | null;
+  isGenerating: boolean;
+  error: string | null;
+  partId: string;
+}) {
+  if (isGenerating) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[400px]">
+        <RefreshCw className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-lg font-medium">Generating Documents...</p>
+        <p className="text-muted-foreground">
+          This may take a moment depending on process complexity
+        </p>
+        <Progress value={66} className="w-64 mt-4" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[400px]">
+        <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+        <p className="text-lg font-medium text-red-600">Generation Failed</p>
+        <p className="text-muted-foreground text-center max-w-md">{error}</p>
+        <Button variant="outline" className="mt-4">
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+
+  if (!result) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[400px]">
+        <Play className="h-12 w-12 text-muted-foreground mb-4" />
+        <p className="text-lg font-medium">Ready to Generate</p>
+        <p className="text-muted-foreground">
+          Click "Generate Documents" to create the selected documents
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col items-center text-center py-8">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+          <CheckCircle2 className="h-8 w-8 text-green-600" />
+        </div>
+        <h3 className="text-xl font-semibold text-green-700">
+          Documents Generated Successfully!
+        </h3>
+        <p className="text-muted-foreground">
+          All selected documents have been created and are ready for review
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {result.pfd && (
+          <Card className="border-green-200 bg-green-50/50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <GitBranch className="h-6 w-6 text-green-600" />
+                <Badge className="bg-green-500">Created</Badge>
+              </div>
+              <CardTitle>PFD</CardTitle>
+              <CardDescription>Rev {result.pfd.rev}</CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link href={`/parts/${partId}/pfd`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View PFD
+                </Link>
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+
+        {result.pfmea && (
+          <Card className="border-green-200 bg-green-50/50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <FileText className="h-6 w-6 text-green-600" />
+                <Badge className="bg-green-500">Created</Badge>
+              </div>
+              <CardTitle>PFMEA</CardTitle>
+              <CardDescription>
+                Rev {result.pfmea.rev} • {result.pfmea.rowCount} rows
+              </CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link href={`/pfmea/${result.pfmea.id}`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View PFMEA
+                </Link>
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+
+        {result.controlPlan && (
+          <Card className="border-green-200 bg-green-50/50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <ClipboardList className="h-6 w-6 text-green-600" />
+                <Badge className="bg-green-500">Created</Badge>
+              </div>
+              <CardTitle>Control Plan</CardTitle>
+              <CardDescription>
+                Rev {result.controlPlan.rev} • {result.controlPlan.rowCount}{" "}
+                characteristics
+              </CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link href={`/control-plans/${result.controlPlan.id}`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Control Plan
+                </Link>
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+      </div>
+
+      <div className="flex justify-center gap-4 pt-4">
+        <Button variant="outline" asChild>
+          <Link href="/parts">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Parts
+          </Link>
+        </Button>
+        <Button asChild>
+          <Link href={`/pfmea/${result.pfmea?.id}`}>
+            Start PFMEA Review
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function PartDetail() {
   const { id } = useParams<{ id: string }>();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const [addMappingOpen, setAddMappingOpen] = useState(false);
-  const [editMappingOpen, setEditMappingOpen] = useState(false);
-  const [editingMapping, setEditingMapping] = useState<PartProcessMapWithProcess | undefined>();
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [mappingToDelete, setMappingToDelete] = useState<PartProcessMapWithProcess | null>(null);
+  // Wizard state
+  const [currentStep, setCurrentStep] = useState(0);
+  const [selectedProcesses, setSelectedProcesses] = useState<ProcessSelection[]>([]);
+  const [generationOptions, setGenerationOptions] = useState({
+    generatePFD: true,
+    generatePFMEA: true,
+    generateControlPlan: true,
+    pfmeaBasis: "AIAG-VDA 2019",
+    controlPlanType: "Production",
+    rev: "1.0.0",
+  });
+  const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
-  const {
-    data: part,
-    isLoading: partLoading,
-    error: partError,
-  } = useQuery<Part>({
+  // Fetch part details
+  const { data: part, isLoading: partLoading } = useQuery<Part>({
     queryKey: ["/api/parts", id],
     queryFn: async () => {
-      const res = await fetch(`/api/parts/${id}`);
-      if (!res.ok) throw new Error("Part not found");
-      return res.json();
+      const response = await fetch(`/api/parts/${id}`);
+      if (!response.ok) throw new Error("Failed to fetch part");
+      return response.json();
     },
     enabled: !!id,
   });
 
-  const { data: mappings = [], isLoading: mappingsLoading } = useQuery<
-    PartProcessMapWithProcess[]
-  >({
-    queryKey: ["/api/part-process-maps", id],
-    queryFn: async () => {
-      const res = await fetch(`/api/part-process-maps?partId=${id}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!id,
+  // Fetch processes
+  const { data: processes = [] } = useQuery<ProcessDef[]>({
+    queryKey: ["/api/processes"],
   });
 
+  // Fetch existing documents
   const { data: pfmeas = [] } = useQuery<PFMEA[]>({
-    queryKey: ["/api/pfmeas", { partId: id }],
+    queryKey: ["/api/parts", id, "pfmeas"],
     queryFn: async () => {
-      const res = await fetch(`/api/pfmeas?partId=${id}`);
-      if (!res.ok) return [];
-      return res.json();
+      const response = await fetch(`/api/parts/${id}/pfmeas`);
+      if (!response.ok) return [];
+      return response.json();
     },
     enabled: !!id,
   });
 
   const { data: controlPlans = [] } = useQuery<ControlPlan[]>({
-    queryKey: ["/api/control-plans", { partId: id }],
+    queryKey: ["/api/parts", id, "control-plans"],
     queryFn: async () => {
-      const res = await fetch(`/api/control-plans?partId=${id}`);
-      if (!res.ok) return [];
-      return res.json();
+      const response = await fetch(`/api/parts/${id}/control-plans`);
+      if (!response.ok) return [];
+      return response.json();
     },
     enabled: !!id,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (mappingId: string) => {
-      await apiRequest("DELETE", `/api/part-process-maps/${mappingId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/part-process-maps", id] });
-      toast({
-        title: "Process mapping removed",
-        description: "The process has been unmapped from this part.",
+  // PFD Preview mutation
+  const previewMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/parts/${id}/pfd/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          processes: selectedProcesses,
+        }),
       });
-      setDeleteOpen(false);
-      setMappingToDelete(null);
+      if (!response.ok) throw new Error("Failed to generate preview");
+      return response.json();
+    },
+  });
+
+  // Generation mutation
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/parts/${id}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          processes: selectedProcesses,
+          options: generationOptions,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate documents");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setGenerationResult(data);
+      setGenerationError(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/parts", id] });
+      toast({
+        title: "Documents Generated",
+        description: "All selected documents have been created successfully.",
+      });
     },
     onError: (error: Error) => {
+      setGenerationError(error.message);
       toast({
+        title: "Generation Failed",
+        description: error.message,
         variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to remove process mapping",
       });
     },
   });
 
-  const handleEdit = (mapping: PartProcessMapWithProcess) => {
-    setEditingMapping(mapping);
-    setEditMappingOpen(true);
-  };
+  // Load preview when moving to step 2
+  useEffect(() => {
+    if (currentStep === 1 && selectedProcesses.length > 0) {
+      previewMutation.mutate();
+    }
+  }, [currentStep]);
 
-  const handleDelete = (mapping: PartProcessMapWithProcess) => {
-    setMappingToDelete(mapping);
-    setDeleteOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (mappingToDelete) {
-      deleteMutation.mutate(mappingToDelete.id);
+  const canProceed = () => {
+    switch (currentStep) {
+      case 0:
+        return selectedProcesses.length > 0;
+      case 1:
+        return true;
+      case 2:
+        return (
+          generationOptions.generatePFD ||
+          generationOptions.generatePFMEA ||
+          generationOptions.generateControlPlan
+        );
+      case 3:
+        return true;
+      default:
+        return false;
     }
   };
 
-  const sortedMappings = [...mappings].sort((a, b) => a.sequence - b.sequence);
-  const existingSequences = mappings.map((m) => m.sequence);
+  const handleNext = () => {
+    if (currentStep < WIZARD_STEPS.length - 1) {
+      setCurrentStep(currentStep + 1);
+    } else if (currentStep === 3 && !generationResult) {
+      generateMutation.mutate();
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const resetWizard = () => {
+    setCurrentStep(0);
+    setSelectedProcesses([]);
+    setGenerationResult(null);
+    setGenerationError(null);
+  };
 
   if (partLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center h-screen">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  if (partError || !part) {
+  if (!part) {
     return (
-      <div className="flex-1 p-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">Part not found</p>
-              <p className="text-sm mt-1">
-                The requested part could not be found.
-              </p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={() => setLocation("/parts")}
-                data-testid="button-back-to-parts"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Parts
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Package className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold">Part Not Found</h2>
+        <p className="text-muted-foreground mb-4">
+          The requested part could not be found.
+        </p>
+        <Button asChild>
+          <Link href="/parts">Back to Parts</Link>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="p-8 space-y-6">
+    <div className="flex flex-col gap-6 p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLocation("/parts")}
-            data-testid="button-back"
-          >
-            <ArrowLeft className="h-5 w-5" />
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/parts">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Link>
           </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight" data-testid="text-part-name">
-                {part.partName}
-              </h1>
-              <Badge variant="outline" className="text-sm font-mono" data-testid="text-part-number">
-                {part.partNumber}
-              </Badge>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">{part.partNumber}</h1>
+              <Badge variant="outline">{part.customer}</Badge>
+              <Badge variant="secondary">{part.plant}</Badge>
             </div>
-            <div className="flex items-center gap-4 mt-1 text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                {part.customer}
-              </span>
-              <span className="flex items-center gap-1">
-                <Car className="h-4 w-4" />
-                {part.program}
-              </span>
-              <span className="flex items-center gap-1">
-                <Factory className="h-4 w-4" />
-                {part.plant}
-              </span>
-            </div>
+            <p className="text-muted-foreground">
+              {part.partName} {part.program && `• ${part.program}`}
+            </p>
           </div>
         </div>
-
-        {part.csrNotes && (
-          <Card className="border-yellow-500/50 bg-yellow-500/5">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-3">
-                <FileText className="h-5 w-5 text-yellow-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-yellow-800 dark:text-yellow-200">
-                    Customer-Specific Requirements
-                  </p>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1" data-testid="text-csr-notes">
-                    {part.csrNotes}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Tabs defaultValue="processes" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="processes" className="gap-2" data-testid="tab-processes">
-              <Layers className="h-4 w-4" />
-              Process Flow ({sortedMappings.length})
-            </TabsTrigger>
-            <TabsTrigger value="pfmeas" className="gap-2" data-testid="tab-pfmeas">
-              <FileText className="h-4 w-4" />
-              PFMEAs ({pfmeas.length})
-            </TabsTrigger>
-            <TabsTrigger value="controlplans" className="gap-2" data-testid="tab-controlplans">
-              <ClipboardList className="h-4 w-4" />
-              Control Plans ({controlPlans.length})
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="processes">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Process Flow</CardTitle>
-                    <CardDescription>
-                      Define the sequence of processes used to manufacture this
-                      part
-                    </CardDescription>
-                  </div>
-                  <Button onClick={() => setAddMappingOpen(true)} data-testid="button-add-process">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Process
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {mappingsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : sortedMappings.length > 0 ? (
-                  <div className="space-y-2">
-                    {sortedMappings.map((mapping, index) => (
-                      <div
-                        key={mapping.id}
-                        className="flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 group"
-                        data-testid={`row-mapping-${mapping.id}`}
-                      >
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <GripVertical className="h-5 w-5 opacity-50" />
-                          <span className="font-mono text-sm w-8">
-                            {mapping.sequence}
-                          </span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Settings2 className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {mapping.process?.name || "Unknown Process"}
-                            </span>
-                            <Badge variant="outline" className="text-xs">
-                              Rev {mapping.processRev}
-                            </Badge>
-                            {mapping.process?.status === "effective" && (
-                              <Badge
-                                variant="default"
-                                className="text-xs bg-green-600"
-                              >
-                                Effective
-                              </Badge>
-                            )}
-                          </div>
-                          {mapping.assumptions && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {mapping.assumptions}
-                            </p>
-                          )}
-                        </div>
-                        {index < sortedMappings.length - 1 && (
-                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                        )}
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(mapping)}
-                            data-testid={`button-edit-mapping-${mapping.id}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(mapping)}
-                            data-testid={`button-delete-mapping-${mapping.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Unlink className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No processes mapped</p>
-                    <p className="text-sm mt-1">
-                      Add processes to define the manufacturing flow for this
-                      part
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => setAddMappingOpen(true)}
-                      data-testid="button-add-first-process"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add First Process
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="pfmeas">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Process Failure Mode and Effects Analysis</CardTitle>
-                    <CardDescription>
-                      PFMEAs generated for this part
-                    </CardDescription>
-                  </div>
-                  <Button disabled={sortedMappings.length === 0} data-testid="button-generate-pfmea">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Generate PFMEA
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {pfmeas.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Revision</TableHead>
-                        <TableHead>Document No.</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Effective Date</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pfmeas.map((pfmea) => (
-                        <TableRow key={pfmea.id} data-testid={`row-pfmea-${pfmea.id}`}>
-                          <TableCell className="font-mono">
-                            Rev {pfmea.rev}
-                          </TableCell>
-                          <TableCell>{pfmea.docNo || "—"}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                pfmea.status === "effective"
-                                  ? "default"
-                                  : pfmea.status === "draft"
-                                  ? "secondary"
-                                  : "outline"
-                              }
-                            >
-                              {pfmea.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {pfmea.effectiveFrom
-                              ? new Date(pfmea.effectiveFrom).toLocaleDateString()
-                              : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" data-testid={`button-view-pfmea-${pfmea.id}`}>
-                              View
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No PFMEAs yet</p>
-                    <p className="text-sm mt-1">
-                      {sortedMappings.length === 0
-                        ? "Add processes to the flow first, then generate a PFMEA"
-                        : "Generate a PFMEA from the mapped processes"}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="controlplans">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Control Plans</CardTitle>
-                    <CardDescription>
-                      Control Plans generated for this part
-                    </CardDescription>
-                  </div>
-                  <Button disabled={pfmeas.length === 0} data-testid="button-generate-control-plan">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Generate Control Plan
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {controlPlans.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Revision</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Document No.</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Effective Date</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {controlPlans.map((cp) => (
-                        <TableRow key={cp.id} data-testid={`row-control-plan-${cp.id}`}>
-                          <TableCell className="font-mono">
-                            Rev {cp.rev}
-                          </TableCell>
-                          <TableCell>{cp.type}</TableCell>
-                          <TableCell>{cp.docNo || "—"}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                cp.status === "effective"
-                                  ? "default"
-                                  : cp.status === "draft"
-                                  ? "secondary"
-                                  : "outline"
-                              }
-                            >
-                              {cp.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {cp.effectiveFrom
-                              ? new Date(cp.effectiveFrom).toLocaleDateString()
-                              : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" data-testid={`button-view-control-plan-${cp.id}`}>
-                              View
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <ClipboardList className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No Control Plans yet</p>
-                    <p className="text-sm mt-1">
-                      {pfmeas.length === 0
-                        ? "Generate a PFMEA first, then create a Control Plan"
-                        : "Generate a Control Plan from the PFMEA"}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <ProcessMapFormDialog
-          partId={id!}
-          mapping={undefined}
-          existingSequences={existingSequences}
-          open={addMappingOpen}
-          onOpenChange={setAddMappingOpen}
-        />
-
-        <ProcessMapFormDialog
-          partId={id!}
-          mapping={editingMapping}
-          existingSequences={existingSequences.filter(
-            (s) => s !== editingMapping?.sequence
-          )}
-          open={editMappingOpen}
-          onOpenChange={(open) => {
-            setEditMappingOpen(open);
-            if (!open) {
-              setEditingMapping(undefined);
-            }
-          }}
-        />
-
-        <DeleteMappingDialog
-          mapping={mappingToDelete}
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          onConfirm={confirmDelete}
-          isPending={deleteMutation.isPending}
-        />
+        <Button onClick={() => setWizardOpen(true)}>
+          <Wand2 className="h-4 w-4 mr-2" />
+          Generate Documents
+        </Button>
       </div>
+
+      {/* Part Info & CSR Notes */}
+      {part.csrNotes && (
+        <Card className="border-purple-200 bg-purple-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-purple-700">
+              Customer Specific Requirements
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm">{part.csrNotes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Documents Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* PFMEAs */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                PFMEAs
+              </CardTitle>
+              <Badge>{pfmeas.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {pfmeas.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No PFMEAs created yet</p>
+            ) : (
+              <div className="space-y-2">
+                {pfmeas.slice(0, 3).map((pfmea) => (
+                  <Link key={pfmea.id} href={`/pfmea/${pfmea.id}`}>
+                    <div className="flex items-center justify-between p-2 rounded hover:bg-muted cursor-pointer">
+                      <div>
+                        <span className="font-medium">Rev {pfmea.rev}</span>
+                        <span className="text-sm text-muted-foreground ml-2">
+                          {pfmea.basis}
+                        </span>
+                      </div>
+                      {getStatusBadge(pfmea.status)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button variant="ghost" size="sm" className="w-full" asChild>
+              <Link href="/pfmea">
+                View All
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Link>
+            </Button>
+          </CardFooter>
+        </Card>
+
+        {/* Control Plans */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5" />
+                Control Plans
+              </CardTitle>
+              <Badge>{controlPlans.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {controlPlans.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No Control Plans created yet
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {controlPlans.slice(0, 3).map((cp) => (
+                  <Link key={cp.id} href={`/control-plans/${cp.id}`}>
+                    <div className="flex items-center justify-between p-2 rounded hover:bg-muted cursor-pointer">
+                      <div>
+                        <span className="font-medium">Rev {cp.rev}</span>
+                        <span className="text-sm text-muted-foreground ml-2">
+                          {cp.type}
+                        </span>
+                      </div>
+                      {getStatusBadge(cp.status)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button variant="ghost" size="sm" className="w-full" asChild>
+              <Link href="/control-plans">
+                View All
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Link>
+            </Button>
+          </CardFooter>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => setWizardOpen(true)}
+            >
+              <Wand2 className="h-4 w-4 mr-2" />
+              Generate New Documents
+            </Button>
+            <Button variant="outline" className="w-full justify-start" asChild>
+              <Link href="/pfmea">
+                <FileText className="h-4 w-4 mr-2" />
+                View All PFMEAs
+              </Link>
+            </Button>
+            <Button variant="outline" className="w-full justify-start" asChild>
+              <Link href="/control-plans">
+                <ClipboardList className="h-4 w-4 mr-2" />
+                View All Control Plans
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Generation Wizard Dialog */}
+      <Dialog
+        open={wizardOpen}
+        onOpenChange={(open) => {
+          setWizardOpen(open);
+          if (!open) resetWizard();
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Generate Documents for {part.partNumber}</DialogTitle>
+            <DialogDescription>
+              Create PFD, PFMEA, and Control Plan documents from process templates
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Progress Steps */}
+          <div className="flex items-center justify-between px-4 py-2 bg-muted/30 rounded-lg">
+            {WIZARD_STEPS.map((step, index) => {
+              const StepIcon = step.icon;
+              const isActive = index === currentStep;
+              const isComplete = index < currentStep;
+
+              return (
+                <div
+                  key={step.id}
+                  className={`flex items-center gap-2 ${
+                    isActive
+                      ? "text-primary"
+                      : isComplete
+                      ? "text-green-600"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : isComplete
+                        ? "bg-green-100 text-green-600"
+                        : "bg-muted"
+                    }`}
+                  >
+                    {isComplete ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <StepIcon className="h-4 w-4" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium hidden md:inline">
+                    {step.label}
+                  </span>
+                  {index < WIZARD_STEPS.length - 1 && (
+                    <ChevronRight className="h-4 w-4 mx-2 text-muted-foreground" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Step Content */}
+          <ScrollArea className="flex-1 px-1">
+            <div className="py-4">
+              {currentStep === 0 && (
+                <ProcessSelectionStep
+                  processes={processes}
+                  selectedProcesses={selectedProcesses}
+                  onSelectionChange={setSelectedProcesses}
+                />
+              )}
+              {currentStep === 1 && (
+                <PFDPreviewStep
+                  mermaidCode={previewMutation.data?.mermaid || null}
+                  isLoading={previewMutation.isPending}
+                />
+              )}
+              {currentStep === 2 && (
+                <GenerationOptionsStep
+                  options={generationOptions}
+                  onOptionsChange={setGenerationOptions}
+                />
+              )}
+              {currentStep === 3 && (
+                <GenerationResultsStep
+                  result={generationResult}
+                  isGenerating={generateMutation.isPending}
+                  error={generationError}
+                  partId={part.id}
+                />
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Footer Navigation */}
+          <DialogFooter className="border-t pt-4">
+            <div className="flex items-center justify-between w-full">
+              <Button
+                variant="outline"
+                onClick={handlePrevious}
+                disabled={currentStep === 0 || generateMutation.isPending}
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Previous
+              </Button>
+
+              <div className="text-sm text-muted-foreground">
+                Step {currentStep + 1} of {WIZARD_STEPS.length}
+              </div>
+
+              {currentStep === 3 && generationResult ? (
+                <Button onClick={() => setWizardOpen(false)}>
+                  <Check className="h-4 w-4 mr-2" />
+                  Done
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleNext}
+                  disabled={!canProceed() || generateMutation.isPending}
+                >
+                  {currentStep === 3 ? (
+                    generateMutation.isPending ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4 mr-2" />
+                        Generate Documents
+                      </>
+                    )
+                  ) : (
+                    <>
+                      Next
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
