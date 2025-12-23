@@ -1,0 +1,740 @@
+/**
+ * Control Plan Generator Service
+ * 
+ * Generates part-specific Control Plans from PFMEA rows and Control Plan templates.
+ * Follows IATF 16949 and AIAG-VDA standards for Control Plan structure.
+ * 
+ * Key Features:
+ * - Links Control Plan rows to source PFMEA rows for traceability
+ * - Pulls characteristics from Control Plan templates
+ * - Maintains parent template references for change propagation
+ * - Supports special characteristics (CSR) with enhanced requirements
+ * - Validates completeness and compliance before generation
+ */
+
+import type {
+  Part,
+  PartProcessMap,
+  ProcessDef,
+  ProcessStep,
+  FmeaTemplateRow,
+  ControlTemplateRow,
+  PFMEA,
+  PFMEARow,
+  ControlPlan,
+  ControlPlanRow,
+  InsertControlPlan,
+  InsertControlPlanRow,
+} from "@shared/schema";
+
+// ============================================
+// Types
+// ============================================
+
+export type ControlPlanType = 'Prototype' | 'Pre-Launch' | 'Production';
+
+export interface ControlPlanGenerationInput {
+  partId: string;
+  pfmeaId: string;
+  rev: string;
+  type: ControlPlanType;
+  docNo?: string;
+}
+
+export interface ControlPlanGenerationResult {
+  success: boolean;
+  controlPlan: ControlPlan | null;
+  rows: ControlPlanRow[];
+  stats: ControlPlanGenerationStats;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface ControlPlanGenerationStats {
+  totalPfmeaRows: number;
+  pfmeaRowsWithTemplates: number;
+  pfmeaRowsWithoutTemplates: number;
+  generatedRows: number;
+  specialCharacteristics: number;
+  processesIncluded: number;
+  highAPCoverage: number;
+  mediumAPCoverage: number;
+  missingReactionPlans: number;
+  missingAcceptanceCriteria: number;
+}
+
+export interface ControlPlanRowPreview {
+  pfmeaRow: PFMEARow;
+  templateRow: ControlTemplateRow | null;
+  characteristicName: string;
+  charId: string;
+  type: string;
+  isSpecial: boolean;
+  csrSymbol: string | null;
+  hasReactionPlan: boolean;
+  hasAcceptanceCriteria: boolean;
+  willInclude: boolean;
+  source: 'template' | 'pfmea_only';
+}
+
+export interface ControlPlanValidation {
+  isValid: boolean;
+  canGenerate: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface TemplateMapping {
+  pfmeaRowId: string;
+  fmeaTemplateRowId: string | null;
+  controlTemplateRows: ControlTemplateRow[];
+}
+
+// ============================================
+// Validation Functions
+// ============================================
+
+/**
+ * Validate that a PFMEA exists and has rows for Control Plan generation
+ */
+export function validatePFMEAForControlPlan(
+  pfmea: PFMEA | null,
+  pfmeaRows: PFMEARow[]
+): ControlPlanValidation {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (!pfmea) {
+    errors.push("PFMEA not found");
+    return { isValid: false, canGenerate: false, warnings, errors };
+  }
+
+  if (pfmea.status === 'draft') {
+    warnings.push("PFMEA is still in draft status - Control Plan should be finalized after PFMEA review");
+  }
+
+  if (!pfmeaRows || pfmeaRows.length === 0) {
+    errors.push("PFMEA has no rows - cannot generate Control Plan");
+    return { isValid: false, canGenerate: false, warnings, errors };
+  }
+
+  // Check for high AP items - these MUST have Control Plan coverage
+  const highAPRows = pfmeaRows.filter(r => r.ap === 'H');
+  if (highAPRows.length > 0) {
+    warnings.push(`${highAPRows.length} High AP failure mode(s) - ensure all have Control Plan coverage`);
+  }
+
+  // Check for special characteristics
+  const specialRows = pfmeaRows.filter(r => r.specialFlag || r.csrSymbol);
+  if (specialRows.length > 0) {
+    warnings.push(`${specialRows.length} special characteristic(s) require enhanced controls`);
+  }
+
+  return {
+    isValid: errors.length === 0,
+    canGenerate: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
+/**
+ * Validate Control Plan template coverage
+ */
+export function validateTemplateCoverage(
+  pfmeaRows: PFMEARow[],
+  templateMappings: TemplateMapping[]
+): ControlPlanValidation {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  // Check for PFMEA rows without template coverage
+  const rowsWithoutTemplates = templateMappings.filter(m => m.controlTemplateRows.length === 0);
+  
+  if (rowsWithoutTemplates.length > 0) {
+    // Check if any are High AP
+    const highAPWithout = rowsWithoutTemplates.filter(m => {
+      const pfmeaRow = pfmeaRows.find(r => r.id === m.pfmeaRowId);
+      return pfmeaRow?.ap === 'H';
+    });
+
+    if (highAPWithout.length > 0) {
+      errors.push(
+        `${highAPWithout.length} High AP PFMEA row(s) have no Control Plan template - add templates or waiver required`
+      );
+    }
+
+    // Check special characteristics
+    const specialWithout = rowsWithoutTemplates.filter(m => {
+      const pfmeaRow = pfmeaRows.find(r => r.id === m.pfmeaRowId);
+      return pfmeaRow?.specialFlag || pfmeaRow?.csrSymbol;
+    });
+
+    if (specialWithout.length > 0) {
+      warnings.push(
+        `${specialWithout.length} special characteristic PFMEA row(s) have no Control Plan template`
+      );
+    }
+
+    // General warning for rows without templates
+    const regularWithout = rowsWithoutTemplates.length - highAPWithout.length - specialWithout.length;
+    if (regularWithout > 0) {
+      warnings.push(
+        `${regularWithout} PFMEA row(s) have no Control Plan template - characteristics will be generated from PFMEA data`
+      );
+    }
+  }
+
+  // Check for missing reaction plans on special characteristics
+  const specialWithTemplates = templateMappings.filter(m => {
+    const pfmeaRow = pfmeaRows.find(r => r.id === m.pfmeaRowId);
+    return (pfmeaRow?.specialFlag || pfmeaRow?.csrSymbol) && m.controlTemplateRows.length > 0;
+  });
+
+  for (const mapping of specialWithTemplates) {
+    for (const template of mapping.controlTemplateRows) {
+      if (!template.reactionPlan) {
+        warnings.push(
+          `Special characteristic "${template.characteristicName}" missing reaction plan`
+        );
+      }
+      if (!template.acceptanceCriteria) {
+        warnings.push(
+          `Special characteristic "${template.characteristicName}" missing acceptance criteria`
+        );
+      }
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    canGenerate: errors.length === 0,
+    warnings,
+    errors,
+  };
+}
+
+// ============================================
+// Mapping Functions
+// ============================================
+
+/**
+ * Build mapping between PFMEA rows and Control Plan templates
+ * 
+ * The linkage is: 
+ * PFMEA Row -> parentTemplateRowId -> FmeaTemplateRow.id
+ * ControlTemplateRow -> sourceTemplateRowId -> FmeaTemplateRow.id
+ */
+export function buildTemplateMappings(
+  pfmeaRows: PFMEARow[],
+  controlTemplateRows: ControlTemplateRow[]
+): TemplateMapping[] {
+  return pfmeaRows.map(pfmeaRow => {
+    // Find control templates linked to the same FMEA template row
+    const matchingTemplates = controlTemplateRows.filter(
+      ct => ct.sourceTemplateRowId === pfmeaRow.parentTemplateRowId
+    );
+
+    return {
+      pfmeaRowId: pfmeaRow.id,
+      fmeaTemplateRowId: pfmeaRow.parentTemplateRowId,
+      controlTemplateRows: matchingTemplates,
+    };
+  });
+}
+
+// ============================================
+// Preview Functions
+// ============================================
+
+/**
+ * Preview what Control Plan rows would be generated
+ */
+export function previewControlPlanGeneration(
+  pfmeaRows: PFMEARow[],
+  templateMappings: TemplateMapping[],
+  existingCharIds: string[] = []
+): ControlPlanRowPreview[] {
+  const previews: ControlPlanRowPreview[] = [];
+  let charIdCounter = existingCharIds.length + 1;
+
+  // Helper to generate unique char ID
+  const generateCharId = (prefix: string = 'C'): string => {
+    const id = `${prefix}-${String(charIdCounter).padStart(3, '0')}`;
+    charIdCounter++;
+    return id;
+  };
+
+  for (const mapping of templateMappings) {
+    const pfmeaRow = pfmeaRows.find(r => r.id === mapping.pfmeaRowId);
+    if (!pfmeaRow) continue;
+
+    if (mapping.controlTemplateRows.length > 0) {
+      // Generate from templates
+      for (const template of mapping.controlTemplateRows) {
+        previews.push({
+          pfmeaRow,
+          templateRow: template,
+          characteristicName: template.characteristicName,
+          charId: template.charId || generateCharId(),
+          type: template.type,
+          isSpecial: template.specialFlag || !!template.csrSymbol,
+          csrSymbol: template.csrSymbol || pfmeaRow.csrSymbol,
+          hasReactionPlan: !!template.reactionPlan,
+          hasAcceptanceCriteria: !!template.acceptanceCriteria,
+          willInclude: true,
+          source: 'template',
+        });
+      }
+    } else {
+      // Generate basic row from PFMEA data only
+      previews.push({
+        pfmeaRow,
+        templateRow: null,
+        characteristicName: `${pfmeaRow.failureMode} - Control`,
+        charId: generateCharId(),
+        type: 'Process',
+        isSpecial: pfmeaRow.specialFlag || !!pfmeaRow.csrSymbol,
+        csrSymbol: pfmeaRow.csrSymbol,
+        hasReactionPlan: false,
+        hasAcceptanceCriteria: false,
+        willInclude: true,
+        source: 'pfmea_only',
+      });
+    }
+  }
+
+  return previews;
+}
+
+/**
+ * Calculate generation statistics from preview
+ */
+export function calculatePreviewStats(
+  pfmeaRows: PFMEARow[],
+  previews: ControlPlanRowPreview[]
+): ControlPlanGenerationStats {
+  const includedPreviews = previews.filter(p => p.willInclude);
+  const fromTemplates = includedPreviews.filter(p => p.source === 'template');
+  const pfmeaOnly = includedPreviews.filter(p => p.source === 'pfmea_only');
+
+  // Count coverage by AP level
+  const highAPRows = pfmeaRows.filter(r => r.ap === 'H');
+  const mediumAPRows = pfmeaRows.filter(r => r.ap === 'M');
+  
+  const highAPWithCoverage = highAPRows.filter(r => 
+    includedPreviews.some(p => p.pfmeaRow.id === r.id)
+  );
+  const mediumAPWithCoverage = mediumAPRows.filter(r =>
+    includedPreviews.some(p => p.pfmeaRow.id === r.id)
+  );
+
+  return {
+    totalPfmeaRows: pfmeaRows.length,
+    pfmeaRowsWithTemplates: new Set(fromTemplates.map(p => p.pfmeaRow.id)).size,
+    pfmeaRowsWithoutTemplates: pfmeaOnly.length,
+    generatedRows: includedPreviews.length,
+    specialCharacteristics: includedPreviews.filter(p => p.isSpecial).length,
+    processesIncluded: new Set(pfmeaRows.map(r => r.stepRef)).size,
+    highAPCoverage: highAPRows.length > 0 
+      ? Math.round((highAPWithCoverage.length / highAPRows.length) * 100) 
+      : 100,
+    mediumAPCoverage: mediumAPRows.length > 0
+      ? Math.round((mediumAPWithCoverage.length / mediumAPRows.length) * 100)
+      : 100,
+    missingReactionPlans: includedPreviews.filter(p => p.isSpecial && !p.hasReactionPlan).length,
+    missingAcceptanceCriteria: includedPreviews.filter(p => p.isSpecial && !p.hasAcceptanceCriteria).length,
+  };
+}
+
+// ============================================
+// Generation Functions
+// ============================================
+
+/**
+ * Generate next revision number for Control Plan
+ */
+export function generateNextRevision(existingRevisions: string[]): string {
+  if (existingRevisions.length === 0) {
+    return "1.0";
+  }
+
+  const sorted = existingRevisions
+    .map(rev => {
+      const parts = rev.split(".");
+      return {
+        original: rev,
+        major: parseInt(parts[0]) || 0,
+        minor: parseInt(parts[1]) || 0,
+      };
+    })
+    .sort((a, b) => {
+      if (a.major !== b.major) return b.major - a.major;
+      return b.minor - a.minor;
+    });
+
+  const latest = sorted[0];
+  return `${latest.major}.${latest.minor + 1}`;
+}
+
+/**
+ * Build Control Plan header data
+ */
+export function buildControlPlanHeader(
+  partId: string,
+  rev: string,
+  type: ControlPlanType,
+  docNo?: string,
+  supersedesId?: string
+): InsertControlPlan {
+  return {
+    partId,
+    rev,
+    type,
+    status: 'draft',
+    docNo: docNo || null,
+    approvedBy: null,
+    approvedAt: null,
+    effectiveFrom: null,
+    supersedesId: supersedesId || null,
+  };
+}
+
+/**
+ * Build a Control Plan row from template
+ */
+export function buildControlPlanRowFromTemplate(
+  controlPlanId: string,
+  pfmeaRow: PFMEARow,
+  template: ControlTemplateRow
+): InsertControlPlanRow {
+  return {
+    controlPlanId,
+    sourcePfmeaRowId: pfmeaRow.id,
+    parentControlTemplateRowId: template.id,
+    charId: template.charId,
+    characteristicName: template.characteristicName,
+    type: template.type,
+    target: template.target,
+    tolerance: template.tolerance,
+    specialFlag: template.specialFlag || pfmeaRow.specialFlag || false,
+    csrSymbol: template.csrSymbol || pfmeaRow.csrSymbol || null,
+    measurementSystem: template.measurementSystem,
+    gageDetails: template.gageDetails,
+    sampleSize: template.defaultSampleSize,
+    frequency: template.defaultFrequency,
+    controlMethod: template.controlMethod,
+    acceptanceCriteria: template.acceptanceCriteria,
+    reactionPlan: template.reactionPlan,
+    overrideFlags: {},
+  };
+}
+
+/**
+ * Build a Control Plan row from PFMEA data only (no template)
+ */
+export function buildControlPlanRowFromPFMEA(
+  controlPlanId: string,
+  pfmeaRow: PFMEARow,
+  charId: string
+): InsertControlPlanRow {
+  // Build control method from PFMEA detection controls
+  const controlMethod = pfmeaRow.detectionControls?.length 
+    ? pfmeaRow.detectionControls.join(', ')
+    : 'Visual inspection';
+
+  return {
+    controlPlanId,
+    sourcePfmeaRowId: pfmeaRow.id,
+    parentControlTemplateRowId: null,
+    charId,
+    characteristicName: `${pfmeaRow.failureMode} - Control`,
+    type: 'Process',
+    target: null,
+    tolerance: null,
+    specialFlag: pfmeaRow.specialFlag || false,
+    csrSymbol: pfmeaRow.csrSymbol || null,
+    measurementSystem: null,
+    gageDetails: null,
+    sampleSize: null,
+    frequency: null,
+    controlMethod,
+    acceptanceCriteria: null,
+    reactionPlan: null,
+    overrideFlags: {},
+  };
+}
+
+/**
+ * Main preparation function - prepares all data for Control Plan generation
+ */
+export function prepareControlPlanGeneration(
+  part: Part,
+  pfmea: PFMEA,
+  pfmeaRows: PFMEARow[],
+  controlTemplateRows: ControlTemplateRow[],
+  input: ControlPlanGenerationInput,
+  existingRevisions: string[] = []
+): {
+  header: InsertControlPlan;
+  rows: Omit<InsertControlPlanRow, 'controlPlanId'>[];
+  stats: ControlPlanGenerationStats;
+  validation: ControlPlanValidation;
+} {
+  // Build template mappings
+  const templateMappings = buildTemplateMappings(pfmeaRows, controlTemplateRows);
+
+  // Validate PFMEA
+  const pfmeaValidation = validatePFMEAForControlPlan(pfmea, pfmeaRows);
+  
+  // Validate template coverage
+  const templateValidation = validateTemplateCoverage(pfmeaRows, templateMappings);
+
+  // Combine validations
+  const validation: ControlPlanValidation = {
+    isValid: pfmeaValidation.isValid && templateValidation.isValid,
+    canGenerate: pfmeaValidation.canGenerate && templateValidation.canGenerate,
+    warnings: [...pfmeaValidation.warnings, ...templateValidation.warnings],
+    errors: [...pfmeaValidation.errors, ...templateValidation.errors],
+  };
+
+  // Determine revision
+  const rev = input.rev || generateNextRevision(existingRevisions);
+
+  // Build header
+  const header = buildControlPlanHeader(
+    input.partId,
+    rev,
+    input.type,
+    input.docNo
+  );
+
+  // Build rows
+  const rows: Omit<InsertControlPlanRow, 'controlPlanId'>[] = [];
+  let charIdCounter = 1;
+
+  for (const mapping of templateMappings) {
+    const pfmeaRow = pfmeaRows.find(r => r.id === mapping.pfmeaRowId);
+    if (!pfmeaRow) continue;
+
+    if (mapping.controlTemplateRows.length > 0) {
+      // Generate from templates
+      for (const template of mapping.controlTemplateRows) {
+        rows.push({
+          sourcePfmeaRowId: pfmeaRow.id,
+          parentControlTemplateRowId: template.id,
+          charId: template.charId || `C-${String(charIdCounter++).padStart(3, '0')}`,
+          characteristicName: template.characteristicName,
+          type: template.type,
+          target: template.target,
+          tolerance: template.tolerance,
+          specialFlag: template.specialFlag || pfmeaRow.specialFlag || false,
+          csrSymbol: template.csrSymbol || pfmeaRow.csrSymbol || null,
+          measurementSystem: template.measurementSystem,
+          gageDetails: template.gageDetails,
+          sampleSize: template.defaultSampleSize,
+          frequency: template.defaultFrequency,
+          controlMethod: template.controlMethod,
+          acceptanceCriteria: template.acceptanceCriteria,
+          reactionPlan: template.reactionPlan,
+          overrideFlags: {},
+        });
+      }
+    } else {
+      // Generate basic row from PFMEA only
+      const controlMethod = pfmeaRow.detectionControls?.length
+        ? pfmeaRow.detectionControls.join(', ')
+        : 'Visual inspection';
+
+      rows.push({
+        sourcePfmeaRowId: pfmeaRow.id,
+        parentControlTemplateRowId: null,
+        charId: `C-${String(charIdCounter++).padStart(3, '0')}`,
+        characteristicName: `${pfmeaRow.failureMode} - Control`,
+        type: 'Process',
+        target: null,
+        tolerance: null,
+        specialFlag: pfmeaRow.specialFlag || false,
+        csrSymbol: pfmeaRow.csrSymbol || null,
+        measurementSystem: null,
+        gageDetails: null,
+        sampleSize: null,
+        frequency: null,
+        controlMethod,
+        acceptanceCriteria: null,
+        reactionPlan: null,
+        overrideFlags: {},
+      });
+    }
+  }
+
+  // Calculate stats
+  const fromTemplates = rows.filter(r => r.parentControlTemplateRowId !== null);
+  const pfmeaOnly = rows.filter(r => r.parentControlTemplateRowId === null);
+
+  const highAPRows = pfmeaRows.filter(r => r.ap === 'H');
+  const mediumAPRows = pfmeaRows.filter(r => r.ap === 'M');
+  
+  const highAPWithCoverage = highAPRows.filter(r => 
+    rows.some(row => row.sourcePfmeaRowId === r.id)
+  );
+  const mediumAPWithCoverage = mediumAPRows.filter(r =>
+    rows.some(row => row.sourcePfmeaRowId === r.id)
+  );
+
+  const stats: ControlPlanGenerationStats = {
+    totalPfmeaRows: pfmeaRows.length,
+    pfmeaRowsWithTemplates: new Set(fromTemplates.map(r => r.sourcePfmeaRowId)).size,
+    pfmeaRowsWithoutTemplates: pfmeaOnly.length,
+    generatedRows: rows.length,
+    specialCharacteristics: rows.filter(r => r.specialFlag || r.csrSymbol).length,
+    processesIncluded: new Set(pfmeaRows.map(r => r.stepRef)).size,
+    highAPCoverage: highAPRows.length > 0
+      ? Math.round((highAPWithCoverage.length / highAPRows.length) * 100)
+      : 100,
+    mediumAPCoverage: mediumAPRows.length > 0
+      ? Math.round((mediumAPWithCoverage.length / mediumAPRows.length) * 100)
+      : 100,
+    missingReactionPlans: rows.filter(r => (r.specialFlag || r.csrSymbol) && !r.reactionPlan).length,
+    missingAcceptanceCriteria: rows.filter(r => (r.specialFlag || r.csrSymbol) && !r.acceptanceCriteria).length,
+  };
+
+  return { header, rows, stats, validation };
+}
+
+/**
+ * Check if a Control Plan row has been modified from its template
+ */
+export function detectRowOverrides(
+  cpRow: ControlPlanRow,
+  templateRow: ControlTemplateRow | null
+): Record<string, boolean> {
+  if (!templateRow) {
+    return {}; // No template to compare against
+  }
+
+  const overrides: Record<string, boolean> = {};
+
+  if (cpRow.characteristicName !== templateRow.characteristicName) overrides.characteristicName = true;
+  if (cpRow.charId !== templateRow.charId) overrides.charId = true;
+  if (cpRow.type !== templateRow.type) overrides.type = true;
+  if (cpRow.target !== templateRow.target) overrides.target = true;
+  if (cpRow.tolerance !== templateRow.tolerance) overrides.tolerance = true;
+  if (cpRow.specialFlag !== templateRow.specialFlag) overrides.specialFlag = true;
+  if (cpRow.csrSymbol !== templateRow.csrSymbol) overrides.csrSymbol = true;
+  if (cpRow.measurementSystem !== templateRow.measurementSystem) overrides.measurementSystem = true;
+  if (cpRow.gageDetails !== templateRow.gageDetails) overrides.gageDetails = true;
+  if (cpRow.sampleSize !== templateRow.defaultSampleSize) overrides.sampleSize = true;
+  if (cpRow.frequency !== templateRow.defaultFrequency) overrides.frequency = true;
+  if (cpRow.controlMethod !== templateRow.controlMethod) overrides.controlMethod = true;
+  if (cpRow.acceptanceCriteria !== templateRow.acceptanceCriteria) overrides.acceptanceCriteria = true;
+  if (cpRow.reactionPlan !== templateRow.reactionPlan) overrides.reactionPlan = true;
+
+  return overrides;
+}
+
+/**
+ * Apply template changes to Control Plan row, respecting override flags
+ */
+export function applyTemplateChanges(
+  cpRow: ControlPlanRow,
+  templateRow: ControlTemplateRow,
+  adoptFields: string[] = []
+): Partial<InsertControlPlanRow> {
+  const overrides = cpRow.overrideFlags || {};
+  const updates: Partial<InsertControlPlanRow> = {};
+
+  const fieldMappings: Record<string, string> = {
+    characteristicName: 'characteristicName',
+    charId: 'charId',
+    type: 'type',
+    target: 'target',
+    tolerance: 'tolerance',
+    specialFlag: 'specialFlag',
+    csrSymbol: 'csrSymbol',
+    measurementSystem: 'measurementSystem',
+    gageDetails: 'gageDetails',
+    sampleSize: 'defaultSampleSize',
+    frequency: 'defaultFrequency',
+    controlMethod: 'controlMethod',
+    acceptanceCriteria: 'acceptanceCriteria',
+    reactionPlan: 'reactionPlan',
+  };
+
+  for (const [cpField, templateField] of Object.entries(fieldMappings)) {
+    const isOverridden = overrides[cpField] === true;
+    const shouldAdopt = adoptFields.includes(cpField);
+
+    if (!isOverridden || shouldAdopt) {
+      (updates as any)[cpField] = (templateRow as any)[templateField];
+    }
+  }
+
+  return updates;
+}
+
+/**
+ * Validate Control Plan completeness for approval
+ */
+export function validateControlPlanForApproval(
+  controlPlan: ControlPlan,
+  rows: ControlPlanRow[]
+): ControlPlanValidation {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (!controlPlan.docNo) {
+    errors.push("Control Plan missing document number");
+  }
+
+  if (rows.length === 0) {
+    errors.push("Control Plan has no characteristics defined");
+  }
+
+  // Check special characteristics have required fields
+  const specialRows = rows.filter(r => r.specialFlag || r.csrSymbol);
+  for (const row of specialRows) {
+    if (!row.reactionPlan) {
+      errors.push(`Special characteristic "${row.characteristicName}" missing reaction plan`);
+    }
+    if (!row.acceptanceCriteria) {
+      errors.push(`Special characteristic "${row.characteristicName}" missing acceptance criteria`);
+    }
+    if (!row.sampleSize) {
+      warnings.push(`Special characteristic "${row.characteristicName}" missing sample size`);
+    }
+    if (!row.frequency) {
+      warnings.push(`Special characteristic "${row.characteristicName}" missing frequency`);
+    }
+  }
+
+  // Check all rows have basic required fields
+  for (const row of rows) {
+    if (!row.controlMethod) {
+      warnings.push(`Characteristic "${row.characteristicName}" missing control method`);
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    canGenerate: true, // Already generated
+    warnings,
+    errors,
+  };
+}
+
+export default {
+  validatePFMEAForControlPlan,
+  validateTemplateCoverage,
+  buildTemplateMappings,
+  previewControlPlanGeneration,
+  calculatePreviewStats,
+  generateNextRevision,
+  buildControlPlanHeader,
+  buildControlPlanRowFromTemplate,
+  buildControlPlanRowFromPFMEA,
+  prepareControlPlanGeneration,
+  detectRowOverrides,
+  applyTemplateChanges,
+  validateControlPlanForApproval,
+};
