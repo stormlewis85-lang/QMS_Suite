@@ -1,20 +1,15 @@
-import { useState, useEffect } from "react";
-import { BookOpen, Plus, Loader2, ChevronLeft } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/StatusBadge";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -24,951 +19,713 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Part, ControlPlan, ControlPlanRow, InsertControlPlan } from "@shared/schema";
-import { insertControlPlanSchema } from "@shared/schema";
+import {
+  Search,
+  Plus,
+  FileText,
+  MoreHorizontal,
+  Eye,
+  Trash2,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  FileCheck,
+  Wand2,
+  ClipboardList,
+  Shield,
+  Target,
+} from "lucide-react";
+import type { Part, ControlPlan, ControlPlanRow, PFMEA } from "@shared/schema";
 
-type ControlPlanWithRows = ControlPlan & { rows: ControlPlanRow[] };
+// Types
+interface ControlPlanWithDetails extends ControlPlan {
+  rows: ControlPlanRow[];
+  part?: Part;
+}
 
-const controlPlanRowFormSchema = z.object({
-  charId: z.string().min(1, "Characteristic ID is required"),
-  characteristicName: z.string().min(1, "Characteristic name is required"),
-  type: z.string().min(1, "Type is required"),
-  target: z.string().optional(),
-  tolerance: z.string().optional(),
-  measurementSystem: z.string().optional(),
-  gageDetails: z.string().optional(),
-  sampleSize: z.string().optional(),
-  frequency: z.string().optional(),
-  controlMethod: z.string().optional(),
-  acceptanceCriteria: z.string().optional(),
-  reactionPlan: z.string().optional(),
-  specialFlag: z.boolean().default(false),
-  csrSymbol: z.string().optional(),
-});
+interface CharacteristicStats {
+  total: number;
+  special: number;
+  withReactionPlan: number;
+  withAcceptanceCriteria: number;
+}
 
-type ControlPlanRowFormValues = z.infer<typeof controlPlanRowFormSchema>;
-
-function ControlPlanRowDialog({
-  open,
-  onOpenChange,
-  planId,
-  row,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  planId: string;
-  row?: ControlPlanRow;
-}) {
-  const { toast } = useToast();
-  const isEdit = !!row;
-
-  const form = useForm<ControlPlanRowFormValues>({
-    resolver: zodResolver(controlPlanRowFormSchema),
-    defaultValues: {
-      charId: row?.charId || "",
-      characteristicName: row?.characteristicName || "",
-      type: row?.type || "Product",
-      target: row?.target || "",
-      tolerance: row?.tolerance || "",
-      measurementSystem: row?.measurementSystem || "",
-      gageDetails: row?.gageDetails || "",
-      sampleSize: row?.sampleSize || "",
-      frequency: row?.frequency || "",
-      controlMethod: row?.controlMethod || "",
-      acceptanceCriteria: row?.acceptanceCriteria || "",
-      reactionPlan: row?.reactionPlan || "",
-      specialFlag: row?.specialFlag || false,
-      csrSymbol: row?.csrSymbol || "",
+// Utility functions
+function calculateCharacteristicStats(rows: ControlPlanRow[]): CharacteristicStats {
+  return rows.reduce(
+    (acc, row) => {
+      acc.total++;
+      if (row.specialFlag || row.csrSymbol) acc.special++;
+      if (row.reactionPlan) acc.withReactionPlan++;
+      if (row.acceptanceCriteria) acc.withAcceptanceCriteria++;
+      return acc;
     },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (values: ControlPlanRowFormValues) => {
-      return apiRequest("POST", `/api/control-plans/${planId}/rows`, {
-        ...values,
-        controlPlanId: planId,
-        overrideFlags: {},
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", planId, "detail"] });
-      toast({ title: "Control characteristic created successfully" });
-      form.reset();
-      onOpenChange(false);
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to create control characteristic", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (values: ControlPlanRowFormValues) => {
-      return apiRequest("PATCH", `/api/control-plan-rows/${row!.id}`, values);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", planId, "detail"] });
-      toast({ title: "Control characteristic updated successfully" });
-      form.reset();
-      onOpenChange(false);
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to update control characteristic", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const onSubmit = (values: ControlPlanRowFormValues) => {
-    if (isEdit) {
-      updateMutation.mutate(values);
-    } else {
-      createMutation.mutate(values);
-    }
-  };
-
-  useEffect(() => {
-    if (open && row) {
-      form.reset({
-        charId: row.charId,
-        characteristicName: row.characteristicName,
-        type: row.type,
-        target: row.target || "",
-        tolerance: row.tolerance || "",
-        measurementSystem: row.measurementSystem || "",
-        gageDetails: row.gageDetails || "",
-        sampleSize: row.sampleSize || "",
-        frequency: row.frequency || "",
-        controlMethod: row.controlMethod || "",
-        acceptanceCriteria: row.acceptanceCriteria || "",
-        reactionPlan: row.reactionPlan || "",
-        specialFlag: row.specialFlag || false,
-        csrSymbol: row.csrSymbol || "",
-      });
-    } else if (open && !row) {
-      form.reset({
-        charId: "",
-        characteristicName: "",
-        type: "Product",
-        target: "",
-        tolerance: "",
-        measurementSystem: "",
-        gageDetails: "",
-        sampleSize: "",
-        frequency: "",
-        controlMethod: "",
-        acceptanceCriteria: "",
-        reactionPlan: "",
-        specialFlag: false,
-        csrSymbol: "",
-      });
-    }
-  }, [open, row, form]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit" : "Add"} Control Characteristic</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="charId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Characteristic ID</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g., C-010" data-testid="input-char-id" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type</FormLabel>
-                    <FormControl>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger data-testid="select-type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Product">Product</SelectItem>
-                          <SelectItem value="Process">Process</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="characteristicName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Characteristic Name</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} placeholder="Describe the characteristic..." data-testid="input-characteristic-name" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="target"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Target / Specification</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g., 50.0 mm" data-testid="input-target" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="tolerance"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tolerance</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g., ± 0.1 mm" data-testid="input-tolerance" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="measurementSystem"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Measurement Method</FormLabel>
-                  <FormControl>
-                    <Select value={field.value || ""} onValueChange={field.onChange}>
-                      <SelectTrigger data-testid="input-measurement-system">
-                        <SelectValue placeholder="Select measurement method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CMM">CMM</SelectItem>
-                        <SelectItem value="Caliper">Caliper</SelectItem>
-                        <SelectItem value="Micrometer">Micrometer</SelectItem>
-                        <SelectItem value="Height Gage">Height Gage</SelectItem>
-                        <SelectItem value="Vision System">Vision System</SelectItem>
-                        <SelectItem value="Go/No-Go Gage">Go/No-Go Gage</SelectItem>
-                        <SelectItem value="Visual Inspection">Visual Inspection</SelectItem>
-                        <SelectItem value="Weight Scale">Weight Scale</SelectItem>
-                        <SelectItem value="Durometer">Durometer</SelectItem>
-                        <SelectItem value="Torque Wrench">Torque Wrench</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="gageDetails"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Gage / Equipment Details</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="e.g., Digital caliper (0.01mm resolution)" data-testid="input-gage-details" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="sampleSize"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sample Size</FormLabel>
-                    <FormControl>
-                      <Select value={field.value || ""} onValueChange={field.onChange}>
-                        <SelectTrigger data-testid="input-sample-size">
-                          <SelectValue placeholder="Select sample size" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1 pc">1 pc</SelectItem>
-                          <SelectItem value="3 pcs">3 pcs</SelectItem>
-                          <SelectItem value="5 pcs">5 pcs</SelectItem>
-                          <SelectItem value="10 pcs">10 pcs</SelectItem>
-                          <SelectItem value="100%">100%</SelectItem>
-                          <SelectItem value="n=5">n=5</SelectItem>
-                          <SelectItem value="n=10">n=10</SelectItem>
-                          <SelectItem value="Per cavity">Per cavity</SelectItem>
-                          <SelectItem value="1st & Last">1st & Last</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="frequency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Frequency</FormLabel>
-                    <FormControl>
-                      <Select value={field.value || ""} onValueChange={field.onChange}>
-                        <SelectTrigger data-testid="input-frequency">
-                          <SelectValue placeholder="Select frequency" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Each piece">Each piece</SelectItem>
-                          <SelectItem value="First/Last">First/Last</SelectItem>
-                          <SelectItem value="Hourly">Hourly</SelectItem>
-                          <SelectItem value="Every 2 hours">Every 2 hours</SelectItem>
-                          <SelectItem value="Per shift">Per shift</SelectItem>
-                          <SelectItem value="Daily">Daily</SelectItem>
-                          <SelectItem value="Per lot">Per lot</SelectItem>
-                          <SelectItem value="Setup only">Setup only</SelectItem>
-                          <SelectItem value="Continuous">Continuous</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="controlMethod"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Control Method</FormLabel>
-                  <FormControl>
-                    <Select value={field.value || ""} onValueChange={field.onChange}>
-                      <SelectTrigger data-testid="input-control-method">
-                        <SelectValue placeholder="Select control method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="X̄-R Chart">X̄-R Chart</SelectItem>
-                        <SelectItem value="X̄-S Chart">X̄-S Chart</SelectItem>
-                        <SelectItem value="p-Chart">p-Chart</SelectItem>
-                        <SelectItem value="Attribute Check">Attribute Check</SelectItem>
-                        <SelectItem value="Visual Inspection">Visual Inspection</SelectItem>
-                        <SelectItem value="Go/No-Go">Go/No-Go</SelectItem>
-                        <SelectItem value="100% Inspection">100% Inspection</SelectItem>
-                        <SelectItem value="Automated Vision">Automated Vision</SelectItem>
-                        <SelectItem value="Error-Proofing">Error-Proofing</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="acceptanceCriteria"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Acceptance Criteria</FormLabel>
-                  <FormControl>
-                    <Select value={field.value || ""} onValueChange={field.onChange}>
-                      <SelectTrigger data-testid="input-acceptance-criteria">
-                        <SelectValue placeholder="Select acceptance criteria" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Cpk ≥ 1.33">Cpk ≥ 1.33</SelectItem>
-                        <SelectItem value="Cpk ≥ 1.67">Cpk ≥ 1.67</SelectItem>
-                        <SelectItem value="Ppk ≥ 1.67">Ppk ≥ 1.67</SelectItem>
-                        <SelectItem value="Go/No-Go Pass">Go/No-Go Pass</SelectItem>
-                        <SelectItem value="Zero Defects">Zero Defects</SelectItem>
-                        <SelectItem value="Within Spec">Within Spec</SelectItem>
-                        <SelectItem value="Per Control Limits">Per Control Limits</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="reactionPlan"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reaction Plan (Out of Spec)</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} placeholder="What to do if out of specification..." data-testid="input-reaction-plan" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="csrSymbol"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>CSR Symbol (optional)</FormLabel>
-                  <FormControl>
-                    <Select value={field.value || ""} onValueChange={field.onChange}>
-                      <SelectTrigger data-testid="input-csr-symbol">
-                        <SelectValue placeholder="Select CSR symbol" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">None</SelectItem>
-                        <SelectItem value="Ⓢ">Ⓢ (Safety)</SelectItem>
-                        <SelectItem value="◆">◆ (Critical)</SelectItem>
-                        <SelectItem value="ⓒ">ⓒ (Compliance)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="flex justify-end gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-row">
-                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {isEdit ? "Update" : "Create"} Characteristic
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    { total: 0, special: 0, withReactionPlan: 0, withAcceptanceCriteria: 0 }
   );
 }
 
-const generateControlPlanFormSchema = insertControlPlanSchema
-  .pick({ rev: true, type: true, docNo: true })
-  .extend({
-    rev: z.string().min(1, "Revision is required"),
-    type: z.string().min(1, "Type is required"),
-    processOwner: z.string().optional(),
-  });
-
-type GenerateControlPlanFormValues = z.infer<typeof generateControlPlanFormSchema>;
-
-function GenerateControlPlanDialog({
-  open,
-  onOpenChange,
-  partId,
-  existingPlans,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  partId: string;
-  existingPlans: ControlPlan[];
-}) {
-  const { toast } = useToast();
-  const form = useForm<GenerateControlPlanFormValues>({
-    resolver: zodResolver(generateControlPlanFormSchema),
-    defaultValues: {
-      rev: "A",
-      type: "Production",
-      docNo: "",
-      processOwner: "",
-    },
-  });
-
-  // Close dialog if part changes while dialog is open (prevents stale data)
-  useEffect(() => {
-    if (open) {
-      onOpenChange(false);
-    }
-  }, [partId]);
-
-  const createMutation = useMutation({
-    mutationFn: async (values: GenerateControlPlanFormValues) => {
-      const payload: InsertControlPlan = {
-        partId,
-        rev: values.rev,
-        type: values.type,
-        status: "draft",
-        docNo: values.docNo || null,
-        processOwner: values.processOwner || null,
-        approvedBy: null,
-        approvedAt: null,
-        effectiveFrom: null,
-        supersedesId: null,
-      };
-      return await apiRequest<ControlPlan>("POST", "/api/control-plans", payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", partId] });
-      toast({ title: "Control Plan created successfully" });
-      form.reset({ rev: "A", type: "Production", docNo: "", processOwner: "" });
-      onOpenChange(false);
-    },
-    onError: (error: Error) => {
-      toast({ 
-        title: "Failed to create Control Plan", 
-        description: error.message, 
-        variant: "destructive" 
-      });
-    },
-  });
-
-  const onSubmit = (values: GenerateControlPlanFormValues) => {
-    // Check for duplicate revision before calling API
-    const duplicate = existingPlans.find(p => p.rev === values.rev);
-    if (duplicate) {
-      toast({ 
-        title: "Duplicate revision", 
-        description: `Control Plan with revision ${values.rev} already exists for this part. Please use a different revision.`,
-        variant: "destructive" 
-      });
-      return;
-    }
-    createMutation.mutate(values);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Generate New Control Plan</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="rev"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Revision</FormLabel>
-                  <FormControl>
-                    <Input placeholder="A" {...field} data-testid="input-controlplan-rev" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Type</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-controlplan-type">
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="Pre-Launch">Pre-Launch</SelectItem>
-                      <SelectItem value="Production">Production</SelectItem>
-                      <SelectItem value="Prototype">Prototype</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="docNo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Document Number (Optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="CP-001" {...field} data-testid="input-controlplan-docno" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="processOwner"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Process Owner (Optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Doe" {...field} data-testid="input-controlplan-owner" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending} data-testid="button-create-controlplan">
-                {createMutation.isPending ? "Creating..." : "Create Control Plan"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export default function ControlPlans() {
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
-  const { toast } = useToast();
-
-  const { data: parts = [], isLoading: partsLoading } = useQuery<Part[]>({
-    queryKey: ["/api/parts"],
-  });
-
-  const handleGenerateControlPlan = () => {
-    if (!selectedPartId) {
-      toast({
-        variant: "destructive",
-        title: "No part selected",
-        description: "Please select a part first to generate a Control Plan.",
-      });
-      return;
-    }
-    setGenerateDialogOpen(true);
-  };
-
-  const { data: plans = [], isLoading: plansLoading } = useQuery<ControlPlan[]>({
-    queryKey: ["/api/control-plans", selectedPartId],
-    enabled: !!selectedPartId,
-    queryFn: async () => {
-      const res = await fetch(`/api/control-plans?partId=${selectedPartId}`);
-      if (!res.ok) throw new Error("Failed to fetch control plans");
-      return res.json();
-    },
-  });
-
-  const { data: planDetail, isLoading: planDetailLoading } = useQuery<ControlPlanWithRows>({
-    queryKey: ["/api/control-plans", selectedPlanId, "detail"],
-    enabled: !!selectedPlanId,
-    queryFn: async () => {
-      const res = await fetch(`/api/control-plans/${selectedPlanId}`);
-      if (!res.ok) throw new Error("Failed to fetch control plan details");
-      return res.json();
-    },
-  });
-
-  const selectedPart = parts.find(p => p.id === selectedPartId);
-
-  if (selectedPlanId) {
-    return <ControlPlanDetailView plan={planDetail} part={selectedPart!} onBack={() => setSelectedPlanId(null)} loading={planDetailLoading} />;
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "draft":
+      return (
+        <Badge variant="outline" className="bg-gray-50">
+          <Clock className="h-3 w-3 mr-1" />
+          Draft
+        </Badge>
+      );
+    case "review":
+      return (
+        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          Review
+        </Badge>
+      );
+    case "effective":
+      return (
+        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Effective
+        </Badge>
+      );
+    case "superseded":
+      return (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+          <FileCheck className="h-3 w-3 mr-1" />
+          Superseded
+        </Badge>
+      );
+    case "obsolete":
+      return (
+        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+          <Trash2 className="h-3 w-3 mr-1" />
+          Obsolete
+        </Badge>
+      );
+    default:
+      return <Badge variant="outline">{status}</Badge>;
   }
+}
 
+function getTypeBadge(type: string) {
+  switch (type) {
+    case "Prototype":
+      return (
+        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+          Prototype
+        </Badge>
+      );
+    case "Pre-Launch":
+      return (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+          Pre-Launch
+        </Badge>
+      );
+    case "Production":
+      return (
+        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          Production
+        </Badge>
+      );
+    default:
+      return <Badge variant="outline">{type}</Badge>;
+  }
+}
+
+function CharacteristicBadges({ stats }: { stats: CharacteristicStats }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Control Plans</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Quality control plans with inspection characteristics
-          </p>
-        </div>
-        <Button onClick={handleGenerateControlPlan} data-testid="button-generate-control-plan">
-          <Plus className="h-4 w-4 mr-2" />
-          Generate Control Plan
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Select Part</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {partsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin" />
-            </div>
-          ) : (
-            <Select value={selectedPartId || ""} onValueChange={setSelectedPartId}>
-              <SelectTrigger data-testid="select-part">
-                <SelectValue placeholder="Choose a part..." />
-              </SelectTrigger>
-              <SelectContent>
-                {parts.map((part) => (
-                  <SelectItem key={part.id} value={part.id}>
-                    {part.partNumber} - {part.partName} ({part.customer})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </CardContent>
-      </Card>
-
-      {selectedPartId && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">Control Plans for {selectedPart?.partNumber}</CardTitle>
-            <Button data-testid="button-create-control-plan">
-              <Plus className="h-4 w-4 mr-2" />
-              Create Plan
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {plansLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : plans.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No control plans found for this part. Click "Create Plan" to generate one.
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Revision</TableHead>
-                      <TableHead>Document No.</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Effective From</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {plans.map((plan) => (
-                      <TableRow key={plan.id} className="hover-elevate" data-testid={`row-control-plan-${plan.id}`}>
-                        <TableCell className="font-mono font-medium">{plan.rev}</TableCell>
-                        <TableCell className="font-mono">{plan.docNo || "-"}</TableCell>
-                        <TableCell>
-                          <StatusBadge status={plan.status} />
-                        </TableCell>
-                        <TableCell>
-                          {plan.effectiveFrom ? new Date(plan.effectiveFrom).toLocaleDateString() : "-"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedPlanId(plan.id)}
-                            data-testid={`button-view-plan-${plan.id}`}
-                          >
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedPartId && (
-        <GenerateControlPlanDialog
-          open={generateDialogOpen}
-          onOpenChange={setGenerateDialogOpen}
-          partId={selectedPartId}
-          existingPlans={plans}
-        />
+    <div className="flex gap-1.5">
+      <Badge variant="secondary" className="text-xs px-1.5">
+        {stats.total} chars
+      </Badge>
+      {stats.special > 0 && (
+        <Badge variant="outline" className="text-xs px-1.5 bg-purple-50 text-purple-700 border-purple-300">
+          <Shield className="h-3 w-3 mr-1" />
+          {stats.special}
+        </Badge>
       )}
     </div>
   );
 }
 
-function ControlPlanDetailView({ plan, part, onBack, loading }: {
-  plan?: ControlPlanWithRows;
-  part: Part;
-  onBack: () => void;
-  loading: boolean;
-}) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingRow, setEditingRow] = useState<ControlPlanRow | undefined>(undefined);
+export default function ControlPlansPage() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const handleAddRow = () => {
-    setEditingRow(undefined);
-    setDialogOpen(true);
+  // State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [partFilter, setPartFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedCP, setSelectedCP] = useState<ControlPlanWithDetails | null>(null);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [selectedPFMEAForGeneration, setSelectedPFMEAForGeneration] = useState<string>("");
+  const [generationType, setGenerationType] = useState<string>("Production");
+
+  // Fetch parts for filtering
+  const { data: parts = [] } = useQuery<Part[]>({
+    queryKey: ["/api/parts"],
+  });
+
+  // Fetch all PFMEAs for generation dialog
+  const { data: pfmeas = [] } = useQuery<PFMEA[]>({
+    queryKey: ["/api/pfmeas"],
+  });
+
+  // Fetch all Control Plans with their rows
+  const { data: controlPlans = [], isLoading } = useQuery<ControlPlanWithDetails[]>({
+    queryKey: ["/api/control-plans/all"],
+    queryFn: async () => {
+      // Get all parts first
+      const partsRes = await fetch("/api/parts");
+      if (!partsRes.ok) throw new Error("Failed to fetch parts");
+      const partsData: Part[] = await partsRes.json();
+
+      // Get Control Plans for each part
+      const allCPs: ControlPlanWithDetails[] = [];
+      for (const part of partsData) {
+        const cpsRes = await fetch(`/api/parts/${part.id}/control-plans`);
+        if (cpsRes.ok) {
+          const partCPs: ControlPlan[] = await cpsRes.json();
+          for (const cp of partCPs) {
+            // Get full CP with rows
+            const detailRes = await fetch(`/api/control-plans/${cp.id}/details`);
+            if (detailRes.ok) {
+              const cpDetail = await detailRes.json();
+              allCPs.push({ ...cpDetail, part });
+            }
+          }
+        }
+      }
+      return allCPs;
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/control-plans/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Failed to delete Control Plan");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans/all"] });
+      toast({
+        title: "Control Plan Deleted",
+        description: "The Control Plan has been deleted successfully.",
+      });
+      setDeleteDialogOpen(false);
+      setSelectedCP(null);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete Control Plan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Generate mutation
+  const generateMutation = useMutation({
+    mutationFn: async ({ pfmeaId, type }: { pfmeaId: string; type: string }) => {
+      const response = await fetch(`/api/pfmeas/${pfmeaId}/control-plan/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to generate Control Plan");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans/all"] });
+      toast({
+        title: "Control Plan Generated",
+        description: `Created ${data.controlPlan.type} Control Plan Rev ${data.controlPlan.rev} with ${data.rows.length} characteristics.`,
+      });
+      setGenerateDialogOpen(false);
+      setSelectedPFMEAForGeneration("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Validate mutation
+  const validateMutation = useMutation({
+    mutationFn: async (cpId: string) => {
+      const response = await fetch(`/api/control-plans/${cpId}/validate`);
+      if (!response.ok) throw new Error("Failed to validate Control Plan");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const { validation } = data;
+      if (validation.isValid) {
+        toast({
+          title: "Validation Passed",
+          description: "Control Plan is ready for approval.",
+        });
+      } else {
+        toast({
+          title: "Validation Issues Found",
+          description: `${validation.errors.length} errors, ${validation.warnings.length} warnings.`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to validate Control Plan.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Filter Control Plans
+  const filteredCPs = controlPlans.filter((cp) => {
+    // Search filter
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      const matchesPart =
+        cp.part?.partNumber?.toLowerCase().includes(search) ||
+        cp.part?.partName?.toLowerCase().includes(search);
+      const matchesDoc = cp.docNo?.toLowerCase().includes(search);
+      const matchesRev = cp.rev.toLowerCase().includes(search);
+      if (!matchesPart && !matchesDoc && !matchesRev) return false;
+    }
+
+    // Status filter
+    if (statusFilter !== "all" && cp.status !== statusFilter) return false;
+
+    // Part filter
+    if (partFilter !== "all" && cp.partId !== partFilter) return false;
+
+    // Type filter
+    if (typeFilter !== "all" && cp.type !== typeFilter) return false;
+
+    return true;
+  });
+
+  // Summary stats
+  const summaryStats = {
+    total: controlPlans.length,
+    draft: controlPlans.filter((p) => p.status === "draft").length,
+    effective: controlPlans.filter((p) => p.status === "effective").length,
+    totalChars: controlPlans.reduce((sum, p) => sum + p.rows.length, 0),
+    specialChars: controlPlans.reduce(
+      (sum, p) => sum + p.rows.filter((r) => r.specialFlag || r.csrSymbol).length,
+      0
+    ),
   };
-
-  const handleEditRow = (row: ControlPlanRow) => {
-    setEditingRow(row);
-    setDialogOpen(true);
-  };
-
-  if (loading || !plan) {
-    return (
-      <div className="space-y-6">
-        <Button variant="outline" size="sm" onClick={onBack} data-testid="button-back">
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-12 w-12 animate-spin" />
-        </div>
-      </div>
-    );
-  }
-
-  const specialChars = plan.rows.filter(r => r.csrSymbol).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={onBack} data-testid="button-back">
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold">
-            Control Plan: {part.partNumber} Rev {plan.rev}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {part.partName} - {part.customer}
+    <div className="flex flex-col gap-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Control Plans</h1>
+          <p className="text-muted-foreground">
+            Manage Control Plans for manufacturing process control
           </p>
         </div>
-        <StatusBadge status={plan.status} />
+        <Button onClick={() => setGenerateDialogOpen(true)}>
+          <Wand2 className="h-4 w-4 mr-2" />
+          Generate Control Plan
+        </Button>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Document No.</p>
-            <p className="text-lg font-semibold mt-1">{plan.docNo || "N/A"}</p>
-          </CardContent>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Control Plans</CardDescription>
+            <CardTitle className="text-2xl">{summaryStats.total}</CardTitle>
+          </CardHeader>
         </Card>
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Effective From</p>
-            <p className="text-lg font-semibold mt-1">
-              {plan.effectiveFrom ? new Date(plan.effectiveFrom).toLocaleDateString() : "N/A"}
-            </p>
-          </CardContent>
+          <CardHeader className="pb-2">
+            <CardDescription>Draft</CardDescription>
+            <CardTitle className="text-2xl text-gray-600">
+              {summaryStats.draft}
+            </CardTitle>
+          </CardHeader>
         </Card>
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Total Characteristics</p>
-            <p className="text-lg font-semibold mt-1">{plan.rows.length}</p>
-          </CardContent>
+          <CardHeader className="pb-2">
+            <CardDescription>Effective</CardDescription>
+            <CardTitle className="text-2xl text-green-600">
+              {summaryStats.effective}
+            </CardTitle>
+          </CardHeader>
         </Card>
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Special Characteristics</p>
-            <p className="text-lg font-semibold mt-1 text-chart-5">{specialChars}</p>
-          </CardContent>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Characteristics</CardDescription>
+            <CardTitle className="text-2xl">{summaryStats.totalChars}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Special Characteristics</CardDescription>
+            <CardTitle className="text-2xl text-purple-600">
+              {summaryStats.specialChars}
+            </CardTitle>
+          </CardHeader>
         </Card>
       </div>
 
+      {/* Filters */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Control Characteristics</CardTitle>
-          <Button onClick={handleAddRow} data-testid="button-add-characteristic">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Characteristic
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin" />
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by part number, name, or doc number..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
-          ) : plan.rows.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No control characteristics yet. Click "Add Characteristic" to create one.
+
+            <Select value={partFilter} onValueChange={setPartFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Filter by part" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Parts</SelectItem>
+                {parts.map((part) => (
+                  <SelectItem key={part.id} value={part.id}>
+                    {part.partNumber} - {part.partName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="Prototype">Prototype</SelectItem>
+                <SelectItem value="Pre-Launch">Pre-Launch</SelectItem>
+                <SelectItem value="Production">Production</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="review">Review</SelectItem>
+                <SelectItem value="effective">Effective</SelectItem>
+                <SelectItem value="superseded">Superseded</SelectItem>
+                <SelectItem value="obsolete">Obsolete</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Control Plans Table */}
+      <Card>
+        <CardContent className="pt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredCPs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold">No Control Plans Found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchTerm || statusFilter !== "all" || partFilter !== "all"
+                  ? "Try adjusting your filters"
+                  : "Generate your first Control Plan from a PFMEA"}
+              </p>
+              {!searchTerm && statusFilter === "all" && partFilter === "all" && (
+                <Button onClick={() => setGenerateDialogOpen(true)}>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Generate Control Plan
+                </Button>
+              )}
             </div>
           ) : (
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-24">Char ID</TableHead>
-                    <TableHead className="min-w-48">Characteristic</TableHead>
-                    <TableHead className="min-w-32">Target ± Tol</TableHead>
-                    <TableHead className="min-w-24">Method</TableHead>
-                    <TableHead className="min-w-32">Measurement</TableHead>
-                    <TableHead className="min-w-24">Sample Size</TableHead>
-                    <TableHead className="min-w-24">Frequency</TableHead>
-                    <TableHead className="min-w-20">CSR</TableHead>
-                    <TableHead className="min-w-24">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {plan.rows.map((row) => (
-                    <TableRow key={row.id} className="hover-elevate" data-testid={`row-characteristic-${row.id}`}>
-                      <TableCell className="font-mono text-sm">{row.charId}</TableCell>
-                      <TableCell className="text-sm">{row.characteristicName}</TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {row.target ? `${row.target}${row.tolerance ? ` ± ${row.tolerance}` : ''}` : '-'}
-                      </TableCell>
-                      <TableCell className="text-sm">{row.controlMethod || "-"}</TableCell>
-                      <TableCell className="text-sm">{row.measurementSystem || "-"}</TableCell>
-                      <TableCell className="font-mono text-center">{row.sampleSize || "-"}</TableCell>
-                      <TableCell className="text-sm">{row.frequency || "-"}</TableCell>
-                      <TableCell className="text-center">
-                        {row.csrSymbol ? (
-                          <Badge className="bg-chart-5 text-white">{row.csrSymbol}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Part</TableHead>
+                  <TableHead>Rev</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Doc No</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Characteristics</TableHead>
+                  <TableHead>Coverage</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredCPs.map((cp) => {
+                  const charStats = calculateCharacteristicStats(cp.rows);
+                  const coveragePercent = charStats.total > 0
+                    ? Math.round((charStats.withReactionPlan / charStats.total) * 100)
+                    : 0;
+
+                  return (
+                    <TableRow key={cp.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {cp.part?.partNumber || "Unknown"}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {cp.part?.partName}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => handleEditRow(row)} data-testid={`button-edit-characteristic-${row.id}`}>
-                          Edit
-                        </Button>
+                        <Badge variant="outline">{cp.rev}</Badge>
+                      </TableCell>
+                      <TableCell>{getTypeBadge(cp.type)}</TableCell>
+                      <TableCell>
+                        <span className="text-sm">
+                          {cp.docNo || <span className="text-muted-foreground">—</span>}
+                        </span>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(cp.status)}</TableCell>
+                      <TableCell>
+                        <CharacteristicBadges stats={charStats} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${
+                                coveragePercent >= 80
+                                  ? "bg-green-500"
+                                  : coveragePercent >= 50
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
+                              }`}
+                              style={{ width: `${coveragePercent}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {coveragePercent}%
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/control-plans/${cp.id}`}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => validateMutation.mutate(cp.id)}
+                            >
+                              <CheckCircle2 className="h-4 w-4 mr-2" />
+                              Validate
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => {
+                                setSelectedCP(cp);
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
 
-      <ControlPlanRowDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        planId={plan.id}
-        row={editingRow}
-      />
+      {/* Generate Control Plan Dialog */}
+      <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Control Plan</DialogTitle>
+            <DialogDescription>
+              Select a PFMEA to generate a Control Plan from its failure modes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Select PFMEA</Label>
+              <Select
+                value={selectedPFMEAForGeneration}
+                onValueChange={setSelectedPFMEAForGeneration}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a PFMEA..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {pfmeas.map((pfmea) => {
+                    const part = parts.find((p) => p.id === pfmea.partId);
+                    return (
+                      <SelectItem key={pfmea.id} value={pfmea.id}>
+                        <div className="flex flex-col">
+                          <span>{part?.partNumber || "Unknown"} - Rev {pfmea.rev}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {part?.partName} • {pfmea.status}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Control Plan Type</Label>
+              <Select value={generationType} onValueChange={setGenerationType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Prototype">Prototype</SelectItem>
+                  <SelectItem value="Pre-Launch">Pre-Launch</SelectItem>
+                  <SelectItem value="Production">Production</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedPFMEAForGeneration && (
+              <div className="p-3 bg-muted rounded-md text-sm">
+                <p className="font-medium mb-1">Generation will:</p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                  <li>Create characteristics from PFMEA detection controls</li>
+                  <li>Link to Control Plan templates where available</li>
+                  <li>Include special characteristics and CSR symbols</li>
+                  <li>Set sampling and control methods from templates</li>
+                </ul>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setGenerateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                generateMutation.mutate({
+                  pfmeaId: selectedPFMEAForGeneration,
+                  type: generationType,
+                })
+              }
+              disabled={!selectedPFMEAForGeneration || generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Control Plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the Control Plan for{" "}
+              <strong>{selectedCP?.part?.partNumber}</strong> Rev{" "}
+              <strong>{selectedCP?.rev}</strong> and all its characteristics. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => selectedCP && deleteMutation.mutate(selectedCP.id)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
