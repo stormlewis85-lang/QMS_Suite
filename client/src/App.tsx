@@ -9,9 +9,10 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import Dashboard from "@/pages/Dashboard";
 import Parts from "@/pages/Parts";
 import Processes from "@/pages/Processes";
-import ProcessDetail from "@/pages/ProcessDetail";
 import PFMEA from "@/pages/PFMEA";
+import PFMEADetail from "@/pages/PFMEADetail";
 import ControlPlans from "@/pages/ControlPlans";
+import ControlPlanDetail from "@/pages/ControlPlanDetail";
 import Equipment from "@/pages/Equipment";
 import FailureModes from "@/pages/FailureModes";
 import ControlsLibrary from "@/pages/ControlsLibrary";
@@ -24,9 +25,10 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/parts" component={Parts} />
       <Route path="/processes" component={Processes} />
-      <Route path="/processes/:id" component={ProcessDetail} />
       <Route path="/pfmea" component={PFMEA} />
+      <Route path="/pfmea/:id" component={PFMEADetail} />
       <Route path="/control-plans" component={ControlPlans} />
+      <Route path="/control-plans/:id" component={ControlPlanDetail} />
       <Route path="/equipment" component={Equipment} />
       <Route path="/failure-modes" component={FailureModes} />
       <Route path="/controls-library" component={ControlsLibrary} />
@@ -49,7 +51,7 @@ function App() {
           <div className="flex h-screen w-full">
             <AppSidebar />
             <div className="flex flex-col flex-1 overflow-hidden">
-              <header className="flex items-center justify-between gap-4 p-4 border-b bg-background">
+              <header className="flex items-center justify-between p-4 border-b bg-background">
                 <SidebarTrigger data-testid="button-sidebar-toggle" />
                 <ThemeToggle />
               </header>
