@@ -1,0 +1,869 @@
+import { useState, useEffect, useMemo } from "react";
+import {
+  Loader2,
+  Link,
+  Unlink,
+  AlertCircle,
+  Check,
+  Target,
+  Ruler,
+  Shield,
+  Beaker,
+  Clock,
+  FileCheck,
+  AlertTriangle,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type {
+  ProcessStep,
+  FmeaTemplateRow,
+  ControlTemplateRow,
+  InsertControlTemplateRow,
+} from "@shared/schema";
+
+// Common control methods
+const CONTROL_METHODS = [
+  "X̄-R Chart",
+  "X̄-S Chart",
+  "p Chart",
+  "np Chart",
+  "c Chart",
+  "u Chart",
+  "IMR Chart",
+  "Visual Inspection",
+  "Go/No-Go Gage",
+  "Attribute Check",
+  "First Piece Inspection",
+  "100% Inspection",
+  "Sampling Plan",
+  "Error Proofing",
+  "Automatic Measurement",
+  "Manual Measurement",
+  "CMM Measurement",
+  "Optical Measurement",
+];
+
+// Common sample sizes
+const SAMPLE_SIZES = [
+  "1 pc",
+  "3 pcs",
+  "5 pcs",
+  "10 pcs",
+  "n = 5",
+  "n = 10",
+  "n = 30",
+  "100%",
+  "Per lot",
+  "Per container",
+];
+
+// Common frequencies
+const FREQUENCIES = [
+  "Continuous",
+  "1/shift",
+  "2/shift",
+  "1/hour",
+  "1/lot",
+  "Start of run",
+  "Start & end of run",
+  "Every batch",
+  "Daily",
+  "Weekly",
+];
+
+// Common measurement systems
+const MEASUREMENT_SYSTEMS = [
+  "CMM",
+  "Micrometer",
+  "Caliper",
+  "Height Gage",
+  "Pin Gage",
+  "Thread Gage",
+  "Optical Comparator",
+  "Vision System",
+  "Force Gage",
+  "Torque Wrench",
+  "Leak Tester",
+  "Multimeter",
+  "Thermometer",
+  "Pressure Transducer",
+  "Flow Meter",
+  "Scale",
+  "Visual (Trained)",
+];
+
+// CSR Symbols
+const CSR_SYMBOLS = [
+  { symbol: "Ⓢ", label: "Safety", description: "Safety-critical characteristic" },
+  { symbol: "◆", label: "Critical", description: "Critical to quality/fit/function" },
+  { symbol: "ⓒ", label: "Compliance", description: "Regulatory compliance requirement" },
+];
+
+interface ControlTemplateRowDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: "create" | "edit" | "view";
+  row: ControlTemplateRow | null;
+  processId: string;
+  fmeaRows: FmeaTemplateRow[];
+  steps: ProcessStep[];
+  onSubmit: (data: InsertControlTemplateRow) => void;
+  isSubmitting?: boolean;
+}
+
+export default function ControlTemplateRowDialog({
+  open,
+  onOpenChange,
+  mode,
+  row,
+  processId,
+  fmeaRows,
+  steps,
+  onSubmit,
+  isSubmitting = false,
+}: ControlTemplateRowDialogProps) {
+  const [activeTab, setActiveTab] = useState("basic");
+  
+  // Form state
+  const [formData, setFormData] = useState<Partial<InsertControlTemplateRow>>({
+    processDefId: processId,
+    sourceTemplateRowId: null,
+    characteristicName: "",
+    charId: "",
+    type: "Product",
+    target: "",
+    tolerance: "",
+    specialFlag: false,
+    csrSymbol: null,
+    measurementSystem: "",
+    gageDetails: "",
+    defaultSampleSize: "",
+    defaultFrequency: "",
+    controlMethod: "",
+    acceptanceCriteria: "",
+    reactionPlan: "",
+  });
+
+  // Validation state
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Reset form when dialog opens or row changes
+  useEffect(() => {
+    if (open) {
+      if (mode === "create") {
+        setFormData({
+          processDefId: processId,
+          sourceTemplateRowId: null,
+          characteristicName: "",
+          charId: generateCharId(),
+          type: "Product",
+          target: "",
+          tolerance: "",
+          specialFlag: false,
+          csrSymbol: null,
+          measurementSystem: "",
+          gageDetails: "",
+          defaultSampleSize: "",
+          defaultFrequency: "",
+          controlMethod: "",
+          acceptanceCriteria: "",
+          reactionPlan: "",
+        });
+      } else if (row) {
+        setFormData({
+          processDefId: row.processDefId,
+          sourceTemplateRowId: row.sourceTemplateRowId,
+          characteristicName: row.characteristicName,
+          charId: row.charId,
+          type: row.type,
+          target: row.target || "",
+          tolerance: row.tolerance || "",
+          specialFlag: row.specialFlag,
+          csrSymbol: row.csrSymbol,
+          measurementSystem: row.measurementSystem || "",
+          gageDetails: row.gageDetails || "",
+          defaultSampleSize: row.defaultSampleSize || "",
+          defaultFrequency: row.defaultFrequency || "",
+          controlMethod: row.controlMethod || "",
+          acceptanceCriteria: row.acceptanceCriteria || "",
+          reactionPlan: row.reactionPlan || "",
+        });
+      }
+      setErrors({});
+      setActiveTab("basic");
+    }
+  }, [open, mode, row, processId]);
+
+  // Generate unique characteristic ID
+  function generateCharId(): string {
+    const prefix = "C";
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    return `${prefix}-${num}`;
+  }
+
+  // Get step name by ID
+  const getStepName = (stepId: string) => {
+    const step = steps.find((s) => s.id === stepId);
+    return step?.name || "Unknown Step";
+  };
+
+  // Group FMEA rows by step for selection
+  const fmeaRowsByStep = useMemo(() => {
+    const grouped: Record<string, FmeaTemplateRow[]> = {};
+    fmeaRows.forEach((row) => {
+      const stepName = getStepName(row.stepId);
+      if (!grouped[stepName]) {
+        grouped[stepName] = [];
+      }
+      grouped[stepName].push(row);
+    });
+    return grouped;
+  }, [fmeaRows, steps]);
+
+  // Get linked FMEA row details
+  const linkedFmeaRow = useMemo(() => {
+    if (!formData.sourceTemplateRowId) return null;
+    return fmeaRows.find((r) => r.id === formData.sourceTemplateRowId);
+  }, [formData.sourceTemplateRowId, fmeaRows]);
+
+  // Validate form
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.characteristicName?.trim()) {
+      newErrors.characteristicName = "Characteristic name is required";
+    }
+
+    if (!formData.charId?.trim()) {
+      newErrors.charId = "Characteristic ID is required";
+    }
+
+    if (!formData.type) {
+      newErrors.type = "Type is required";
+    }
+
+    // Special characteristics require CSR symbol and reaction plan
+    if (formData.specialFlag) {
+      if (!formData.csrSymbol) {
+        newErrors.csrSymbol = "CSR symbol is required for special characteristics";
+      }
+      if (!formData.reactionPlan?.trim()) {
+        newErrors.reactionPlan = "Reaction plan is required for special characteristics";
+      }
+      if (!formData.acceptanceCriteria?.trim()) {
+        newErrors.acceptanceCriteria = "Acceptance criteria is required for special characteristics";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Handle form submission
+  const handleSubmit = () => {
+    if (mode === "view") {
+      onOpenChange(false);
+      return;
+    }
+
+    if (!validateForm()) {
+      // Switch to tab with first error
+      if (errors.characteristicName || errors.charId || errors.type) {
+        setActiveTab("basic");
+      } else if (errors.csrSymbol) {
+        setActiveTab("basic");
+      } else {
+        setActiveTab("control");
+      }
+      return;
+    }
+
+    onSubmit(formData as InsertControlTemplateRow);
+  };
+
+  // Update field
+  const updateField = <K extends keyof InsertControlTemplateRow>(
+    field: K,
+    value: InsertControlTemplateRow[K]
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
+
+  // Handle FMEA row selection
+  const handleFmeaRowSelect = (fmeaRowId: string | null) => {
+    if (fmeaRowId === "none" || !fmeaRowId) {
+      updateField("sourceTemplateRowId", null);
+      return;
+    }
+
+    const selectedRow = fmeaRows.find((r) => r.id === fmeaRowId);
+    if (selectedRow) {
+      updateField("sourceTemplateRowId", fmeaRowId);
+      
+      // Auto-populate from FMEA row if empty
+      if (!formData.characteristicName && selectedRow.failureMode) {
+        updateField("characteristicName", `${selectedRow.function} - ${selectedRow.failureMode}`);
+      }
+      if (selectedRow.specialFlag && !formData.specialFlag) {
+        updateField("specialFlag", true);
+        if (selectedRow.csrSymbol) {
+          updateField("csrSymbol", selectedRow.csrSymbol);
+        }
+      }
+    }
+  };
+
+  const isReadOnly = mode === "view";
+  const title = mode === "create" 
+    ? "Add Control Characteristic" 
+    : mode === "edit" 
+    ? "Edit Control Characteristic" 
+    : "View Control Characteristic";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5" />
+            {title}
+          </DialogTitle>
+          <DialogDescription>
+            {mode === "create"
+              ? "Define a new control characteristic for this process template"
+              : mode === "edit"
+              ? "Modify the control characteristic settings"
+              : "Review the control characteristic details"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="basic" className="flex items-center gap-2">
+              <Target className="h-4 w-4" />
+              Basic Info
+            </TabsTrigger>
+            <TabsTrigger value="measurement" className="flex items-center gap-2">
+              <Beaker className="h-4 w-4" />
+              Measurement
+            </TabsTrigger>
+            <TabsTrigger value="control" className="flex items-center gap-2">
+              <FileCheck className="h-4 w-4" />
+              Control
+            </TabsTrigger>
+          </TabsList>
+
+          <ScrollArea className="h-[450px] mt-4">
+            {/* Basic Info Tab */}
+            <TabsContent value="basic" className="space-y-6 p-1">
+              {/* FMEA Link Selection */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Link className="h-4 w-4" />
+                    FMEA Traceability
+                  </CardTitle>
+                  <CardDescription>
+                    Link this characteristic to an FMEA row for complete traceability
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Select
+                    value={formData.sourceTemplateRowId || "none"}
+                    onValueChange={handleFmeaRowSelect}
+                    disabled={isReadOnly}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select FMEA row to link..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="flex items-center gap-2">
+                          <Unlink className="h-4 w-4" />
+                          No link (standalone characteristic)
+                        </span>
+                      </SelectItem>
+                      {Object.entries(fmeaRowsByStep).map(([stepName, rows]) => (
+                        <div key={stepName}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted">
+                            {stepName}
+                          </div>
+                          {rows.map((fmeaRow) => (
+                            <SelectItem key={fmeaRow.id} value={fmeaRow.id}>
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  className={`text-xs ${
+                                    fmeaRow.ap === "H"
+                                      ? "bg-red-100 text-red-800"
+                                      : fmeaRow.ap === "M"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-green-100 text-green-800"
+                                  }`}
+                                  variant="outline"
+                                >
+                                  {fmeaRow.ap}
+                                </Badge>
+                                <span className="truncate max-w-[300px]">
+                                  {fmeaRow.failureMode}
+                                </span>
+                                {fmeaRow.specialFlag && (
+                                  <Shield className="h-3 w-3 text-red-500" />
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {linkedFmeaRow && (
+                    <div className="mt-3 p-3 bg-muted rounded-md text-sm">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="font-medium">Function:</span> {linkedFmeaRow.function}
+                        </div>
+                        <div>
+                          <span className="font-medium">Failure Mode:</span> {linkedFmeaRow.failureMode}
+                        </div>
+                        <div>
+                          <span className="font-medium">Effect:</span> {linkedFmeaRow.effect}
+                        </div>
+                        <div>
+                          <span className="font-medium">Cause:</span> {linkedFmeaRow.cause}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Characteristic Identification */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="charId">
+                    Characteristic ID <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="charId"
+                    value={formData.charId || ""}
+                    onChange={(e) => updateField("charId", e.target.value)}
+                    placeholder="e.g., C-1001"
+                    disabled={isReadOnly}
+                    className={errors.charId ? "border-destructive" : ""}
+                  />
+                  {errors.charId && (
+                    <p className="text-xs text-destructive">{errors.charId}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="type">
+                    Type <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value) => updateField("type", value)}
+                    disabled={isReadOnly}
+                  >
+                    <SelectTrigger className={errors.type ? "border-destructive" : ""}>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Product">
+                        <span className="flex items-center gap-2">
+                          <Target className="h-4 w-4 text-purple-600" />
+                          Product
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="Process">
+                        <span className="flex items-center gap-2">
+                          <Ruler className="h-4 w-4 text-teal-600" />
+                          Process
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.type && (
+                    <p className="text-xs text-destructive">{errors.type}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="characteristicName">
+                  Characteristic Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="characteristicName"
+                  value={formData.characteristicName || ""}
+                  onChange={(e) => updateField("characteristicName", e.target.value)}
+                  placeholder="e.g., Wall Thickness at Section A"
+                  disabled={isReadOnly}
+                  className={errors.characteristicName ? "border-destructive" : ""}
+                />
+                {errors.characteristicName && (
+                  <p className="text-xs text-destructive">{errors.characteristicName}</p>
+                )}
+              </div>
+
+              {/* Target & Tolerance */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="target">Target Value</Label>
+                  <Input
+                    id="target"
+                    value={formData.target || ""}
+                    onChange={(e) => updateField("target", e.target.value)}
+                    placeholder="e.g., 3.50 mm"
+                    disabled={isReadOnly}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="tolerance">Tolerance</Label>
+                  <Input
+                    id="tolerance"
+                    value={formData.tolerance || ""}
+                    onChange={(e) => updateField("tolerance", e.target.value)}
+                    placeholder="e.g., ±0.20 mm"
+                    disabled={isReadOnly}
+                  />
+                </div>
+              </div>
+
+              {/* Special Characteristic */}
+              <Separator />
+              
+              <div className="space-y-4">
+                <div className="flex items-center space-x-3">
+                  <Checkbox
+                    id="specialFlag"
+                    checked={formData.specialFlag || false}
+                    onCheckedChange={(checked) => {
+                      updateField("specialFlag", checked as boolean);
+                      if (!checked) {
+                        updateField("csrSymbol", null);
+                      }
+                    }}
+                    disabled={isReadOnly}
+                  />
+                  <Label
+                    htmlFor="specialFlag"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Shield className="h-4 w-4 text-red-600" />
+                    Special Characteristic (CSR)
+                  </Label>
+                </div>
+
+                {formData.specialFlag && (
+                  <div className="ml-7 space-y-3">
+                    <Label>
+                      CSR Symbol <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      {CSR_SYMBOLS.map((csr) => (
+                        <TooltipProvider key={csr.symbol}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant={formData.csrSymbol === csr.symbol ? "default" : "outline"}
+                                className="text-lg px-4"
+                                onClick={() => updateField("csrSymbol", csr.symbol)}
+                                disabled={isReadOnly}
+                              >
+                                {csr.symbol}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="font-medium">{csr.label}</p>
+                              <p className="text-xs text-muted-foreground">{csr.description}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ))}
+                    </div>
+                    {errors.csrSymbol && (
+                      <p className="text-xs text-destructive">{errors.csrSymbol}</p>
+                    )}
+                    
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-amber-800">
+                        Special characteristics require documented acceptance criteria 
+                        and reaction plans per IATF 16949.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* Measurement Tab */}
+            <TabsContent value="measurement" className="space-y-6 p-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="measurementSystem">Measurement System</Label>
+                  <Select
+                    value={formData.measurementSystem || ""}
+                    onValueChange={(value) => updateField("measurementSystem", value)}
+                    disabled={isReadOnly}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select measurement system" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEASUREMENT_SYSTEMS.map((ms) => (
+                        <SelectItem key={ms} value={ms}>
+                          {ms}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Or type a custom value
+                  </p>
+                  <Input
+                    value={formData.measurementSystem || ""}
+                    onChange={(e) => updateField("measurementSystem", e.target.value)}
+                    placeholder="Custom measurement system..."
+                    disabled={isReadOnly}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="gageDetails">Gage/Equipment Details</Label>
+                  <Textarea
+                    id="gageDetails"
+                    value={formData.gageDetails || ""}
+                    onChange={(e) => updateField("gageDetails", e.target.value)}
+                    placeholder="e.g., Zeiss Contura CMM, Gage #12345"
+                    disabled={isReadOnly}
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="defaultSampleSize">Sample Size</Label>
+                  <Select
+                    value={formData.defaultSampleSize || ""}
+                    onValueChange={(value) => updateField("defaultSampleSize", value)}
+                    disabled={isReadOnly}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sample size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SAMPLE_SIZES.map((size) => (
+                        <SelectItem key={size} value={size}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={formData.defaultSampleSize || ""}
+                    onChange={(e) => updateField("defaultSampleSize", e.target.value)}
+                    placeholder="Custom sample size..."
+                    disabled={isReadOnly}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="defaultFrequency">Frequency</Label>
+                  <Select
+                    value={formData.defaultFrequency || ""}
+                    onValueChange={(value) => updateField("defaultFrequency", value)}
+                    disabled={isReadOnly}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq} value={freq}>
+                          {freq}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={formData.defaultFrequency || ""}
+                    onChange={(e) => updateField("defaultFrequency", e.target.value)}
+                    placeholder="Custom frequency..."
+                    disabled={isReadOnly}
+                  />
+                </div>
+              </div>
+
+              <Card className="bg-blue-50 border-blue-200">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-blue-800 flex items-center gap-2">
+                    <Beaker className="h-4 w-4" />
+                    MSA Requirements
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-blue-700">
+                  <p>
+                    Measurement System Analysis (MSA) should be performed for all 
+                    measurement systems used to evaluate characteristics. For special 
+                    characteristics, Gage R&R must demonstrate:
+                  </p>
+                  <ul className="list-disc ml-5 mt-2 space-y-1">
+                    <li>%GRR &lt; 10% (ideal) or &lt; 30% (acceptable)</li>
+                    <li>ndc (number of distinct categories) ≥ 5</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Control Tab */}
+            <TabsContent value="control" className="space-y-6 p-1">
+              <div className="space-y-2">
+                <Label htmlFor="controlMethod">Control Method</Label>
+                <Select
+                  value={formData.controlMethod || ""}
+                  onValueChange={(value) => updateField("controlMethod", value)}
+                  disabled={isReadOnly}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select control method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONTROL_METHODS.map((method) => (
+                      <SelectItem key={method} value={method}>
+                        {method}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={formData.controlMethod || ""}
+                  onChange={(e) => updateField("controlMethod", e.target.value)}
+                  placeholder="Custom control method..."
+                  disabled={isReadOnly}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="acceptanceCriteria">
+                  Acceptance Criteria
+                  {formData.specialFlag && <span className="text-destructive"> *</span>}
+                </Label>
+                <Textarea
+                  id="acceptanceCriteria"
+                  value={formData.acceptanceCriteria || ""}
+                  onChange={(e) => updateField("acceptanceCriteria", e.target.value)}
+                  placeholder="e.g., Cpk ≥ 1.33, Zero defects, Within specification limits"
+                  disabled={isReadOnly}
+                  rows={3}
+                  className={errors.acceptanceCriteria ? "border-destructive" : ""}
+                />
+                {errors.acceptanceCriteria && (
+                  <p className="text-xs text-destructive">{errors.acceptanceCriteria}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  For special characteristics, include capability requirements (Cpk/Ppk targets)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reactionPlan">
+                  Reaction Plan
+                  {formData.specialFlag && <span className="text-destructive"> *</span>}
+                </Label>
+                <Textarea
+                  id="reactionPlan"
+                  value={formData.reactionPlan || ""}
+                  onChange={(e) => updateField("reactionPlan", e.target.value)}
+                  placeholder="e.g., Contain product → Notify supervisor → Adjust process → Verify 1st piece OK → Document"
+                  disabled={isReadOnly}
+                  rows={4}
+                  className={errors.reactionPlan ? "border-destructive" : ""}
+                />
+                {errors.reactionPlan && (
+                  <p className="text-xs text-destructive">{errors.reactionPlan}</p>
+                )}
+              </div>
+
+              {formData.specialFlag && (
+                <Card className="bg-red-50 border-red-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-red-800 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      Special Characteristic Requirements
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-red-700">
+                    <ul className="list-disc ml-5 space-y-1">
+                      <li>Documented reaction plan is mandatory</li>
+                      <li>Statistical process control (SPC) required</li>
+                      <li>Capability targets: Cpk ≥ 1.33 (or 1.67 for safety)</li>
+                      <li>100% containment during non-conformance</li>
+                      <li>Customer notification may be required</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </ScrollArea>
+        </Tabs>
+
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {mode === "view" ? "Close" : "Cancel"}
+          </Button>
+          {mode !== "view" && (
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mode === "create" ? "Create Characteristic" : "Save Changes"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
