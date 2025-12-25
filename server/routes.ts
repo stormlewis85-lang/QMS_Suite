@@ -9,7 +9,6 @@ import {
   insertPfmeaRowSchema,
   insertControlPlanSchema,
   insertControlPlanRowSchema,
-  insertPartProcessMapSchema,
   insertEquipmentLibrarySchema,
   insertEquipmentErrorProofingSchema,
   insertEquipmentControlMethodsSchema,
@@ -25,24 +24,6 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
-import { generateProcessPFD, generatePartPFD, validatePFD } from "./pfd-generator";
-import { 
-  prepareGeneration, 
-  validatePartForPFMEA, 
-  previewPFMEAGeneration,
-  calculatePreviewStats,
-  recalculateAP,
-  type ProcessWithTemplates 
-} from "./pfmea-generator";
-import {
-  prepareControlPlanGeneration,
-  validatePFMEAForControlPlan,
-  buildTemplateMappings,
-  previewControlPlanGeneration,
-  calculatePreviewStats as calculateCPPreviewStats,
-  validateControlPlanForApproval,
-  type ControlPlanType,
-} from "./control-plan-generator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Parts API
@@ -81,220 +62,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating part:", error);
       res.status(500).json({ error: "Failed to create part" });
-    }
-  });
-
-  app.patch("/api/parts/:id", async (req, res) => {
-    try {
-      const updates = insertPartSchema.partial().parse(req.body);
-      const updatedPart = await storage.updatePart(req.params.id, updates);
-      if (!updatedPart) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-      res.json(updatedPart);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating part:", error);
-      res.status(500).json({ error: "Failed to update part" });
-    }
-  });
-
-  app.delete("/api/parts/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deletePart(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting part:", error);
-      res.status(500).json({ error: "Failed to delete part" });
-    }
-  });
-
-  // ===========================================
-  // Part Process Mapping API (Section 2.4)
-  // ===========================================
-
-  // Get all process mappings for a part
-  app.get("/api/parts/:partId/process-maps", async (req, res) => {
-    try {
-      const maps = await storage.getPartProcessMapsByPartId(req.params.partId);
-      res.json(maps);
-    } catch (error) {
-      console.error("Error fetching part process maps:", error);
-      res.status(500).json({ error: "Failed to fetch part process maps" });
-    }
-  });
-
-  // Get part with all process mappings and process details
-  app.get("/api/parts/:partId/with-processes", async (req, res) => {
-    try {
-      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
-      if (!partWithMaps) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-      res.json(partWithMaps);
-    } catch (error) {
-      console.error("Error fetching part with processes:", error);
-      res.status(500).json({ error: "Failed to fetch part with processes" });
-    }
-  });
-
-  // Create a process mapping for a part
-  app.post("/api/parts/:partId/process-maps", async (req, res) => {
-    try {
-      const validatedData = insertPartProcessMapSchema.parse({
-        ...req.body,
-        partId: req.params.partId,
-      });
-
-      const newMap = await storage.createPartProcessMap(validatedData);
-      res.status(201).json(newMap);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error creating part process map:", error);
-      res.status(500).json({ error: "Failed to create part process map" });
-    }
-  });
-
-  // Update a process mapping
-  app.patch("/api/part-process-maps/:id", async (req, res) => {
-    try {
-      const partialSchema = insertPartProcessMapSchema.partial();
-      const validatedData = partialSchema.parse(req.body);
-
-      const updated = await storage.updatePartProcessMap(req.params.id, validatedData);
-      if (!updated) {
-        return res.status(404).json({ error: "Part process map not found" });
-      }
-      res.json(updated);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating part process map:", error);
-      res.status(500).json({ error: "Failed to update part process map" });
-    }
-  });
-
-  // Delete a process mapping
-  app.delete("/api/part-process-maps/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deletePartProcessMap(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Part process map not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting part process map:", error);
-      res.status(500).json({ error: "Failed to delete part process map" });
-    }
-  });
-
-  // Resequence process mappings for a part
-  app.post("/api/parts/:partId/process-maps/resequence", async (req, res) => {
-    try {
-      await storage.resequencePartProcessMaps(req.params.partId);
-      const maps = await storage.getPartProcessMapsByPartId(req.params.partId);
-      res.json(maps);
-    } catch (error) {
-      console.error("Error resequencing part process maps:", error);
-      res.status(500).json({ error: "Failed to resequence part process maps" });
-    }
-  });
-
-  // ===========================================
-  // PFD Generation API (Section 2.4)
-  // ===========================================
-
-  // Generate PFD for a single process
-  app.get("/api/processes/:processId/pfd", async (req, res) => {
-    try {
-      const process = await storage.getProcessWithSteps(req.params.processId);
-      if (!process) {
-        return res.status(404).json({ error: "Process not found" });
-      }
-
-      const options = {
-        direction: (req.query.direction as 'TB' | 'LR' | 'BT' | 'RL') || 'TB',
-        showEquipment: req.query.showEquipment !== 'false',
-        showAreas: req.query.showAreas !== 'false',
-        colorByArea: req.query.colorByArea !== 'false',
-        theme: (req.query.theme as string) || 'default',
-      };
-
-      const pfd = generateProcessPFD(process, options);
-      const validation = validatePFD(pfd);
-
-      res.json({
-        ...pfd,
-        validation,
-      });
-    } catch (error) {
-      console.error("Error generating process PFD:", error);
-      res.status(500).json({ error: "Failed to generate process PFD" });
-    }
-  });
-
-  // Generate PFD for a part (combines all mapped processes)
-  app.get("/api/parts/:partId/pfd", async (req, res) => {
-    try {
-      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
-      if (!partWithMaps) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-
-      if (partWithMaps.processMaps.length === 0) {
-        return res.status(400).json({ 
-          error: "No processes mapped to this part",
-          message: "Please add process mappings before generating a PFD"
-        });
-      }
-
-      const options = {
-        direction: (req.query.direction as 'TB' | 'LR' | 'BT' | 'RL') || 'TB',
-        showEquipment: req.query.showEquipment !== 'false',
-        showAreas: req.query.showAreas !== 'false',
-        colorByArea: req.query.colorByArea !== 'false',
-        theme: (req.query.theme as string) || 'default',
-      };
-
-      const processMaps = partWithMaps.processMaps.map(map => ({
-        process: map.process,
-        sequence: map.sequence,
-        assumptions: map.assumptions,
-      }));
-
-      const pfd = generatePartPFD(
-        `${partWithMaps.partNumber} - ${partWithMaps.partName}`,
-        processMaps,
-        options
-      );
-      const validation = validatePFD(pfd);
-
-      res.json({
-        part: {
-          id: partWithMaps.id,
-          partNumber: partWithMaps.partNumber,
-          partName: partWithMaps.partName,
-          customer: partWithMaps.customer,
-          program: partWithMaps.program,
-          plant: partWithMaps.plant,
-        },
-        ...pfd,
-        validation,
-      });
-    } catch (error) {
-      console.error("Error generating part PFD:", error);
-      res.status(500).json({ error: "Failed to generate part PFD" });
     }
   });
 
@@ -478,10 +245,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!deleted) {
         return res.status(404).json({ error: "Process step not found" });
       }
-      
-      // Resequence remaining steps
+      // Resequence after deletion
       await storage.resequenceSteps(req.params.processId);
-      
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting process step:", error);
@@ -489,241 +254,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk resequence steps
-  app.post("/api/processes/:processId/steps/resequence", async (req, res) => {
+  // Get child steps of a group
+  app.get("/api/processes/steps/:stepId/children", async (req, res) => {
     try {
-      const { stepOrder } = req.body;
-      
-      if (!Array.isArray(stepOrder)) {
-        return res.status(400).json({ error: "stepOrder must be an array of step IDs" });
-      }
-      
-      // Update each step's sequence
-      for (let i = 0; i < stepOrder.length; i++) {
-        await storage.updateProcessStep(stepOrder[i], { seq: i + 1 });
-      }
-      
-      const updatedSteps = await storage.getStepsByProcessId(req.params.processId);
-      res.json(updatedSteps);
+      const children = await storage.getChildSteps(req.params.stepId);
+      res.json(children);
     } catch (error) {
-      console.error("Error resequencing steps:", error);
-      res.status(500).json({ error: "Failed to resequence steps" });
-    }
-  });
-
-  // FMEA Template Rows API
-  app.get("/api/processes/:processId/fmea-template-rows", async (req, res) => {
-    try {
-      const rows = await storage.getFmeaTemplateRowsByProcessId(req.params.processId);
-      res.json(rows);
-    } catch (error) {
-      console.error("Error fetching FMEA template rows:", error);
-      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
-    }
-  });
-
-  app.post("/api/processes/:processId/fmea-template-rows", async (req, res) => {
-    try {
-      const rowData = insertFmeaTemplateRowSchema.parse({
-        ...req.body,
-        processDefId: req.params.processId,
-      });
-      
-      const newRow = await storage.createFmeaTemplateRow(rowData);
-      res.status(201).json(newRow);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error creating FMEA template row:", error);
-      res.status(500).json({ error: "Failed to create FMEA template row" });
-    }
-  });
-
-  app.get("/api/fmea-template-rows/:id", async (req, res) => {
-    try {
-      const row = await storage.getFmeaTemplateRowById(req.params.id);
-      if (!row) {
-        return res.status(404).json({ error: "FMEA template row not found" });
-      }
-      res.json(row);
-    } catch (error) {
-      console.error("Error fetching FMEA template row:", error);
-      res.status(500).json({ error: "Failed to fetch FMEA template row" });
-    }
-  });
-
-  app.patch("/api/fmea-template-rows/:id", async (req, res) => {
-    try {
-      const updates = insertFmeaTemplateRowSchema.partial().parse(req.body);
-      const updatedRow = await storage.updateFmeaTemplateRow(req.params.id, updates);
-      if (!updatedRow) {
-        return res.status(404).json({ error: "FMEA template row not found" });
-      }
-      res.json(updatedRow);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating FMEA template row:", error);
-      res.status(500).json({ error: "Failed to update FMEA template row" });
-    }
-  });
-
-  app.delete("/api/fmea-template-rows/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deleteFmeaTemplateRow(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "FMEA template row not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting FMEA template row:", error);
-      res.status(500).json({ error: "Failed to delete FMEA template row" });
-    }
-  });
-
-  app.post("/api/fmea-template-rows/:id/duplicate", async (req, res) => {
-    try {
-      const duplicatedRow = await storage.duplicateFmeaTemplateRow(req.params.id);
-      if (!duplicatedRow) {
-        return res.status(404).json({ error: "FMEA template row not found" });
-      }
-      res.status(201).json(duplicatedRow);
-    } catch (error) {
-      console.error("Error duplicating FMEA template row:", error);
-      res.status(500).json({ error: "Failed to duplicate FMEA template row" });
-    }
-  });
-
-  // Get FMEA template rows by step ID
-  app.get("/api/process-steps/:stepId/fmea-template-rows", async (req, res) => {
-    try {
-      const rows = await storage.getFmeaTemplateRowsByStepId(req.params.stepId);
-      res.json(rows);
-    } catch (error) {
-      console.error("Error fetching FMEA template rows by step:", error);
-      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
-    }
-  });
-
-  // ===========================================
-  // Control Template Row API (Section 2.3)
-  // ===========================================
-
-  // Get all control template rows for a process
-  app.get("/api/processes/:processId/control-template-rows", async (req, res) => {
-    try {
-      const rows = await storage.getControlTemplateRowsByProcessId(req.params.processId);
-      res.json(rows);
-    } catch (error) {
-      console.error("Error fetching control template rows:", error);
-      res.status(500).json({ error: "Failed to fetch control template rows" });
-    }
-  });
-
-  // Create a new control template row
-  app.post("/api/processes/:processId/control-template-rows", async (req, res) => {
-    try {
-      const validatedData = insertControlTemplateRowSchema.parse({
-        ...req.body,
-        processDefId: req.params.processId,
-      });
-
-      const newRow = await storage.createControlTemplateRow(validatedData);
-      
-      // Invalidate relevant queries
-      res.status(201).json(newRow);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error creating control template row:", error);
-      res.status(500).json({ error: "Failed to create control template row" });
-    }
-  });
-
-  // Get a single control template row by ID
-  app.get("/api/control-template-rows/:id", async (req, res) => {
-    try {
-      const row = await storage.getControlTemplateRowById(req.params.id);
-      if (!row) {
-        return res.status(404).json({ error: "Control template row not found" });
-      }
-      res.json(row);
-    } catch (error) {
-      console.error("Error fetching control template row:", error);
-      res.status(500).json({ error: "Failed to fetch control template row" });
-    }
-  });
-
-  // Update a control template row
-  app.patch("/api/control-template-rows/:id", async (req, res) => {
-    try {
-      const partialSchema = insertControlTemplateRowSchema.partial();
-      const validatedData = partialSchema.parse(req.body);
-
-      const updatedRow = await storage.updateControlTemplateRow(req.params.id, validatedData);
-      if (!updatedRow) {
-        return res.status(404).json({ error: "Control template row not found" });
-      }
-      res.json(updatedRow);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating control template row:", error);
-      res.status(500).json({ error: "Failed to update control template row" });
-    }
-  });
-
-  // Delete a control template row
-  app.delete("/api/control-template-rows/:id", async (req, res) => {
-    try {
-      const success = await storage.deleteControlTemplateRow(req.params.id);
-      if (!success) {
-        return res.status(404).json({ error: "Control template row not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting control template row:", error);
-      res.status(500).json({ error: "Failed to delete control template row" });
-    }
-  });
-
-  // Duplicate a control template row
-  app.post("/api/control-template-rows/:id/duplicate", async (req, res) => {
-    try {
-      const duplicatedRow = await storage.duplicateControlTemplateRow(req.params.id);
-      if (!duplicatedRow) {
-        return res.status(404).json({ error: "Control template row not found" });
-      }
-      res.status(201).json(duplicatedRow);
-    } catch (error) {
-      console.error("Error duplicating control template row:", error);
-      res.status(500).json({ error: "Failed to duplicate control template row" });
-    }
-  });
-
-  // Get control template rows by source FMEA template row ID
-  app.get("/api/fmea-template-rows/:sourceRowId/control-template-rows", async (req, res) => {
-    try {
-      const rows = await storage.getControlTemplateRowsBySourceRowId(req.params.sourceRowId);
-      res.json(rows);
-    } catch (error) {
-      console.error("Error fetching control template rows by source:", error);
-      res.status(500).json({ error: "Failed to fetch control template rows" });
+      console.error("Error fetching child steps:", error);
+      res.status(500).json({ error: "Failed to fetch child steps" });
     }
   });
 
   // PFMEA API
-  app.get("/api/parts/:partId/pfmeas", async (req, res) => {
+  app.get("/api/pfmea", async (req, res) => {
     try {
-      const pfmeas = await storage.getPFMEAsByPartId(req.params.partId);
+      const partId = req.query.partId as string;
+      if (!partId) {
+        return res.status(400).json({ error: "partId query parameter is required" });
+      }
+      const pfmeas = await storage.getPFMEAsByPartId(partId);
       res.json(pfmeas);
     } catch (error) {
       console.error("Error fetching PFMEAs:", error);
@@ -731,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/pfmeas/:id", async (req, res) => {
+  app.get("/api/pfmea/:id", async (req, res) => {
     try {
       const pfmea = await storage.getPFMEAById(req.params.id);
       if (!pfmea) {
@@ -744,7 +293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/pfmeas", async (req, res) => {
+  app.post("/api/pfmea", async (req, res) => {
     try {
       const validatedData = insertPfmeaSchema.parse(req.body);
       const newPFMEA = await storage.createPFMEA(validatedData);
@@ -759,13 +308,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/pfmeas/:pfmeaId/rows", async (req, res) => {
+  app.post("/api/pfmea/:id/rows", async (req, res) => {
     try {
-      const rowData = insertPfmeaRowSchema.parse({
+      const pfmeaRow = insertPfmeaRowSchema.parse({
         ...req.body,
-        pfmeaId: req.params.pfmeaId,
+        pfmeaId: req.params.id,
       });
-      const newRow = await storage.createPFMEARow(rowData);
+      const newRow = await storage.createPFMEARow(pfmeaRow);
       res.status(201).json(newRow);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -795,256 +344,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ===========================================
-  // PFMEA Generation API (Section 2.5)
-  // ===========================================
-
-  // Preview PFMEA generation - shows what rows would be generated
-  app.get("/api/parts/:partId/pfmea/preview", async (req, res) => {
-    try {
-      // Get part with process maps
-      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
-      if (!partWithMaps) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-
-      // Validate part for PFMEA
-      const partValidation = validatePartForPFMEA(
-        partWithMaps,
-        partWithMaps.processMaps
-      );
-
-      if (!partValidation.canGenerate) {
-        return res.status(400).json({
-          error: "Cannot generate PFMEA",
-          validation: partValidation,
-        });
-      }
-
-      // Get template rows for all mapped processes
-      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
-      const templateRows = await storage.getFmeaTemplateRowsByProcessIds(processIds);
-
-      // Build process with templates structure
-      const processesWithTemplates: ProcessWithTemplates[] = partWithMaps.processMaps.map(map => ({
-        process: map.process,
-        sequence: map.sequence,
-        templateRows: templateRows.filter(r => r.processDefId === map.processDefId),
-      }));
-
-      // Generate preview
-      const preview = previewPFMEAGeneration(processesWithTemplates);
-      const stats = calculatePreviewStats(preview);
-
-      res.json({
-        part: {
-          id: partWithMaps.id,
-          partNumber: partWithMaps.partNumber,
-          partName: partWithMaps.partName,
-          customer: partWithMaps.customer,
-          program: partWithMaps.program,
-          plant: partWithMaps.plant,
-        },
-        preview,
-        stats,
-        validation: partValidation,
-      });
-    } catch (error) {
-      console.error("Error previewing PFMEA generation:", error);
-      res.status(500).json({ error: "Failed to preview PFMEA generation" });
-    }
-  });
-
-  // Generate PFMEA from templates
-  const pfmeaGenerateSchema = z.object({
-    rev: z.string().optional(),
-    basis: z.string().default("AIAG-VDA 2019"),
-    docNo: z.string().optional(),
-    processSelections: z.array(z.object({
-      processDefId: z.string().uuid(),
-      includeAllRows: z.boolean().optional().default(true),
-      selectedRowIds: z.array(z.string().uuid()).optional(),
-    })).optional(),
-  });
-
-  app.post("/api/parts/:partId/pfmea/generate", async (req, res) => {
-    try {
-      const input = pfmeaGenerateSchema.parse(req.body);
-      
-      // Get part with process maps
-      const partWithMaps = await storage.getPartWithProcessMaps(req.params.partId);
-      if (!partWithMaps) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-
-      // Validate part for PFMEA
-      const partValidation = validatePartForPFMEA(
-        partWithMaps,
-        partWithMaps.processMaps
-      );
-
-      if (!partValidation.canGenerate) {
-        return res.status(400).json({
-          error: "Cannot generate PFMEA",
-          validation: partValidation,
-        });
-      }
-
-      // Get existing PFMEAs for revision tracking
-      const existingPFMEAs = await storage.getPFMEAsByPartId(req.params.partId);
-      const existingRevisions = existingPFMEAs.map(p => p.rev);
-
-      // Get template rows for all mapped processes
-      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
-      const templateRows = await storage.getFmeaTemplateRowsByProcessIds(processIds);
-
-      // Build process with templates structure
-      const processesWithTemplates: ProcessWithTemplates[] = partWithMaps.processMaps.map(map => ({
-        process: map.process,
-        sequence: map.sequence,
-        templateRows: templateRows.filter(r => r.processDefId === map.processDefId),
-      }));
-
-      // Prepare generation
-      const { header, rows, stats, validation } = prepareGeneration(
-        partWithMaps,
-        processesWithTemplates,
-        { 
-          partId: req.params.partId,
-          rev: input.rev || undefined,
-          basis: input.basis,
-          docNo: input.docNo,
-          processSelections: input.processSelections,
-        },
-        existingRevisions
-      );
-
-      if (!validation.canGenerate) {
-        return res.status(400).json({
-          error: "Cannot generate PFMEA",
-          validation,
-        });
-      }
-
-      // Create PFMEA header
-      const newPFMEA = await storage.createPFMEA(header);
-
-      // Create all rows with pfmeaId
-      const rowsWithId = rows.map(row => ({
-        ...row,
-        pfmeaId: newPFMEA.id,
-      }));
-      const createdRows = await storage.createPFMEARows(rowsWithId);
-
-      res.status(201).json({
-        success: true,
-        pfmea: newPFMEA,
-        rows: createdRows,
-        stats,
-        validation,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error generating PFMEA:", error);
-      res.status(500).json({ error: "Failed to generate PFMEA" });
-    }
-  });
-
-  // Recalculate AP for all rows in a PFMEA
-  app.post("/api/pfmeas/:id/recalculate-ap", async (req, res) => {
-    try {
-      const pfmeaDoc = await storage.getPFMEAById(req.params.id);
-      if (!pfmeaDoc) {
-        return res.status(404).json({ error: "PFMEA not found" });
-      }
-
-      const apChanges = recalculateAP(pfmeaDoc.rows);
-      const changedRows = apChanges.filter(c => c.changed);
-
-      // Update rows that changed
-      for (const change of changedRows) {
-        await storage.updatePFMEARow(change.rowId, { ap: change.newAP });
-      }
-
-      res.json({
-        totalRows: pfmeaDoc.rows.length,
-        changedRows: changedRows.length,
-        changes: apChanges,
-      });
-    } catch (error) {
-      console.error("Error recalculating AP:", error);
-      res.status(500).json({ error: "Failed to recalculate AP" });
-    }
-  });
-
-  // Get PFMEA with full details including part info
-  app.get("/api/pfmeas/:id/details", async (req, res) => {
-    try {
-      const pfmeaDoc = await storage.getPFMEAWithDetails(req.params.id);
-      if (!pfmeaDoc) {
-        return res.status(404).json({ error: "PFMEA not found" });
-      }
-      res.json(pfmeaDoc);
-    } catch (error) {
-      console.error("Error fetching PFMEA details:", error);
-      res.status(500).json({ error: "Failed to fetch PFMEA details" });
-    }
-  });
-
-  // Update PFMEA header
-  app.patch("/api/pfmeas/:id", async (req, res) => {
-    try {
-      const updates = insertPfmeaSchema.partial().parse(req.body);
-      const updatedPFMEA = await storage.updatePFMEA(req.params.id, updates);
-      if (!updatedPFMEA) {
-        return res.status(404).json({ error: "PFMEA not found" });
-      }
-      res.json(updatedPFMEA);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating PFMEA:", error);
-      res.status(500).json({ error: "Failed to update PFMEA" });
-    }
-  });
-
-  // Delete PFMEA
-  app.delete("/api/pfmeas/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deletePFMEA(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "PFMEA not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting PFMEA:", error);
-      res.status(500).json({ error: "Failed to delete PFMEA" });
-    }
-  });
-
-  // Delete PFMEA row
-  app.delete("/api/pfmea-rows/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deletePFMEARow(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "PFMEA row not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting PFMEA row:", error);
-      res.status(500).json({ error: "Failed to delete PFMEA row" });
-    }
-  });
-
   // Control Plans API
-  app.get("/api/parts/:partId/control-plans", async (req, res) => {
+  app.get("/api/control-plans", async (req, res) => {
     try {
-      const controlPlans = await storage.getControlPlansByPartId(req.params.partId);
+      const partId = req.query.partId as string;
+      if (!partId) {
+        return res.status(400).json({ error: "partId query parameter is required" });
+      }
+      const controlPlans = await storage.getControlPlansByPartId(partId);
       res.json(controlPlans);
     } catch (error) {
       console.error("Error fetching control plans:", error);
@@ -1056,7 +363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const controlPlan = await storage.getControlPlanById(req.params.id);
       if (!controlPlan) {
-        return res.status(404).json({ error: "Control plan not found" });
+        return res.status(404).json({ error: "Control Plan not found" });
       }
       res.json(controlPlan);
     } catch (error) {
@@ -1080,13 +387,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/control-plans/:controlPlanId/rows", async (req, res) => {
+  app.post("/api/control-plans/:id/rows", async (req, res) => {
     try {
-      const rowData = insertControlPlanRowSchema.parse({
+      const controlPlanRow = insertControlPlanRowSchema.parse({
         ...req.body,
-        controlPlanId: req.params.controlPlanId,
+        controlPlanId: req.params.id,
       });
-      const newRow = await storage.createControlPlanRow(rowData);
+      const newRow = await storage.createControlPlanRow(controlPlanRow);
       res.status(201).json(newRow);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1113,241 +420,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating control plan row:", error);
       res.status(500).json({ error: "Failed to update control plan row" });
-    }
-  });
-
-  // ===========================================
-  // Control Plan Generation API (Section 2.6)
-  // ===========================================
-
-  // Preview Control Plan generation from PFMEA
-  app.get("/api/pfmeas/:pfmeaId/control-plan/preview", async (req, res) => {
-    try {
-      // Get PFMEA with rows
-      const pfmeaDoc = await storage.getPFMEAById(req.params.pfmeaId);
-      if (!pfmeaDoc) {
-        return res.status(404).json({ error: "PFMEA not found" });
-      }
-
-      // Validate PFMEA for Control Plan generation
-      const pfmeaValidation = validatePFMEAForControlPlan(pfmeaDoc, pfmeaDoc.rows);
-      if (!pfmeaValidation.canGenerate) {
-        return res.status(400).json({
-          error: "Cannot generate Control Plan",
-          validation: pfmeaValidation,
-        });
-      }
-
-      // Get part with process maps
-      const partWithMaps = await storage.getPartWithProcessMaps(pfmeaDoc.partId);
-      if (!partWithMaps) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-
-      // Get control template rows for all mapped processes
-      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
-      const controlTemplateRows = await storage.getControlTemplateRowsByProcessIds(processIds);
-
-      // Build template mappings
-      const templateMappings = buildTemplateMappings(pfmeaDoc.rows, controlTemplateRows);
-
-      // Generate preview
-      const preview = previewControlPlanGeneration(pfmeaDoc.rows, templateMappings);
-      const stats = calculateCPPreviewStats(pfmeaDoc.rows, preview);
-
-      res.json({
-        pfmea: {
-          id: pfmeaDoc.id,
-          partId: pfmeaDoc.partId,
-          rev: pfmeaDoc.rev,
-          status: pfmeaDoc.status,
-        },
-        part: {
-          id: partWithMaps.id,
-          partNumber: partWithMaps.partNumber,
-          partName: partWithMaps.partName,
-          customer: partWithMaps.customer,
-        },
-        preview,
-        stats,
-        validation: pfmeaValidation,
-      });
-    } catch (error) {
-      console.error("Error previewing Control Plan generation:", error);
-      res.status(500).json({ error: "Failed to preview Control Plan generation" });
-    }
-  });
-
-  // Generate Control Plan from PFMEA
-  const controlPlanGenerateSchema = z.object({
-    rev: z.string().optional(),
-    type: z.enum(['Prototype', 'Pre-Launch', 'Production']).default('Production'),
-    docNo: z.string().optional(),
-  });
-
-  app.post("/api/pfmeas/:pfmeaId/control-plan/generate", async (req, res) => {
-    try {
-      const input = controlPlanGenerateSchema.parse(req.body);
-
-      // Get PFMEA with rows
-      const pfmeaDoc = await storage.getPFMEAById(req.params.pfmeaId);
-      if (!pfmeaDoc) {
-        return res.status(404).json({ error: "PFMEA not found" });
-      }
-
-      // Validate PFMEA for Control Plan generation
-      const pfmeaValidation = validatePFMEAForControlPlan(pfmeaDoc, pfmeaDoc.rows);
-      if (!pfmeaValidation.canGenerate) {
-        return res.status(400).json({
-          error: "Cannot generate Control Plan",
-          validation: pfmeaValidation,
-        });
-      }
-
-      // Get part
-      const partDoc = await storage.getPartById(pfmeaDoc.partId);
-      if (!partDoc) {
-        return res.status(404).json({ error: "Part not found" });
-      }
-
-      // Get part with process maps
-      const partWithMaps = await storage.getPartWithProcessMaps(pfmeaDoc.partId);
-      if (!partWithMaps) {
-        return res.status(404).json({ error: "Part process maps not found" });
-      }
-
-      // Get existing Control Plans for revision tracking
-      const existingCPs = await storage.getControlPlansByPartId(pfmeaDoc.partId);
-      const existingRevisions = existingCPs.map(cp => cp.rev);
-
-      // Get control template rows for all mapped processes
-      const processIds = partWithMaps.processMaps.map(m => m.processDefId);
-      const controlTemplateRows = await storage.getControlTemplateRowsByProcessIds(processIds);
-
-      // Prepare generation
-      const { header, rows, stats, validation } = prepareControlPlanGeneration(
-        partDoc,
-        pfmeaDoc,
-        pfmeaDoc.rows,
-        controlTemplateRows,
-        {
-          partId: pfmeaDoc.partId,
-          pfmeaId: req.params.pfmeaId,
-          rev: input.rev || undefined,
-          type: input.type as ControlPlanType,
-          docNo: input.docNo,
-        },
-        existingRevisions
-      );
-
-      if (!validation.canGenerate) {
-        return res.status(400).json({
-          error: "Cannot generate Control Plan",
-          validation,
-        });
-      }
-
-      // Create Control Plan header
-      const newControlPlan = await storage.createControlPlan(header);
-
-      // Create all rows with controlPlanId
-      const rowsWithId = rows.map(row => ({
-        ...row,
-        controlPlanId: newControlPlan.id,
-      }));
-      const createdRows = await storage.createControlPlanRows(rowsWithId);
-
-      res.status(201).json({
-        success: true,
-        controlPlan: newControlPlan,
-        rows: createdRows,
-        stats,
-        validation,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error generating Control Plan:", error);
-      res.status(500).json({ error: "Failed to generate Control Plan" });
-    }
-  });
-
-  // Validate Control Plan for approval
-  app.get("/api/control-plans/:id/validate", async (req, res) => {
-    try {
-      const cpDoc = await storage.getControlPlanById(req.params.id);
-      if (!cpDoc) {
-        return res.status(404).json({ error: "Control Plan not found" });
-      }
-
-      const validation = validateControlPlanForApproval(cpDoc, cpDoc.rows);
-      res.json({ validation });
-    } catch (error) {
-      console.error("Error validating Control Plan:", error);
-      res.status(500).json({ error: "Failed to validate Control Plan" });
-    }
-  });
-
-  // Get Control Plan with full details including part info
-  app.get("/api/control-plans/:id/details", async (req, res) => {
-    try {
-      const cpDoc = await storage.getControlPlanWithDetails(req.params.id);
-      if (!cpDoc) {
-        return res.status(404).json({ error: "Control Plan not found" });
-      }
-      res.json(cpDoc);
-    } catch (error) {
-      console.error("Error fetching Control Plan details:", error);
-      res.status(500).json({ error: "Failed to fetch Control Plan details" });
-    }
-  });
-
-  // Update Control Plan header
-  app.patch("/api/control-plans/:id", async (req, res) => {
-    try {
-      const updates = insertControlPlanSchema.partial().parse(req.body);
-      const updatedCP = await storage.updateControlPlan(req.params.id, updates);
-      if (!updatedCP) {
-        return res.status(404).json({ error: "Control Plan not found" });
-      }
-      res.json(updatedCP);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const validationError = fromError(error);
-        return res.status(400).json({ error: validationError.toString() });
-      }
-      console.error("Error updating Control Plan:", error);
-      res.status(500).json({ error: "Failed to update Control Plan" });
-    }
-  });
-
-  // Delete Control Plan
-  app.delete("/api/control-plans/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deleteControlPlan(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Control Plan not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting Control Plan:", error);
-      res.status(500).json({ error: "Failed to delete Control Plan" });
-    }
-  });
-
-  // Delete Control Plan row
-  app.delete("/api/control-plan-rows/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deleteControlPlanRow(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Control Plan row not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting Control Plan row:", error);
-      res.status(500).json({ error: "Failed to delete Control Plan row" });
     }
   });
 
@@ -1421,31 +493,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Equipment Error Proofing Controls
-  app.post("/api/equipment/:equipmentId/error-proofing", async (req, res) => {
+  // Equipment Error-Proofing Controls API
+  app.post("/api/equipment/:id/error-proofing", async (req, res) => {
     try {
-      const validatedData = insertEquipmentErrorProofingSchema.parse({
+      const control = insertEquipmentErrorProofingSchema.parse({
         ...req.body,
-        equipmentId: req.params.equipmentId,
+        equipmentId: req.params.id,
       });
-      const newControl = await storage.createErrorProofingControl(validatedData);
+      const newControl = await storage.createErrorProofingControl(control);
       res.status(201).json(newControl);
     } catch (error) {
       if (error instanceof z.ZodError) {
         const validationError = fromError(error);
         return res.status(400).json({ error: validationError.toString() });
       }
-      console.error("Error creating error proofing control:", error);
-      res.status(500).json({ error: "Failed to create error proofing control" });
+      console.error("Error creating error-proofing control:", error);
+      res.status(500).json({ error: "Failed to create error-proofing control" });
     }
   });
 
-  app.patch("/api/error-proofing/:id", async (req, res) => {
+  app.patch("/api/equipment-error-proofing/:id", async (req, res) => {
     try {
       const updates = insertEquipmentErrorProofingSchema.partial().parse(req.body);
       const updatedControl = await storage.updateErrorProofingControl(req.params.id, updates);
       if (!updatedControl) {
-        return res.status(404).json({ error: "Error proofing control not found" });
+        return res.status(404).json({ error: "Error-proofing control not found" });
       }
       res.json(updatedControl);
     } catch (error) {
@@ -1453,32 +525,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const validationError = fromError(error);
         return res.status(400).json({ error: validationError.toString() });
       }
-      console.error("Error updating error proofing control:", error);
-      res.status(500).json({ error: "Failed to update error proofing control" });
+      console.error("Error updating error-proofing control:", error);
+      res.status(500).json({ error: "Failed to update error-proofing control" });
     }
   });
 
-  app.delete("/api/error-proofing/:id", async (req, res) => {
+  app.delete("/api/equipment-error-proofing/:id", async (req, res) => {
     try {
       const success = await storage.deleteErrorProofingControl(req.params.id);
       if (!success) {
-        return res.status(404).json({ error: "Error proofing control not found" });
+        return res.status(404).json({ error: "Error-proofing control not found" });
       }
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting error proofing control:", error);
-      res.status(500).json({ error: "Failed to delete error proofing control" });
+      console.error("Error deleting error-proofing control:", error);
+      res.status(500).json({ error: "Failed to delete error-proofing control" });
     }
   });
 
-  // Equipment Control Methods
-  app.post("/api/equipment/:equipmentId/control-methods", async (req, res) => {
+  // Equipment Control Methods API
+  app.post("/api/equipment/:id/control-methods", async (req, res) => {
     try {
-      const validatedData = insertEquipmentControlMethodsSchema.parse({
+      const method = insertEquipmentControlMethodsSchema.parse({
         ...req.body,
-        equipmentId: req.params.equipmentId,
+        equipmentId: req.params.id,
       });
-      const newMethod = await storage.createControlMethod(validatedData);
+      const newMethod = await storage.createControlMethod(method);
       res.status(201).json(newMethod);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1490,7 +562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/control-methods/:id", async (req, res) => {
+  app.patch("/api/equipment-control-methods/:id", async (req, res) => {
     try {
       const updates = insertEquipmentControlMethodsSchema.partial().parse(req.body);
       const updatedMethod = await storage.updateControlMethod(req.params.id, updates);
@@ -1508,7 +580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/control-methods/:id", async (req, res) => {
+  app.delete("/api/equipment-control-methods/:id", async (req, res) => {
     try {
       const success = await storage.deleteControlMethod(req.params.id);
       if (!success) {
@@ -1798,6 +870,192 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting control pairing:", error);
       res.status(500).json({ error: "Failed to delete control pairing" });
+    }
+  });
+
+  // ==================== FMEA Template Rows API (Phase 6) ====================
+  
+  // Get all FMEA template rows for a process
+  app.get("/api/processes/:processId/fmea-template-rows", async (req, res) => {
+    try {
+      const rows = await storage.getFmeaTemplateRowsByProcessId(req.params.processId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching FMEA template rows:", error);
+      res.status(500).json({ error: "Failed to fetch FMEA template rows" });
+    }
+  });
+
+  // Get a single FMEA template row by ID
+  app.get("/api/fmea-template-rows/:id", async (req, res) => {
+    try {
+      const row = await storage.getFmeaTemplateRowById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.json(row);
+    } catch (error) {
+      console.error("Error fetching FMEA template row:", error);
+      res.status(500).json({ error: "Failed to fetch FMEA template row" });
+    }
+  });
+
+  // Create a new FMEA template row
+  app.post("/api/processes/:processId/fmea-template-rows", async (req, res) => {
+    try {
+      const validatedData = insertFmeaTemplateRowSchema.parse({
+        ...req.body,
+        processDefId: req.params.processId,
+      });
+      const newRow = await storage.createFmeaTemplateRow(validatedData);
+      res.status(201).json(newRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating FMEA template row:", error);
+      res.status(500).json({ error: "Failed to create FMEA template row" });
+    }
+  });
+
+  // Update an FMEA template row
+  app.patch("/api/fmea-template-rows/:id", async (req, res) => {
+    try {
+      const updates = insertFmeaTemplateRowSchema.partial().parse(req.body);
+      const updatedRow = await storage.updateFmeaTemplateRow(req.params.id, updates);
+      if (!updatedRow) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.json(updatedRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating FMEA template row:", error);
+      res.status(500).json({ error: "Failed to update FMEA template row" });
+    }
+  });
+
+  // Delete an FMEA template row
+  app.delete("/api/fmea-template-rows/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteFmeaTemplateRow(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting FMEA template row:", error);
+      res.status(500).json({ error: "Failed to delete FMEA template row" });
+    }
+  });
+
+  // Duplicate an FMEA template row
+  app.post("/api/fmea-template-rows/:id/duplicate", async (req, res) => {
+    try {
+      const duplicatedRow = await storage.duplicateFmeaTemplateRow(req.params.id);
+      if (!duplicatedRow) {
+        return res.status(404).json({ error: "FMEA template row not found" });
+      }
+      res.status(201).json(duplicatedRow);
+    } catch (error) {
+      console.error("Error duplicating FMEA template row:", error);
+      res.status(500).json({ error: "Failed to duplicate FMEA template row" });
+    }
+  });
+
+  // ==================== Control Template Rows API (Phase 6) ====================
+  
+  // Get all control template rows for a process
+  app.get("/api/processes/:processId/control-template-rows", async (req, res) => {
+    try {
+      const rows = await storage.getControlTemplateRowsByProcessId(req.params.processId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching control template rows:", error);
+      res.status(500).json({ error: "Failed to fetch control template rows" });
+    }
+  });
+
+  // Get a single control template row by ID
+  app.get("/api/control-template-rows/:id", async (req, res) => {
+    try {
+      const row = await storage.getControlTemplateRowById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.json(row);
+    } catch (error) {
+      console.error("Error fetching control template row:", error);
+      res.status(500).json({ error: "Failed to fetch control template row" });
+    }
+  });
+
+  // Create a new control template row
+  app.post("/api/processes/:processId/control-template-rows", async (req, res) => {
+    try {
+      const validatedData = insertControlTemplateRowSchema.parse({
+        ...req.body,
+        processDefId: req.params.processId,
+      });
+      const newRow = await storage.createControlTemplateRow(validatedData);
+      res.status(201).json(newRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating control template row:", error);
+      res.status(500).json({ error: "Failed to create control template row" });
+    }
+  });
+
+  // Update a control template row
+  app.patch("/api/control-template-rows/:id", async (req, res) => {
+    try {
+      const updates = insertControlTemplateRowSchema.partial().parse(req.body);
+      const updatedRow = await storage.updateControlTemplateRow(req.params.id, updates);
+      if (!updatedRow) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.json(updatedRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error updating control template row:", error);
+      res.status(500).json({ error: "Failed to update control template row" });
+    }
+  });
+
+  // Delete a control template row
+  app.delete("/api/control-template-rows/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteControlTemplateRow(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting control template row:", error);
+      res.status(500).json({ error: "Failed to delete control template row" });
+    }
+  });
+
+  // Duplicate a control template row
+  app.post("/api/control-template-rows/:id/duplicate", async (req, res) => {
+    try {
+      const duplicatedRow = await storage.duplicateControlTemplateRow(req.params.id);
+      if (!duplicatedRow) {
+        return res.status(404).json({ error: "Control template row not found" });
+      }
+      res.status(201).json(duplicatedRow);
+    } catch (error) {
+      console.error("Error duplicating control template row:", error);
+      res.status(500).json({ error: "Failed to duplicate control template row" });
     }
   });
 
