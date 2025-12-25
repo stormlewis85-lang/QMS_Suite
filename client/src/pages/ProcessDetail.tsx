@@ -74,7 +74,10 @@ import type { ProcessDef, ProcessStep, InsertProcessStep, FmeaTemplateRow } from
 import { z } from "zod";
 
 // Import the FMEA Template Builder component
-import FMEATemplateBuilder from "@/components/FMEATemplateBuilder";
+import FMEATemplateBuilder from "./FMEATemplateBuilder";
+
+// Import the Control Template Builder component
+import ControlTemplateBuilder from "./ControlTemplateBuilder";
 
 // Status badge component
 function StatusBadge({ status }: { status: string }) {
@@ -131,8 +134,10 @@ function StepFormDialog({
       name: "",
       area: "",
       stepType: "operation",
+      description: "",
       parentStepId: parentStepId || null,
       subprocessRefId: null,
+      isOptional: false,
       equipment: [],
       branchTo: null,
       reworkTo: null,
@@ -148,8 +153,10 @@ function StepFormDialog({
         name: step.name,
         area: step.area,
         stepType: step.stepType,
+        description: step.description || "",
         parentStepId: step.parentStepId,
         subprocessRefId: step.subprocessRefId,
+        isOptional: step.isOptional,
         equipment: step.equipment || [],
         branchTo: step.branchTo,
         reworkTo: step.reworkTo,
@@ -159,7 +166,10 @@ function StepFormDialog({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertProcessStep) => {
-      return await apiRequest("POST", `/api/processes/${processId}/steps`, data);
+      return await apiRequest(`/api/processes/${processId}/steps`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
@@ -174,7 +184,10 @@ function StepFormDialog({
 
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<InsertProcessStep>) => {
-      return await apiRequest("PATCH", `/api/processes/${processId}/steps/${step?.id}`, data);
+      return await apiRequest(`/api/processes/${processId}/steps/${step?.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/processes", processId] });
@@ -241,9 +254,7 @@ function StepFormDialog({
                   </FormItem>
                 )}
               />
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="area"
@@ -263,14 +274,11 @@ function StepFormDialog({
                 name="stepType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Step Type*</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
+                    <FormLabel>Step Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -295,18 +303,18 @@ function StepFormDialog({
                 name="subprocessRefId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Referenced Process*</FormLabel>
+                    <FormLabel>Referenced Process</FormLabel>
                     <Select
-                      value={field.value || ""}
                       onValueChange={field.onChange}
+                      value={field.value || undefined}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a process to reference" />
+                          <SelectValue placeholder="Select process" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {processes?.filter(p => p.id !== processId).map((p) => (
+                        {processes?.filter(p => p.status === "effective").map((p) => (
                           <SelectItem key={p.id} value={p.id}>
                             {p.name} (Rev {p.rev})
                           </SelectItem>
@@ -319,16 +327,35 @@ function StepFormDialog({
               />
             )}
 
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Describe this step..."
+                      rows={3}
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="branchTo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Branch To (Step Number)</FormLabel>
+                    <FormLabel>Branch To (step name)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., 20"
+                        placeholder="e.g., Final Inspection"
                         {...field}
                         value={field.value || ""}
                       />
@@ -343,10 +370,10 @@ function StepFormDialog({
                 name="reworkTo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Rework To (Step Number)</FormLabel>
+                    <FormLabel>Rework To (step name)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., 10"
+                        placeholder="e.g., Inspection"
                         {...field}
                         value={field.value || ""}
                       />
@@ -361,11 +388,14 @@ function StepFormDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
                 {(createMutation.isPending || updateMutation.isPending) && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                {isEditing ? "Save Changes" : "Create Step"}
+                {isEditing ? "Update" : "Create"} Step
               </Button>
             </DialogFooter>
           </form>
@@ -375,7 +405,7 @@ function StepFormDialog({
   );
 }
 
-// Steps tab content
+// Steps Tab component
 function StepsTab({
   process,
   steps,
@@ -393,7 +423,9 @@ function StepsTab({
 
   const deleteMutation = useMutation({
     mutationFn: async (stepId: string) => {
-      await apiRequest("DELETE", `/api/processes/${process.id}/steps/${stepId}`);
+      return await apiRequest(`/api/processes/${process.id}/steps/${stepId}`, {
+        method: "DELETE",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/processes", process.id] });
@@ -405,83 +437,83 @@ function StepsTab({
     },
   });
 
-  const toggleGroup = (groupId: string) => {
-    const next = new Set(expandedGroups);
-    if (next.has(groupId)) {
-      next.delete(groupId);
+  // Build step hierarchy
+  const rootSteps = steps
+    .filter((s) => !s.parentStepId)
+    .sort((a, b) => a.seq - b.seq);
+
+  const getChildSteps = (parentId: string) =>
+    steps
+      .filter((s) => s.parentStepId === parentId)
+      .sort((a, b) => a.seq - b.seq);
+
+  const toggleGroup = (stepId: string) => {
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(stepId)) {
+      newExpanded.delete(stepId);
     } else {
-      next.add(groupId);
+      newExpanded.add(stepId);
     }
-    setExpandedGroups(next);
+    setExpandedGroups(newExpanded);
   };
 
-  // Build tree structure for nested steps
-  const rootSteps = steps.filter((s) => !s.parentStepId);
-  const getChildSteps = (parentId: string) => steps.filter((s) => s.parentStepId === parentId);
-
-  const renderStep = (step: ProcessStep, depth: number = 0) => {
-    const children = getChildSteps(step.id);
-    const hasChildren = children.length > 0;
+  const renderStep = (step: ProcessStep, depth = 0) => {
+    const children = step.stepType === "group" ? getChildSteps(step.id) : [];
     const isExpanded = expandedGroups.has(step.id);
 
     return (
-      <div key={step.id}>
+      <div key={step.id} className="group">
         <div
-          className={`flex items-center gap-2 p-3 border-b hover:bg-muted/50 transition-colors ${
-            depth > 0 ? "pl-" + (depth * 8 + 3) : ""
+          className={`flex items-center gap-3 p-3 hover:bg-muted/50 ${
+            depth > 0 ? "pl-" + (depth * 4 + 3) : ""
           }`}
-          style={{ paddingLeft: depth > 0 ? `${depth * 2 + 0.75}rem` : undefined }}
+          style={{ paddingLeft: depth > 0 ? `${depth * 16 + 12}px` : undefined }}
         >
-          {/* Expand/Collapse for groups */}
-          <div className="w-6">
-            {step.stepType === "group" && hasChildren && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => toggleGroup(step.id)}
-              >
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </Button>
-            )}
-          </div>
+          {/* Expand/collapse for groups */}
+          {step.stepType === "group" ? (
+            <button
+              onClick={() => toggleGroup(step.id)}
+              className="p-1 hover:bg-muted rounded"
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+          ) : (
+            <div className="w-6" />
+          )}
 
           {/* Drag handle */}
-          <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-
-          {/* Sequence number */}
-          <div className="w-12 text-center">
-            <Badge variant="outline" className="font-mono">
-              {step.seq}
-            </Badge>
-          </div>
+          <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 cursor-grab" />
 
           {/* Step type icon */}
           <StepTypeIcon stepType={step.stepType} />
 
-          {/* Step name and area */}
-          <div className="flex-1 min-w-0">
-            <div className="font-medium truncate">{step.name}</div>
-            <div className="text-sm text-muted-foreground truncate">{step.area}</div>
-          </div>
+          {/* Sequence number */}
+          <span className="w-12 text-sm font-mono text-muted-foreground">
+            {step.seq}
+          </span>
 
-          {/* Step type badge */}
-          <Badge variant="secondary" className="capitalize">
-            {step.stepType.replace("_", " ")}
+          {/* Step name */}
+          <span className="flex-1 font-medium">{step.name}</span>
+
+          {/* Area badge */}
+          <Badge variant="outline" className="text-xs">
+            {step.area}
           </Badge>
 
-          {/* Branch/Rework indicators */}
-          {step.branchTo && (
-            <Badge variant="outline" className="text-blue-600 border-blue-300">
-              → {step.branchTo}
+          {/* Optional indicator */}
+          {step.isOptional && (
+            <Badge variant="secondary" className="text-xs">
+              Optional
             </Badge>
           )}
+
+          {/* Rework indicator */}
           {step.reworkTo && (
-            <Badge variant="outline" className="text-orange-600 border-orange-300">
+            <Badge variant="outline" className="text-xs bg-yellow-50">
               <RotateCcw className="h-3 w-3 mr-1" />
               {step.reworkTo}
             </Badge>
@@ -490,7 +522,11 @@ function StepsTab({
           {/* Actions */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100"
+              >
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -751,23 +787,12 @@ export default function ProcessDetail() {
         </TabsContent>
 
         <TabsContent value="control-templates">
-          <Card>
-            <CardHeader>
-              <CardTitle>Control Plan Templates</CardTitle>
-              <CardDescription>
-                Define control plan characteristics linked to FMEA template rows
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="p-8 text-center text-muted-foreground">
-                <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Control Plan Template Builder coming soon.</p>
-                <p className="text-sm mt-2">
-                  This will be implemented in Section 2.3 of the implementation plan.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <ControlTemplateBuilder
+            processId={processId}
+            processName={process.name}
+            steps={process.steps || []}
+            fmeaRows={fmeaTemplateRows || []}
+          />
         </TabsContent>
       </Tabs>
     </div>
