@@ -1,0 +1,29 @@
+Also add the insert schemas and types (add before the // Types section):
+typescript// Governance insert schemas
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({ id: true, at: true });
+export const insertSignatureSchema = createInsertSchema(signature).omit({ id: true, signedAt: true });
+export const insertApprovalMatrixSchema = createInsertSchema(approvalMatrix).omit({ id: true });
+export const insertChangePackageSchema = createInsertSchema(changePackage).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertChangePackageItemSchema = createInsertSchema(changePackageItem).omit({ id: true });
+export const insertChangePackageAffectedPartSchema = createInsertSchema(changePackageAffectedPart).omit({ id: true });
+export const insertTrainingAckSchema = createInsertSchema(trainingAck).omit({ id: true });
+export const insertOwnershipSchema = createInsertSchema(ownership).omit({ id: true, createdAt: true, updatedAt: true });
+
+And the types (add to the Types section):
+typescript// Governance types
+export type AuditLog = typeof auditLog.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type Signature = typeof signature.$inferSelect;
+export type InsertSignature = z.infer<typeof insertSignatureSchema>;
+export type ApprovalMatrix = typeof approvalMatrix.$inferSelect;
+export type InsertApprovalMatrix = z.infer<typeof insertApprovalMatrixSchema>;
+export type ChangePackage = typeof changePackage.$inferSelect;
+export type InsertChangePackage = z.infer<typeof insertChangePackageSchema>;
+export type ChangePackageItem = typeof changePackageItem.$inferSelect;
+export type InsertChangePackageItem = z.infer<typeof insertChangePackageItemSchema>;
+export type ChangePackageAffectedPart = typeof changePackageAffectedPart.$inferSelect;
+export type InsertChangePackageAffectedPart = z.infer<typeof insertChangePackageAffectedPartSchema>;
+export type TrainingAck = typeof trainingAck.$inferSelect;
+export type InsertTrainingAck = z.infer<typeof insertTrainingAckSchema>;
+export type Ownership = typeof ownership.$inferSelect;
+export type InsertOwnership = z.infer<typeof insertOwnershipSchema>;

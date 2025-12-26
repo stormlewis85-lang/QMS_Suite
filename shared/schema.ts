@@ -385,6 +385,156 @@ export const calibrationLink = pgTable('calibration_link', {
   gageIdx: index('calibration_link_gage_idx').on(table.gageId),
 }));
 
+// ============================================
+// GOVERNANCE & DOCUMENT CONTROL TABLES
+// ============================================
+
+// Audit Log - tracks all changes to any entity
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  action: text('action').notNull(),
+  actor: uuid('actor').notNull(),
+  actorName: text('actor_name'),
+  at: timestamp('at').notNull().defaultNow(),
+  previousValue: jsonb('previous_value').$type<Record<string, any>>(),
+  newValue: jsonb('new_value').$type<Record<string, any>>(),
+  changeNote: text('change_note'),
+  ipAddress: text('ip_address'),
+  sessionId: text('session_id'),
+}, (table) => ({
+  entityIdx: index('audit_log_entity_idx').on(table.entityType, table.entityId),
+  actorIdx: index('audit_log_actor_idx').on(table.actor),
+  atIdx: index('audit_log_at_idx').on(table.at),
+}));
+
+// Signature - e-signatures for approvals
+export const signature = pgTable('signature', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  role: text('role').notNull(),
+  signerUserId: uuid('signer_user_id').notNull(),
+  signerName: text('signer_name').notNull(),
+  signerEmail: text('signer_email'),
+  signedAt: timestamp('signed_at').notNull().defaultNow(),
+  contentHash: text('content_hash').notNull(),
+  signatureData: text('signature_data'),
+  meaning: text('meaning').notNull().default('approved'),
+  comment: text('comment'),
+  ipAddress: text('ip_address'),
+}, (table) => ({
+  entityRoleIdx: uniqueIndex('signature_entity_role_idx').on(table.entityType, table.entityId, table.role),
+  signerIdx: index('signature_signer_idx').on(table.signerUserId),
+}));
+
+// Approval Matrix - defines who needs to sign what
+export const approvalMatrix = pgTable('approval_matrix', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentType: text('document_type').notNull(),
+  role: text('role').notNull(),
+  sequence: integer('sequence').notNull().default(1),
+  required: boolean('required').notNull().default(true),
+  canDelegate: boolean('can_delegate').notNull().default(false),
+}, (table) => ({
+  docTypeRoleIdx: uniqueIndex('approval_matrix_doc_role_idx').on(table.documentType, table.role),
+}));
+
+// Change Package - groups related changes for coordinated release
+export const changePackage = pgTable('change_package', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  packageNumber: text('package_number').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  status: changeStatusEnum('status').notNull().default('draft'),
+  reasonCode: text('reason_code').notNull(),
+  priority: text('priority').notNull().default('medium'),
+  initiatedBy: uuid('initiated_by').notNull(),
+  initiatedByName: text('initiated_by_name'),
+  effectiveFrom: timestamp('effective_from'),
+  targetDate: timestamp('target_date'),
+  approverMatrix: jsonb('approver_matrix').$type<{ role: string; userId?: string; required: boolean; signed?: boolean }[]>().default([]),
+  impactSummary: jsonb('impact_summary').$type<{
+    affectedParts: number;
+    affectedPfmeas: number;
+    affectedControlPlans: number;
+    apChanges: { from: string; to: string; count: number }[];
+  }>(),
+  autoReviewReport: jsonb('auto_review_report').$type<any>().default({}),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index('change_package_status_idx').on(table.status),
+  packageNumberIdx: uniqueIndex('change_package_number_idx').on(table.packageNumber),
+}));
+
+// Change Package Items - individual changes within a package
+export const changePackageItem = pgTable('change_package_item', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  changeType: text('change_type').notNull(),
+  previousValue: jsonb('previous_value').$type<Record<string, any>>(),
+  newValue: jsonb('new_value').$type<Record<string, any>>(),
+  fieldChanges: jsonb('field_changes').$type<{ field: string; from: any; to: any }[]>().default([]),
+  adoptionStatus: text('adoption_status').default('pending'),
+}, (table) => ({
+  packageIdx: index('change_package_item_pkg_idx').on(table.changePackageId),
+  entityIdx: index('change_package_item_entity_idx').on(table.entityType, table.entityId),
+}));
+
+// Affected Parts - tracks which parts are impacted by a change package
+export const changePackageAffectedPart = pgTable('change_package_affected_part', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
+  partId: uuid('part_id').notNull().references(() => part.id),
+  partNumber: text('part_number').notNull(),
+  partName: text('part_name').notNull(),
+  currentPfmeaRev: text('current_pfmea_rev'),
+  currentCpRev: text('current_cp_rev'),
+  adoptionDecision: text('adoption_decision').default('pending'),
+  newPfmeaRev: text('new_pfmea_rev'),
+  newCpRev: text('new_cp_rev'),
+  notes: text('notes'),
+}, (table) => ({
+  packageIdx: index('change_affected_part_pkg_idx').on(table.changePackageId),
+  partIdx: index('change_affected_part_part_idx').on(table.partId),
+}));
+
+// Training Acknowledgment - tracks who has been trained on changes
+export const trainingAck = pgTable('training_ack', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull(),
+  userName: text('user_name').notNull(),
+  acknowledgedAt: timestamp('acknowledged_at'),
+  trainingMethod: text('training_method'),
+  evidence: text('evidence'),
+  dueDate: timestamp('due_date'),
+}, (table) => ({
+  packageUserIdx: uniqueIndex('training_ack_pkg_user_idx').on(table.changePackageId, table.userId),
+}));
+
+// Document Ownership - tracks who owns each document
+export const ownership = pgTable('ownership', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  ownerUserId: uuid('owner_user_id').notNull(),
+  ownerName: text('owner_name'),
+  ownerEmail: text('owner_email'),
+  delegateUserId: uuid('delegate_user_id'),
+  delegateName: text('delegate_name'),
+  watchers: jsonb('watchers').$type<{ userId: string; name: string; email?: string }[]>().default([]),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  entityIdx: uniqueIndex('ownership_entity_idx').on(table.entityType, table.entityId),
+  ownerIdx: index('ownership_owner_idx').on(table.ownerUserId),
+}));
+
 // Relations
 export const processDefRelations = relations(processDef, ({ many, one }) => ({
   steps: many(processStep),
@@ -562,6 +712,16 @@ export const insertFmeaTemplateCatalogLinkSchema = createInsertSchema(fmeaTempla
 export const insertControlsLibrarySchema = createInsertSchema(controlsLibrary).omit({ id: true, createdAt: true, updatedAt: true, lastUsed: true });
 export const insertControlPairingsSchema = createInsertSchema(controlPairings).omit({ id: true, createdAt: true });
 
+// Governance & Document Control Insert Schemas
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({ id: true, at: true });
+export const insertSignatureSchema = createInsertSchema(signature).omit({ id: true, signedAt: true });
+export const insertApprovalMatrixSchema = createInsertSchema(approvalMatrix).omit({ id: true });
+export const insertChangePackageSchema = createInsertSchema(changePackage).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertChangePackageItemSchema = createInsertSchema(changePackageItem).omit({ id: true });
+export const insertChangePackageAffectedPartSchema = createInsertSchema(changePackageAffectedPart).omit({ id: true });
+export const insertTrainingAckSchema = createInsertSchema(trainingAck).omit({ id: true });
+export const insertOwnershipSchema = createInsertSchema(ownership).omit({ id: true, createdAt: true, updatedAt: true });
+
 // Types
 export type Part = typeof part.$inferSelect;
 export type InsertPart = z.infer<typeof insertPartSchema>;
@@ -603,6 +763,24 @@ export type ControlsLibrary = typeof controlsLibrary.$inferSelect;
 export type InsertControlsLibrary = z.infer<typeof insertControlsLibrarySchema>;
 export type ControlPairings = typeof controlPairings.$inferSelect;
 export type InsertControlPairings = z.infer<typeof insertControlPairingsSchema>;
+
+// Governance & Document Control Types
+export type AuditLog = typeof auditLog.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type Signature = typeof signature.$inferSelect;
+export type InsertSignature = z.infer<typeof insertSignatureSchema>;
+export type ApprovalMatrix = typeof approvalMatrix.$inferSelect;
+export type InsertApprovalMatrix = z.infer<typeof insertApprovalMatrixSchema>;
+export type ChangePackage = typeof changePackage.$inferSelect;
+export type InsertChangePackage = z.infer<typeof insertChangePackageSchema>;
+export type ChangePackageItem = typeof changePackageItem.$inferSelect;
+export type InsertChangePackageItem = z.infer<typeof insertChangePackageItemSchema>;
+export type ChangePackageAffectedPart = typeof changePackageAffectedPart.$inferSelect;
+export type InsertChangePackageAffectedPart = z.infer<typeof insertChangePackageAffectedPartSchema>;
+export type TrainingAck = typeof trainingAck.$inferSelect;
+export type InsertTrainingAck = z.infer<typeof insertTrainingAckSchema>;
+export type Ownership = typeof ownership.$inferSelect;
+export type InsertOwnership = z.infer<typeof insertOwnershipSchema>;
 
 // Category type for Failure Modes Library
 export type FailureModeCategory = 'dimensional' | 'visual' | 'functional' | 'assembly' | 'material' | 'process' | 'contamination' | 'environmental';
