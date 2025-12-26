@@ -718,6 +718,81 @@ class DatabaseStorage implements IStorage {
     const result = await db.delete(controlPairings).where(eq(controlPairings.id, id));
     return (result.rowCount ?? 0) > 0;
   }
+
+  // ============================================
+  // AUTO-REVIEW FUNCTIONS (Phase 7)
+  // ============================================
+
+  // Get all PFMEA rows for a PFMEA (for validation)
+  async getPFMEARowsForReview(pfmeaId: string): Promise<PFMEARow[]> {
+    return await db
+      .select()
+      .from(pfmeaRow)
+      .where(eq(pfmeaRow.pfmeaId, pfmeaId));
+  }
+
+  // Get all Control Plan rows for a Control Plan (for validation)
+  async getControlPlanRowsForReview(controlPlanId: string): Promise<ControlPlanRow[]> {
+    return await db
+      .select()
+      .from(controlPlanRow)
+      .where(eq(controlPlanRow.controlPlanId, controlPlanId));
+  }
+
+  // Get process steps for a process (for validation)
+  async getProcessStepsForReview(processDefId: string): Promise<ProcessStep[]> {
+    return await db
+      .select()
+      .from(processStep)
+      .where(eq(processStep.processDefId, processDefId))
+      .orderBy(processStep.seq);
+  }
+
+  // Get part with all related documents for review
+  async getPartWithDocuments(partId: string): Promise<{
+    part: Part;
+    pfmeas: PFMEA[];
+    controlPlans: ControlPlan[];
+  } | null> {
+    const [partData] = await db
+      .select()
+      .from(part)
+      .where(eq(part.id, partId));
+    
+    if (!partData) return null;
+
+    const partPfmeas = await db
+      .select()
+      .from(pfmea)
+      .where(eq(pfmea.partId, partId));
+
+    const partControlPlans = await db
+      .select()
+      .from(controlPlan)
+      .where(eq(controlPlan.partId, partId));
+
+    return {
+      part: partData,
+      pfmeas: partPfmeas,
+      controlPlans: partControlPlans,
+    };
+  }
+
+  // Get FMEA template rows for a process (for coverage validation)
+  async getFmeaTemplateRowsForReview(processDefId: string): Promise<FmeaTemplateRow[]> {
+    return await db
+      .select()
+      .from(fmeaTemplateRow)
+      .where(eq(fmeaTemplateRow.processDefId, processDefId));
+  }
+
+  // Get Control template rows for a process (for coverage validation)
+  async getControlTemplateRowsForReview(processDefId: string): Promise<ControlTemplateRow[]> {
+    return await db
+      .select()
+      .from(controlTemplateRow)
+      .where(eq(controlTemplateRow.processDefId, processDefId));
+  }
 }
 
 export const storage = new DatabaseStorage();

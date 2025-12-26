@@ -1,0 +1,76 @@
+// ============================================
+  // AUTO-REVIEW FUNCTIONS
+  // ============================================
+
+  // Get PFD for a part (latest or by ID)
+  async getPFDForPart(partId: string): Promise<any | null> {
+    const [pfd] = await db
+      .select()
+      .from(pfds)
+      .where(eq(pfds.partId, partId))
+      .orderBy(desc(pfds.createdAt))
+      .limit(1);
+    return pfd || null;
+  }
+
+  // Get all PFMEA rows for a PFMEA
+  async getPFMEARowsForReview(pfmeaId: string): Promise<any[]> {
+    return await db
+      .select()
+      .from(pfmeaRows)
+      .where(eq(pfmeaRows.pfmeaId, pfmeaId));
+  }
+
+  // Get all Control Plan rows for a Control Plan
+  async getControlPlanRowsForReview(controlPlanId: string): Promise<any[]> {
+    return await db
+      .select()
+      .from(controlPlanRows)
+      .where(eq(controlPlanRows.controlPlanId, controlPlanId));
+  }
+
+  // Get process steps for a process
+  async getProcessStepsForReview(processDefId: string): Promise<any[]> {
+    return await db
+      .select()
+      .from(processSteps)
+      .where(eq(processSteps.processDefId, processDefId))
+      .orderBy(processSteps.seq);
+  }
+
+  // Get part with all related documents for review
+  async getPartWithDocuments(partId: string): Promise<{
+    part: any;
+    pfds: any[];
+    pfmeas: any[];
+    controlPlans: any[];
+  } | null> {
+    const [part] = await db
+      .select()
+      .from(parts)
+      .where(eq(parts.id, partId));
+    
+    if (!part) return null;
+
+    const partPfds = await db
+      .select()
+      .from(pfds)
+      .where(eq(pfds.partId, partId));
+
+    const partPfmeas = await db
+      .select()
+      .from(pfmeas)
+      .where(eq(pfmeas.partId, partId));
+
+    const partControlPlans = await db
+      .select()
+      .from(controlPlans)
+      .where(eq(controlPlans.partId, partId));
+
+    return {
+      part,
+      pfds: partPfds,
+      pfmeas: partPfmeas,
+      controlPlans: partControlPlans,
+    };
+  }
