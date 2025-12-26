@@ -86,6 +86,7 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import type { Part, ControlPlan, ControlPlanRow, InsertControlPlanRow } from "@shared/schema";
+import AutoReviewPanel from "@/components/AutoReviewPanel";
 
 // Types
 interface ControlPlanWithDetails extends ControlPlan {
@@ -1034,6 +1035,21 @@ export default function ControlPlanDetail() {
           )}
         </CardContent>
       </Card>
+
+      {/* Auto-Review Section */}
+      <div className="mt-6">
+        <AutoReviewPanel
+          documentType="control-plan"
+          documentId={id}
+          documentTitle={controlPlan?.docNo || `Control Plan Rev ${controlPlan?.rev}`}
+          onFindingClick={(finding) => {
+            if (finding.rowId) {
+              const element = document.getElementById(`row-${finding.rowId}`);
+              element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }}
+        />
+      </div>
 
       {/* Row Editor Dialog */}
       <RowEditorDialog
