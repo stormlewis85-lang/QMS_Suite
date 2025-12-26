@@ -1,0 +1,325 @@
+Add these at the top of server/routes.ts (after imports):
+typescript// ============================================
+// AUTO-REVIEW VALIDATION FUNCTIONS
+// ============================================
+
+interface ReviewFinding {
+  id: string;
+  level: 'error' | 'warning' | 'info';
+  category: 'coverage' | 'effectiveness' | 'documentation' | 'compliance';
+  rule: string;
+  message: string;
+  rowId?: string;
+  stepRef?: string;
+  suggestion?: string;
+}
+
+// Calculate AP based on AIAG-VDA 2019
+function calculateAP(severity: number, occurrence: number, detection: number): string {
+  // High priority
+  if (severity >= 9) return 'H';
+  if (severity >= 7 && occurrence >= 7) return 'H';
+  if (severity >= 7 && detection >= 7) return 'H';
+  if (detection >= 9) return 'H';
+  
+  // Medium priority
+  if (severity >= 5 && severity <= 6 && (occurrence >= 7 || detection >= 7)) return 'M';
+  if (severity >= 7 && severity <= 8 && occurrence >= 4 && occurrence <= 6 && detection >= 4 && detection <= 6) return 'M';
+  
+  // Low priority
+  return 'L';
+}
+
+function runAutoReview(data: {
+  pfmea: any;
+  pfmeaRows: any[];
+  controlPlan?: any;
+  cpRows?: any[];
+  pfd?: any;
+}): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
+  const { pfmea, pfmeaRows, controlPlan, cpRows = [], pfd } = data;
+
+  // ===================
+  // COVERAGE CHECKS
+  // ===================
+  
+  // Check: Every High AP row should have Control Plan coverage
+  const highAPRows = pfmeaRows.filter(r => r.ap === 'H');
+  for (const row of highAPRows) {
+    const hasCPCoverage = cpRows.some(cp => cp.sourcePfmeaRowId === row.id);
+    if (!hasCPCoverage) {
+      findings.push({
+        id: `cov-high-ap-${row.id}`,
+        level: 'error',
+        category: 'coverage',
+        rule: 'HIGH_AP_REQUIRES_CP',
+        message: `High AP failure mode "${row.failureMode}" has no Control Plan coverage`,
+        rowId: row.id,
+        stepRef: row.stepRef,
+        suggestion: 'Add at least one control characteristic to address this high-priority failure mode',
+      });
+    }
+  }
+
+  // Check: PFD step coverage
+  if (pfd?.stepsJson) {
+    const pfdSteps = JSON.parse(pfd.stepsJson);
+    const coveredSteps = new Set(pfmeaRows.map(r => r.stepRef));
+    
+    for (const step of pfdSteps) {
+      if (!coveredSteps.has(step.name)) {
+        findings.push({
+          id: `cov-pfd-step-${step.seq}`,
+          level: 'warning',
+          category: 'coverage',
+          rule: 'PFD_STEP_NOT_COVERED',
+          message: `PFD step "${step.name}" (${step.seq}) has no PFMEA analysis`,
+          stepRef: step.name,
+          suggestion: 'Add at least one failure mode analysis for this process step',
+        });
+      }
+    }
+  }
+
+  // ===================
+  // EFFECTIVENESS CHECKS
+  // ===================
+
+  for (const row of pfmeaRows) {
+    // Check: AP calculation matches
+    const calculatedAP = calculateAP(row.severity, row.occurrence, row.detection);
+    if (calculatedAP !== row.ap) {
+      findings.push({
+        id: `eff-ap-mismatch-${row.id}`,
+        level: 'warning',
+        category: 'effectiveness',
+        rule: 'AP_MISMATCH',
+        message: `AP mismatch for "${row.failureMode}": stored=${row.ap}, calculated=${calculatedAP}`,
+        rowId: row.id,
+        suggestion: `Update AP to "${calculatedAP}" based on S=${row.severity}, O=${row.occurrence}, D=${row.detection}`,
+      });
+    }
+
+    // Check: High severity needs prevention controls
+    if (row.severity >= 7) {
+      const preventionControls = row.preventionControls || [];
+      if (preventionControls.length === 0) {
+        findings.push({
+          id: `eff-no-prevention-${row.id}`,
+          level: 'error',
+          category: 'effectiveness',
+          rule: 'HIGH_SEVERITY_NO_PREVENTION',
+          message: `High severity (${row.severity}) failure "${row.failureMode}" has no prevention controls`,
+          rowId: row.id,
+          suggestion: 'Add prevention controls to reduce occurrence probability',
+        });
+      }
+    }
+
+    // Check: Detection-only strategy warning
+    const preventionControls = row.preventionControls || [];
+    const detectionControls = row.detectionControls || [];
+    if (preventionControls.length === 0 && detectionControls.length > 0 && row.severity >= 5) {
+      findings.push({
+        id: `eff-detection-only-${row.id}`,
+        level: 'warning',
+        category: 'effectiveness',
+        rule: 'DETECTION_ONLY_STRATEGY',
+        message: `"${row.failureMode}" relies solely on detection controls`,
+        rowId: row.id,
+        suggestion: 'Consider adding prevention controls for a more robust risk mitigation strategy',
+      });
+    }
+
+    // Check: Special characteristic compliance
+    if (row.specialFlag) {
+      // Must have CSR symbol
+      if (!row.csrSymbol) {
+        findings.push({
+          id: `comp-csr-symbol-${row.id}`,
+          level: 'error',
+          category: 'compliance',
+          rule: 'CSR_MISSING_SYMBOL',
+          message: `Special characteristic "${row.failureMode}" missing CSR symbol`,
+          rowId: row.id,
+          suggestion: 'Assign appropriate CSR symbol (Ⓢ Safety, ◆ Critical, ⓒ Compliance)',
+        });
+      }
+    }
+  }
+
+  // ===================
+  // DOCUMENTATION CHECKS
+  // ===================
+
+  // Check: PFMEA has document number
+  if (!pfmea.docNo) {
+    findings.push({
+      id: 'doc-pfmea-docno',
+      level: 'warning',
+      category: 'documentation',
+      rule: 'MISSING_DOC_NUMBER',
+      message: 'PFMEA is missing document number',
+      suggestion: 'Assign a document control number for traceability',
+    });
+  }
+
+  // Check: Has minimum rows
+  if (pfmeaRows.length === 0) {
+    findings.push({
+      id: 'doc-pfmea-empty',
+      level: 'error',
+      category: 'documentation',
+      rule: 'EMPTY_PFMEA',
+      message: 'PFMEA has no failure mode rows',
+      suggestion: 'Add failure mode analysis based on process steps',
+    });
+  }
+
+  // Check: Control Plan exists for effective PFMEA
+  if (pfmea.status === 'effective' && !controlPlan) {
+    findings.push({
+      id: 'cov-no-cp',
+      level: 'error',
+      category: 'coverage',
+      rule: 'EFFECTIVE_PFMEA_NO_CP',
+      message: 'Effective PFMEA has no associated Control Plan',
+      suggestion: 'Generate a Control Plan from this PFMEA',
+    });
+  }
+
+  return findings;
+}
+
+function runControlPlanReview(data: {
+  controlPlan: any;
+  cpRows: any[];
+  pfmea?: any;
+  pfmeaRows?: any[];
+}): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
+  const { controlPlan, cpRows, pfmea, pfmeaRows = [] } = data;
+
+  // ===================
+  // COVERAGE CHECKS
+  // ===================
+
+  // Check: Special characteristics from PFMEA are in CP
+  const specialPfmeaRows = pfmeaRows.filter(r => r.specialFlag);
+  for (const pfmeaRow of specialPfmeaRows) {
+    const hasCPRow = cpRows.some(cp => cp.sourcePfmeaRowId === pfmeaRow.id);
+    if (!hasCPRow) {
+      findings.push({
+        id: `cov-special-missing-${pfmeaRow.id}`,
+        level: 'error',
+        category: 'coverage',
+        rule: 'SPECIAL_CHAR_NOT_IN_CP',
+        message: `Special characteristic "${pfmeaRow.failureMode}" from PFMEA not in Control Plan`,
+        rowId: pfmeaRow.id,
+        suggestion: 'Add control characteristic for this special/critical feature',
+      });
+    }
+  }
+
+  // ===================
+  // COMPLIANCE CHECKS
+  // ===================
+
+  for (const row of cpRows) {
+    // Check: Special characteristics have required fields
+    if (row.specialFlag) {
+      if (!row.acceptanceCriteria) {
+        findings.push({
+          id: `comp-cp-acceptance-${row.id}`,
+          level: 'error',
+          category: 'compliance',
+          rule: 'CSR_MISSING_ACCEPTANCE',
+          message: `Special characteristic "${row.characteristicName}" missing acceptance criteria`,
+          rowId: row.id,
+          suggestion: 'Add Cpk/Ppk targets or specific acceptance criteria per IATF 16949',
+        });
+      }
+
+      if (!row.reactionPlan) {
+        findings.push({
+          id: `comp-cp-reaction-${row.id}`,
+          level: 'error',
+          category: 'compliance',
+          rule: 'CSR_MISSING_REACTION',
+          message: `Special characteristic "${row.characteristicName}" missing reaction plan`,
+          rowId: row.id,
+          suggestion: 'Document containment and corrective action steps',
+        });
+      }
+
+      // Check for capability requirements in acceptance criteria
+      if (row.acceptanceCriteria && !row.acceptanceCriteria.toLowerCase().includes('cpk') && 
+          !row.acceptanceCriteria.toLowerCase().includes('ppk')) {
+        findings.push({
+          id: `comp-cp-capability-${row.id}`,
+          level: 'warning',
+          category: 'compliance',
+          rule: 'CSR_NO_CAPABILITY_TARGET',
+          message: `Special characteristic "${row.characteristicName}" should specify Cpk/Ppk target`,
+          rowId: row.id,
+          suggestion: 'Add capability requirement (e.g., Cpk ≥ 1.33 or Cpk ≥ 1.67 for safety)',
+        });
+      }
+    }
+
+    // Check: Has measurement method
+    if (!row.measurementSystem && !row.controlMethod) {
+      findings.push({
+        id: `eff-cp-no-method-${row.id}`,
+        level: 'warning',
+        category: 'effectiveness',
+        rule: 'NO_MEASUREMENT_METHOD',
+        message: `Characteristic "${row.characteristicName}" has no measurement or control method`,
+        rowId: row.id,
+        suggestion: 'Specify how this characteristic will be measured or controlled',
+      });
+    }
+
+    // Check: Has sampling plan
+    if (!row.sampleSize && !row.frequency) {
+      findings.push({
+        id: `eff-cp-no-sampling-${row.id}`,
+        level: 'info',
+        category: 'effectiveness',
+        rule: 'NO_SAMPLING_PLAN',
+        message: `Characteristic "${row.characteristicName}" has no sampling plan defined`,
+        rowId: row.id,
+        suggestion: 'Define sample size and frequency for inspection',
+      });
+    }
+  }
+
+  // ===================
+  // DOCUMENTATION CHECKS
+  // ===================
+
+  if (!controlPlan.docNo) {
+    findings.push({
+      id: 'doc-cp-docno',
+      level: 'warning',
+      category: 'documentation',
+      rule: 'MISSING_DOC_NUMBER',
+      message: 'Control Plan is missing document number',
+      suggestion: 'Assign a document control number for traceability',
+    });
+  }
+
+  if (cpRows.length === 0) {
+    findings.push({
+      id: 'doc-cp-empty',
+      level: 'error',
+      category: 'documentation',
+      rule: 'EMPTY_CONTROL_PLAN',
+      message: 'Control Plan has no characteristics',
+      suggestion: 'Add control characteristics based on PFMEA analysis',
+    });
+  }
+
+  return findings;
+}

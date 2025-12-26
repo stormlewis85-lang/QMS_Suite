@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { runAutoReview, runControlPlanReview } from "./auto-review";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -1056,6 +1057,174 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error duplicating control template row:", error);
       res.status(500).json({ error: "Failed to duplicate control template row" });
+    }
+  });
+
+  // ============================================
+  // AUTO-REVIEW ENDPOINTS (Phase 7)
+  // ============================================
+
+  // Run auto-review for a PFMEA
+  app.post("/api/pfmeas/:id/auto-review", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const pfmea = await storage.getPFMEAById(id);
+      if (!pfmea) {
+        return res.status(404).json({ message: "PFMEA not found" });
+      }
+
+      const pfmeaRows = await storage.getPFMEARowsForReview(id);
+      
+      const controlPlans = await storage.getControlPlansByPartId(pfmea.partId);
+      const latestCP = controlPlans[0];
+      let cpRows: any[] = [];
+      if (latestCP) {
+        cpRows = await storage.getControlPlanRowsForReview(latestCP.id);
+      }
+
+      const findings = runAutoReview({
+        pfmea,
+        pfmeaRows,
+        controlPlan: latestCP,
+        cpRows,
+      });
+
+      res.json({
+        pfmeaId: id,
+        reviewedAt: new Date().toISOString(),
+        summary: {
+          total: findings.length,
+          errors: findings.filter(f => f.level === 'error').length,
+          warnings: findings.filter(f => f.level === 'warning').length,
+          info: findings.filter(f => f.level === 'info').length,
+        },
+        findings,
+      });
+    } catch (error) {
+      console.error("Auto-review error:", error);
+      res.status(500).json({ message: "Failed to run auto-review" });
+    }
+  });
+
+  // Run auto-review for a Control Plan
+  app.post("/api/control-plans/:id/auto-review", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const controlPlan = await storage.getControlPlanById(id);
+      if (!controlPlan) {
+        return res.status(404).json({ message: "Control Plan not found" });
+      }
+
+      const cpRows = await storage.getControlPlanRowsForReview(id);
+      
+      const pfmeas = await storage.getPFMEAsByPartId(controlPlan.partId);
+      const latestPFMEA = pfmeas[0];
+      let pfmeaRows: any[] = [];
+      if (latestPFMEA) {
+        pfmeaRows = await storage.getPFMEARowsForReview(latestPFMEA.id);
+      }
+
+      const findings = runControlPlanReview({
+        controlPlan,
+        cpRows,
+        pfmea: latestPFMEA,
+        pfmeaRows,
+      });
+
+      res.json({
+        controlPlanId: id,
+        reviewedAt: new Date().toISOString(),
+        summary: {
+          total: findings.length,
+          errors: findings.filter(f => f.level === 'error').length,
+          warnings: findings.filter(f => f.level === 'warning').length,
+          info: findings.filter(f => f.level === 'info').length,
+        },
+        findings,
+      });
+    } catch (error) {
+      console.error("Auto-review error:", error);
+      res.status(500).json({ message: "Failed to run auto-review" });
+    }
+  });
+
+  // Run comprehensive review for a Part (all documents)
+  app.post("/api/parts/:id/auto-review", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const partData = await storage.getPartWithDocuments(id);
+      if (!partData) {
+        return res.status(404).json({ message: "Part not found" });
+      }
+
+      const allFindings: any[] = [];
+
+      // Review each PFMEA
+      for (const pfmeaDoc of partData.pfmeas) {
+        const pfmeaRows = await storage.getPFMEARowsForReview(pfmeaDoc.id);
+        const cpForPfmea = partData.controlPlans.find(cp => cp.pfmeaId === pfmeaDoc.id);
+        let cpRows: any[] = [];
+        if (cpForPfmea) {
+          cpRows = await storage.getControlPlanRowsForReview(cpForPfmea.id);
+        }
+        
+        const findings = runAutoReview({
+          pfmea: pfmeaDoc,
+          pfmeaRows,
+          controlPlan: cpForPfmea,
+          cpRows,
+        });
+        
+        allFindings.push(...findings.map(f => ({
+          ...f,
+          documentType: 'PFMEA',
+          documentId: pfmeaDoc.id,
+          documentRev: pfmeaDoc.rev,
+        })));
+      }
+
+      // Review each Control Plan
+      for (const cp of partData.controlPlans) {
+        const cpRows = await storage.getControlPlanRowsForReview(cp.id);
+        const pfmeaForCp = partData.pfmeas.find(p => p.id === cp.pfmeaId);
+        let pfmeaRows: any[] = [];
+        if (pfmeaForCp) {
+          pfmeaRows = await storage.getPFMEARowsForReview(pfmeaForCp.id);
+        }
+
+        const findings = runControlPlanReview({
+          controlPlan: cp,
+          cpRows,
+          pfmea: pfmeaForCp,
+          pfmeaRows,
+        });
+
+        allFindings.push(...findings.map(f => ({
+          ...f,
+          documentType: 'ControlPlan',
+          documentId: cp.id,
+          documentRev: cp.rev,
+        })));
+      }
+
+      res.json({
+        partId: id,
+        partNumber: partData.part.partNumber,
+        reviewedAt: new Date().toISOString(),
+        summary: {
+          total: allFindings.length,
+          errors: allFindings.filter(f => f.level === 'error').length,
+          warnings: allFindings.filter(f => f.level === 'warning').length,
+          info: allFindings.filter(f => f.level === 'info').length,
+        },
+        findings: allFindings,
+      });
+    } catch (error) {
+      console.error("Auto-review error:", error);
+      res.status(500).json({ message: "Failed to run auto-review" });
     }
   });
 
