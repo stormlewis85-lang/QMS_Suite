@@ -78,7 +78,8 @@ import {
   type InsertOwnership,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql, isNull } from "drizzle-orm";
+import crypto from "crypto";
 
 export interface IStorage {
   // Parts
@@ -1071,6 +1072,114 @@ class DatabaseStorage implements IStorage {
   async deleteOwnership(id: string): Promise<boolean> {
     const result = await db.delete(ownership).where(eq(ownership.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // ============================================
+  // ADDITIONAL GOVERNANCE HELPERS
+  // ============================================
+
+  async getRecentAuditLogs(limit: number = 100): Promise<AuditLog[]> {
+    return await db.select().from(auditLog)
+      .orderBy(desc(auditLog.at))
+      .limit(limit);
+  }
+
+  async getSignatureByRole(entityType: string, entityId: string, role: string): Promise<Signature | null> {
+    const [sig] = await db.select().from(signature)
+      .where(and(
+        eq(signature.entityType, entityType),
+        eq(signature.entityId, entityId),
+        eq(signature.role, role)
+      ));
+    return sig || null;
+  }
+
+  async generateChangePackageNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const existing = await db.select().from(changePackage)
+      .where(sql`${changePackage.packageNumber} LIKE ${'CP-' + year + '-%'}`)
+      .orderBy(desc(changePackage.createdAt));
+    const nextNum = existing.length + 1;
+    return `CP-${year}-${String(nextNum).padStart(3, '0')}`;
+  }
+
+  async getPendingTrainingForUser(userId: string): Promise<TrainingAck[]> {
+    return await db.select().from(trainingAck)
+      .where(and(
+        eq(trainingAck.userId, userId),
+        isNull(trainingAck.acknowledgedAt)
+      ));
+  }
+
+  async getOwnedEntities(userId: string): Promise<Ownership[]> {
+    return await db.select().from(ownership)
+      .where(eq(ownership.ownerUserId, userId));
+  }
+
+  async addWatcher(entityType: string, entityId: string, watcher: { userId: string; name: string; email?: string }): Promise<Ownership | null> {
+    const existing = await this.getOwnershipByEntity(entityType, entityId);
+    if (!existing) return null;
+    const watchers = existing.watchers || [];
+    if (!watchers.find(w => w.userId === watcher.userId)) {
+      watchers.push(watcher);
+      return await this.updateOwnership(existing.id, { watchers } as any);
+    }
+    return existing;
+  }
+
+  async removeWatcher(entityType: string, entityId: string, userId: string): Promise<Ownership | null> {
+    const existing = await this.getOwnershipByEntity(entityType, entityId);
+    if (!existing) return null;
+    const watchers = (existing.watchers || []).filter(w => w.userId !== userId);
+    return await this.updateOwnership(existing.id, { watchers } as any);
+  }
+
+  async logAuditEvent(
+    entityType: string,
+    entityId: string,
+    action: string,
+    actor: string,
+    actorName?: string,
+    previousValue?: Record<string, any>,
+    newValue?: Record<string, any>,
+    changeNote?: string
+  ): Promise<AuditLog> {
+    return await this.createAuditLog({
+      entityType,
+      entityId,
+      action,
+      actor,
+      actorName,
+      previousValue,
+      newValue,
+      changeNote,
+    } as any);
+  }
+
+  async checkApprovalStatus(entityType: string, entityId: string): Promise<{
+    complete: boolean;
+    pending: string[];
+    signed: { role: string; signerName: string; signedAt: Date }[];
+  }> {
+    const matrix = await this.getApprovalMatrixByDocType(entityType);
+    const signatures = await this.getSignaturesByEntity(entityType, entityId);
+    const signedRoles = new Set(signatures.map(s => s.role));
+    const requiredRoles = matrix.filter(m => m.required).map(m => m.role);
+    const pending = requiredRoles.filter(role => !signedRoles.has(role));
+    return {
+      complete: pending.length === 0,
+      pending,
+      signed: signatures.map(s => ({
+        role: s.role,
+        signerName: s.signerName,
+        signedAt: s.signedAt,
+      })),
+    };
+  }
+
+  computeContentHash(content: any): string {
+    const json = JSON.stringify(content, Object.keys(content).sort());
+    return crypto.createHash('sha256').update(json).digest('hex');
   }
 }
 
