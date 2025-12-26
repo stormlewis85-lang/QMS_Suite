@@ -1,4 +1,5 @@
 // Phase 6: Complete Storage with FMEA Template Row and Control Template Row support
+// Phase 8: Governance & Document Control Tables
 import {
   part,
   processDef,
@@ -16,6 +17,14 @@ import {
   controlTemplateRow,
   controlsLibrary,
   controlPairings,
+  auditLog,
+  signature,
+  approvalMatrix,
+  changePackage,
+  changePackageItem,
+  changePackageAffectedPart,
+  trainingAck,
+  ownership,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -51,6 +60,22 @@ import {
   type InsertControlPairings,
   type ControlType,
   type ControlEffectiveness,
+  type AuditLog,
+  type InsertAuditLog,
+  type Signature,
+  type InsertSignature,
+  type ApprovalMatrix,
+  type InsertApprovalMatrix,
+  type ChangePackage,
+  type InsertChangePackage,
+  type ChangePackageItem,
+  type InsertChangePackageItem,
+  type ChangePackageAffectedPart,
+  type InsertChangePackageAffectedPart,
+  type TrainingAck,
+  type InsertTrainingAck,
+  type Ownership,
+  type InsertOwnership,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
@@ -155,6 +180,60 @@ export interface IStorage {
   getControlPairingsByFailureModeId(failureModeId: string): Promise<ControlPairings[]>;
   createControlPairing(insertPairing: InsertControlPairings): Promise<ControlPairings>;
   deleteControlPairing(id: string): Promise<boolean>;
+  
+  // ============================================
+  // GOVERNANCE & DOCUMENT CONTROL (Phase 8)
+  // ============================================
+  
+  // Audit Log
+  getAuditLogsByEntity(entityType: string, entityId: string): Promise<AuditLog[]>;
+  getAuditLogsByActor(actorId: string): Promise<AuditLog[]>;
+  createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog>;
+  
+  // Signatures
+  getSignaturesByEntity(entityType: string, entityId: string): Promise<Signature[]>;
+  getSignatureById(id: string): Promise<Signature | undefined>;
+  createSignature(insertSig: InsertSignature): Promise<Signature>;
+  deleteSignature(id: string): Promise<boolean>;
+  
+  // Approval Matrix
+  getAllApprovalMatrices(): Promise<ApprovalMatrix[]>;
+  getApprovalMatrixByDocType(documentType: string): Promise<ApprovalMatrix[]>;
+  createApprovalMatrix(insertMatrix: InsertApprovalMatrix): Promise<ApprovalMatrix>;
+  updateApprovalMatrix(id: string, updates: Partial<InsertApprovalMatrix>): Promise<ApprovalMatrix | undefined>;
+  deleteApprovalMatrix(id: string): Promise<boolean>;
+  
+  // Change Package
+  getAllChangePackages(): Promise<ChangePackage[]>;
+  getChangePackageById(id: string): Promise<ChangePackage | undefined>;
+  getChangePackageWithDetails(id: string): Promise<(ChangePackage & { items: ChangePackageItem[]; affectedParts: ChangePackageAffectedPart[]; trainingAcks: TrainingAck[] }) | undefined>;
+  createChangePackage(insertPkg: InsertChangePackage): Promise<ChangePackage>;
+  updateChangePackage(id: string, updates: Partial<InsertChangePackage>): Promise<ChangePackage | undefined>;
+  deleteChangePackage(id: string): Promise<boolean>;
+  
+  // Change Package Items
+  getChangePackageItems(changePackageId: string): Promise<ChangePackageItem[]>;
+  createChangePackageItem(insertItem: InsertChangePackageItem): Promise<ChangePackageItem>;
+  updateChangePackageItem(id: string, updates: Partial<InsertChangePackageItem>): Promise<ChangePackageItem | undefined>;
+  deleteChangePackageItem(id: string): Promise<boolean>;
+  
+  // Affected Parts
+  getAffectedParts(changePackageId: string): Promise<ChangePackageAffectedPart[]>;
+  createAffectedPart(insertPart: InsertChangePackageAffectedPart): Promise<ChangePackageAffectedPart>;
+  updateAffectedPart(id: string, updates: Partial<InsertChangePackageAffectedPart>): Promise<ChangePackageAffectedPart | undefined>;
+  deleteAffectedPart(id: string): Promise<boolean>;
+  
+  // Training Acknowledgments
+  getTrainingAcks(changePackageId: string): Promise<TrainingAck[]>;
+  createTrainingAck(insertAck: InsertTrainingAck): Promise<TrainingAck>;
+  updateTrainingAck(id: string, updates: Partial<InsertTrainingAck>): Promise<TrainingAck | undefined>;
+  deleteTrainingAck(id: string): Promise<boolean>;
+  
+  // Ownership
+  getOwnershipByEntity(entityType: string, entityId: string): Promise<Ownership | undefined>;
+  createOwnership(insertOwnership: InsertOwnership): Promise<Ownership>;
+  updateOwnership(id: string, updates: Partial<InsertOwnership>): Promise<Ownership | undefined>;
+  deleteOwnership(id: string): Promise<boolean>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -792,6 +871,206 @@ class DatabaseStorage implements IStorage {
       .select()
       .from(controlTemplateRow)
       .where(eq(controlTemplateRow.processDefId, processDefId));
+  }
+
+  // ============================================
+  // GOVERNANCE & DOCUMENT CONTROL (Phase 8)
+  // ============================================
+
+  // Audit Log
+  async getAuditLogsByEntity(entityType: string, entityId: string): Promise<AuditLog[]> {
+    return await db.select().from(auditLog)
+      .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
+      .orderBy(desc(auditLog.at));
+  }
+
+  async getAuditLogsByActor(actorId: string): Promise<AuditLog[]> {
+    return await db.select().from(auditLog)
+      .where(eq(auditLog.actor, actorId))
+      .orderBy(desc(auditLog.at));
+  }
+
+  async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> {
+    const [newLog] = await db.insert(auditLog).values(insertLog as any).returning();
+    return newLog;
+  }
+
+  // Signatures
+  async getSignaturesByEntity(entityType: string, entityId: string): Promise<Signature[]> {
+    return await db.select().from(signature)
+      .where(and(eq(signature.entityType, entityType), eq(signature.entityId, entityId)))
+      .orderBy(desc(signature.signedAt));
+  }
+
+  async getSignatureById(id: string): Promise<Signature | undefined> {
+    const [result] = await db.select().from(signature).where(eq(signature.id, id));
+    return result;
+  }
+
+  async createSignature(insertSig: InsertSignature): Promise<Signature> {
+    const [newSig] = await db.insert(signature).values(insertSig as any).returning();
+    return newSig;
+  }
+
+  async deleteSignature(id: string): Promise<boolean> {
+    const result = await db.delete(signature).where(eq(signature.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Approval Matrix
+  async getAllApprovalMatrices(): Promise<ApprovalMatrix[]> {
+    return await db.select().from(approvalMatrix).orderBy(approvalMatrix.documentType, approvalMatrix.sequence);
+  }
+
+  async getApprovalMatrixByDocType(documentType: string): Promise<ApprovalMatrix[]> {
+    return await db.select().from(approvalMatrix)
+      .where(eq(approvalMatrix.documentType, documentType))
+      .orderBy(approvalMatrix.sequence);
+  }
+
+  async createApprovalMatrix(insertMatrix: InsertApprovalMatrix): Promise<ApprovalMatrix> {
+    const [newMatrix] = await db.insert(approvalMatrix).values(insertMatrix as any).returning();
+    return newMatrix;
+  }
+
+  async updateApprovalMatrix(id: string, updates: Partial<InsertApprovalMatrix>): Promise<ApprovalMatrix | undefined> {
+    const [updated] = await db.update(approvalMatrix).set(updates as any).where(eq(approvalMatrix.id, id)).returning();
+    return updated;
+  }
+
+  async deleteApprovalMatrix(id: string): Promise<boolean> {
+    const result = await db.delete(approvalMatrix).where(eq(approvalMatrix.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Change Package
+  async getAllChangePackages(): Promise<ChangePackage[]> {
+    return await db.select().from(changePackage).orderBy(desc(changePackage.createdAt));
+  }
+
+  async getChangePackageById(id: string): Promise<ChangePackage | undefined> {
+    const [result] = await db.select().from(changePackage).where(eq(changePackage.id, id));
+    return result;
+  }
+
+  async getChangePackageWithDetails(id: string): Promise<(ChangePackage & { items: ChangePackageItem[]; affectedParts: ChangePackageAffectedPart[]; trainingAcks: TrainingAck[] }) | undefined> {
+    const [pkg] = await db.select().from(changePackage).where(eq(changePackage.id, id));
+    if (!pkg) return undefined;
+
+    const items = await db.select().from(changePackageItem)
+      .where(eq(changePackageItem.changePackageId, id));
+    const affectedParts = await db.select().from(changePackageAffectedPart)
+      .where(eq(changePackageAffectedPart.changePackageId, id));
+    const trainingAcks = await db.select().from(trainingAck)
+      .where(eq(trainingAck.changePackageId, id));
+
+    return { ...pkg, items, affectedParts, trainingAcks };
+  }
+
+  async createChangePackage(insertPkg: InsertChangePackage): Promise<ChangePackage> {
+    const [newPkg] = await db.insert(changePackage).values(insertPkg as any).returning();
+    return newPkg;
+  }
+
+  async updateChangePackage(id: string, updates: Partial<InsertChangePackage>): Promise<ChangePackage | undefined> {
+    const [updated] = await db.update(changePackage)
+      .set({ ...updates as any, updatedAt: new Date() })
+      .where(eq(changePackage.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteChangePackage(id: string): Promise<boolean> {
+    const result = await db.delete(changePackage).where(eq(changePackage.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Change Package Items
+  async getChangePackageItems(changePackageId: string): Promise<ChangePackageItem[]> {
+    return await db.select().from(changePackageItem)
+      .where(eq(changePackageItem.changePackageId, changePackageId));
+  }
+
+  async createChangePackageItem(insertItem: InsertChangePackageItem): Promise<ChangePackageItem> {
+    const [newItem] = await db.insert(changePackageItem).values(insertItem as any).returning();
+    return newItem;
+  }
+
+  async updateChangePackageItem(id: string, updates: Partial<InsertChangePackageItem>): Promise<ChangePackageItem | undefined> {
+    const [updated] = await db.update(changePackageItem).set(updates as any).where(eq(changePackageItem.id, id)).returning();
+    return updated;
+  }
+
+  async deleteChangePackageItem(id: string): Promise<boolean> {
+    const result = await db.delete(changePackageItem).where(eq(changePackageItem.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Affected Parts
+  async getAffectedParts(changePackageId: string): Promise<ChangePackageAffectedPart[]> {
+    return await db.select().from(changePackageAffectedPart)
+      .where(eq(changePackageAffectedPart.changePackageId, changePackageId));
+  }
+
+  async createAffectedPart(insertPart: InsertChangePackageAffectedPart): Promise<ChangePackageAffectedPart> {
+    const [newPart] = await db.insert(changePackageAffectedPart).values(insertPart as any).returning();
+    return newPart;
+  }
+
+  async updateAffectedPart(id: string, updates: Partial<InsertChangePackageAffectedPart>): Promise<ChangePackageAffectedPart | undefined> {
+    const [updated] = await db.update(changePackageAffectedPart).set(updates as any).where(eq(changePackageAffectedPart.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAffectedPart(id: string): Promise<boolean> {
+    const result = await db.delete(changePackageAffectedPart).where(eq(changePackageAffectedPart.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Training Acknowledgments
+  async getTrainingAcks(changePackageId: string): Promise<TrainingAck[]> {
+    return await db.select().from(trainingAck)
+      .where(eq(trainingAck.changePackageId, changePackageId));
+  }
+
+  async createTrainingAck(insertAck: InsertTrainingAck): Promise<TrainingAck> {
+    const [newAck] = await db.insert(trainingAck).values(insertAck as any).returning();
+    return newAck;
+  }
+
+  async updateTrainingAck(id: string, updates: Partial<InsertTrainingAck>): Promise<TrainingAck | undefined> {
+    const [updated] = await db.update(trainingAck).set(updates as any).where(eq(trainingAck.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTrainingAck(id: string): Promise<boolean> {
+    const result = await db.delete(trainingAck).where(eq(trainingAck.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Ownership
+  async getOwnershipByEntity(entityType: string, entityId: string): Promise<Ownership | undefined> {
+    const [result] = await db.select().from(ownership)
+      .where(and(eq(ownership.entityType, entityType), eq(ownership.entityId, entityId)));
+    return result;
+  }
+
+  async createOwnership(insertOwn: InsertOwnership): Promise<Ownership> {
+    const [newOwn] = await db.insert(ownership).values(insertOwn as any).returning();
+    return newOwn;
+  }
+
+  async updateOwnership(id: string, updates: Partial<InsertOwnership>): Promise<Ownership | undefined> {
+    const [updated] = await db.update(ownership)
+      .set({ ...updates as any, updatedAt: new Date() })
+      .where(eq(ownership.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteOwnership(id: string): Promise<boolean> {
+    const result = await db.delete(ownership).where(eq(ownership.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 
