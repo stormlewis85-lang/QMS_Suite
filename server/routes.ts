@@ -1228,6 +1228,486 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // AUDIT LOG ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.get("/api/audit-logs/:entityType/:entityId", async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const logs = await storage.getAuditLogsByEntity(entityType, entityId);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ message: "Failed to fetch audit logs" });
+    }
+  });
+
+  app.get("/api/audit-logs", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const logs = await storage.getRecentAuditLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ message: "Failed to fetch audit logs" });
+    }
+  });
+
+  app.get("/api/audit-logs/actor/:actorId", async (req, res) => {
+    try {
+      const { actorId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const logs = await storage.getAuditLogsByActor(actorId, limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ message: "Failed to fetch audit logs" });
+    }
+  });
+
+  // ============================================
+  // SIGNATURE ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.get("/api/signatures/:entityType/:entityId", async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const signatures = await storage.getSignaturesByEntity(entityType, entityId);
+      res.json(signatures);
+    } catch (error) {
+      console.error("Error fetching signatures:", error);
+      res.status(500).json({ message: "Failed to fetch signatures" });
+    }
+  });
+
+  app.post("/api/signatures", async (req, res) => {
+    try {
+      const data = req.body;
+      
+      let content: any = null;
+      if (data.entityType === 'pfmea') {
+        content = await storage.getPFMEAById(data.entityId);
+      } else if (data.entityType === 'control_plan') {
+        content = await storage.getControlPlanById(data.entityId);
+      } else if (data.entityType === 'process_def') {
+        content = await storage.getProcessById(data.entityId);
+      }
+
+      const contentHash = storage.computeContentHash(content);
+      
+      const signature = await storage.createSignature({
+        ...data,
+        contentHash,
+      });
+
+      await storage.logAuditEvent(
+        data.entityType,
+        data.entityId,
+        'sign',
+        data.signerUserId,
+        data.signerName,
+        undefined,
+        { role: data.role, meaning: data.meaning },
+        `Signed as ${data.role}`
+      );
+
+      const approvalStatus = await storage.checkApprovalStatus(data.entityType, data.entityId);
+      
+      if (approvalStatus.complete) {
+        if (data.entityType === 'pfmea') {
+          await storage.updatePFMEA(data.entityId, { 
+            status: 'effective',
+            approvedBy: data.signerUserId,
+            approvedAt: new Date(),
+            effectiveFrom: new Date(),
+          });
+        } else if (data.entityType === 'control_plan') {
+          await storage.updateControlPlan(data.entityId, { 
+            status: 'effective',
+            approvedBy: data.signerUserId,
+            approvedAt: new Date(),
+            effectiveFrom: new Date(),
+          });
+        } else if (data.entityType === 'process_def') {
+          await storage.updateProcess(data.entityId, { 
+            status: 'effective',
+            effectiveFrom: new Date(),
+          });
+        }
+      }
+
+      res.status(201).json({ signature, approvalStatus });
+    } catch (error) {
+      console.error("Error creating signature:", error);
+      res.status(500).json({ message: "Failed to create signature" });
+    }
+  });
+
+  app.delete("/api/signatures/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteSignature(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting signature:", error);
+      res.status(500).json({ message: "Failed to delete signature" });
+    }
+  });
+
+  app.get("/api/approval-status/:entityType/:entityId", async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const status = await storage.checkApprovalStatus(entityType, entityId);
+      res.json(status);
+    } catch (error) {
+      console.error("Error checking approval status:", error);
+      res.status(500).json({ message: "Failed to check approval status" });
+    }
+  });
+
+  // ============================================
+  // APPROVAL MATRIX ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.get("/api/approval-matrix/:documentType", async (req, res) => {
+    try {
+      const { documentType } = req.params;
+      const matrix = await storage.getApprovalMatrixByDocType(documentType);
+      res.json(matrix);
+    } catch (error) {
+      console.error("Error fetching approval matrix:", error);
+      res.status(500).json({ message: "Failed to fetch approval matrix" });
+    }
+  });
+
+  app.post("/api/approval-matrix", async (req, res) => {
+    try {
+      const entry = await storage.createApprovalMatrix(req.body);
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error creating approval matrix entry:", error);
+      res.status(500).json({ message: "Failed to create approval matrix entry" });
+    }
+  });
+
+  app.patch("/api/approval-matrix/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const entry = await storage.updateApprovalMatrix(id, req.body);
+      res.json(entry);
+    } catch (error) {
+      console.error("Error updating approval matrix entry:", error);
+      res.status(500).json({ message: "Failed to update approval matrix entry" });
+    }
+  });
+
+  app.delete("/api/approval-matrix/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteApprovalMatrix(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting approval matrix entry:", error);
+      res.status(500).json({ message: "Failed to delete approval matrix entry" });
+    }
+  });
+
+  // ============================================
+  // CHANGE PACKAGE ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.get("/api/change-packages", async (req, res) => {
+    try {
+      const packages = await storage.getAllChangePackages();
+      res.json(packages);
+    } catch (error) {
+      console.error("Error fetching change packages:", error);
+      res.status(500).json({ message: "Failed to fetch change packages" });
+    }
+  });
+
+  app.get("/api/change-packages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const pkg = await storage.getChangePackageWithDetails(id);
+      if (!pkg) {
+        return res.status(404).json({ message: "Change package not found" });
+      }
+      const signatures = await storage.getSignaturesByEntity('change_package', id);
+      res.json({ ...pkg, signatures });
+    } catch (error) {
+      console.error("Error fetching change package:", error);
+      res.status(500).json({ message: "Failed to fetch change package" });
+    }
+  });
+
+  app.post("/api/change-packages", async (req, res) => {
+    try {
+      const packageNumber = await storage.generateChangePackageNumber();
+      const pkg = await storage.createChangePackage({
+        ...req.body,
+        packageNumber,
+      });
+
+      await storage.logAuditEvent(
+        'change_package',
+        pkg.id,
+        'create',
+        req.body.initiatedBy,
+        req.body.initiatedByName,
+        undefined,
+        pkg as any,
+        'Change package created'
+      );
+
+      res.status(201).json(pkg);
+    } catch (error) {
+      console.error("Error creating change package:", error);
+      res.status(500).json({ message: "Failed to create change package" });
+    }
+  });
+
+  app.patch("/api/change-packages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const existing = await storage.getChangePackageById(id);
+      const pkg = await storage.updateChangePackage(id, req.body);
+
+      await storage.logAuditEvent(
+        'change_package',
+        id,
+        'update',
+        req.body.updatedBy || 'system',
+        req.body.updatedByName,
+        existing as any,
+        pkg as any,
+        req.body.changeNote
+      );
+
+      res.json(pkg);
+    } catch (error) {
+      console.error("Error updating change package:", error);
+      res.status(500).json({ message: "Failed to update change package" });
+    }
+  });
+
+  app.delete("/api/change-packages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteChangePackage(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting change package:", error);
+      res.status(500).json({ message: "Failed to delete change package" });
+    }
+  });
+
+  app.post("/api/change-packages/:id/transition", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { newStatus, actor, actorName, note } = req.body;
+      
+      const existing = await storage.getChangePackageById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Change package not found" });
+      }
+
+      const validTransitions: Record<string, string[]> = {
+        'draft': ['impact_analysis', 'cancelled'],
+        'impact_analysis': ['auto_review', 'draft', 'cancelled'],
+        'auto_review': ['pending_signatures', 'impact_analysis', 'cancelled'],
+        'pending_signatures': ['effective', 'auto_review', 'cancelled'],
+        'effective': [],
+        'cancelled': ['draft'],
+      };
+
+      if (!validTransitions[existing.status]?.includes(newStatus)) {
+        return res.status(400).json({ 
+          message: `Invalid transition from ${existing.status} to ${newStatus}` 
+        });
+      }
+
+      const pkg = await storage.updateChangePackage(id, { status: newStatus });
+
+      await storage.logAuditEvent(
+        'change_package',
+        id,
+        'status_change',
+        actor,
+        actorName,
+        { status: existing.status },
+        { status: newStatus },
+        note
+      );
+
+      res.json(pkg);
+    } catch (error) {
+      console.error("Error transitioning change package:", error);
+      res.status(500).json({ message: "Failed to transition change package" });
+    }
+  });
+
+  // ============================================
+  // CHANGE PACKAGE ITEM ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.post("/api/change-packages/:packageId/items", async (req, res) => {
+    try {
+      const { packageId } = req.params;
+      const item = await storage.createChangePackageItem({
+        ...req.body,
+        changePackageId: packageId,
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error creating change package item:", error);
+      res.status(500).json({ message: "Failed to create change package item" });
+    }
+  });
+
+  app.patch("/api/change-package-items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const item = await storage.updateChangePackageItem(id, req.body);
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating change package item:", error);
+      res.status(500).json({ message: "Failed to update change package item" });
+    }
+  });
+
+  app.delete("/api/change-package-items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteChangePackageItem(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting change package item:", error);
+      res.status(500).json({ message: "Failed to delete change package item" });
+    }
+  });
+
+  // ============================================
+  // TRAINING ACKNOWLEDGMENT ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.get("/api/change-packages/:packageId/training", async (req, res) => {
+    try {
+      const { packageId } = req.params;
+      const acks = await storage.getTrainingAcks(packageId);
+      res.json(acks);
+    } catch (error) {
+      console.error("Error fetching training acks:", error);
+      res.status(500).json({ message: "Failed to fetch training acknowledgments" });
+    }
+  });
+
+  app.post("/api/change-packages/:packageId/training", async (req, res) => {
+    try {
+      const { packageId } = req.params;
+      const ack = await storage.createTrainingAck({
+        ...req.body,
+        changePackageId: packageId,
+      });
+      res.status(201).json(ack);
+    } catch (error) {
+      console.error("Error creating training ack:", error);
+      res.status(500).json({ message: "Failed to create training requirement" });
+    }
+  });
+
+  app.post("/api/training-acks/:id/acknowledge", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { trainingMethod, evidence } = req.body;
+      const ack = await storage.updateTrainingAck(id, {
+        acknowledgedAt: new Date(),
+        trainingMethod,
+        evidence,
+      });
+      res.json(ack);
+    } catch (error) {
+      console.error("Error acknowledging training:", error);
+      res.status(500).json({ message: "Failed to acknowledge training" });
+    }
+  });
+
+  app.get("/api/users/:userId/pending-training", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const pending = await storage.getPendingTrainingForUser(userId);
+      res.json(pending);
+    } catch (error) {
+      console.error("Error fetching pending training:", error);
+      res.status(500).json({ message: "Failed to fetch pending training" });
+    }
+  });
+
+  // ============================================
+  // OWNERSHIP ENDPOINTS (Phase 8)
+  // ============================================
+
+  app.get("/api/ownership/:entityType/:entityId", async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const own = await storage.getOwnershipByEntity(entityType, entityId);
+      res.json(own);
+    } catch (error) {
+      console.error("Error fetching ownership:", error);
+      res.status(500).json({ message: "Failed to fetch ownership" });
+    }
+  });
+
+  app.post("/api/ownership", async (req, res) => {
+    try {
+      const existing = await storage.getOwnershipByEntity(req.body.entityType, req.body.entityId);
+      let own;
+      if (existing) {
+        own = await storage.updateOwnership(existing.id, req.body);
+      } else {
+        own = await storage.createOwnership(req.body);
+      }
+      res.status(201).json(own);
+    } catch (error) {
+      console.error("Error setting ownership:", error);
+      res.status(500).json({ message: "Failed to set ownership" });
+    }
+  });
+
+  app.post("/api/ownership/:entityType/:entityId/watchers", async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const own = await storage.addWatcher(entityType, entityId, req.body);
+      res.json(own);
+    } catch (error) {
+      console.error("Error adding watcher:", error);
+      res.status(500).json({ message: "Failed to add watcher" });
+    }
+  });
+
+  app.delete("/api/ownership/:entityType/:entityId/watchers/:userId", async (req, res) => {
+    try {
+      const { entityType, entityId, userId } = req.params;
+      const own = await storage.removeWatcher(entityType, entityId, userId);
+      res.json(own);
+    } catch (error) {
+      console.error("Error removing watcher:", error);
+      res.status(500).json({ message: "Failed to remove watcher" });
+    }
+  });
+
+  app.get("/api/users/:userId/owned-entities", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const owned = await storage.getOwnedEntities(userId);
+      res.json(owned);
+    } catch (error) {
+      console.error("Error fetching owned entities:", error);
+      res.status(500).json({ message: "Failed to fetch owned entities" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
