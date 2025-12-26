@@ -1,0 +1,432 @@
+import { useState } from "react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  Loader2,
+  Play,
+  RefreshCw,
+  Shield,
+  FileCheck,
+  Target,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Lightbulb,
+} from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+
+interface ReviewFinding {
+  id: string;
+  level: "error" | "warning" | "info";
+  category: "coverage" | "effectiveness" | "documentation" | "compliance";
+  rule: string;
+  message: string;
+  rowId?: string;
+  stepRef?: string;
+  suggestion?: string;
+  documentType?: string;
+  documentId?: string;
+  documentRev?: string;
+}
+
+interface ReviewResult {
+  pfmeaId?: string;
+  controlPlanId?: string;
+  partId?: string;
+  partNumber?: string;
+  reviewedAt: string;
+  summary: {
+    total: number;
+    errors: number;
+    warnings: number;
+    info: number;
+  };
+  findings: ReviewFinding[];
+}
+
+interface AutoReviewPanelProps {
+  documentType: "pfmea" | "control-plan" | "part";
+  documentId: string;
+  documentTitle?: string;
+  onFindingClick?: (finding: ReviewFinding) => void;
+}
+
+// Level configuration
+const LEVEL_CONFIG = {
+  error: {
+    icon: AlertCircle,
+    color: "text-red-600",
+    bgColor: "bg-red-50",
+    borderColor: "border-red-200",
+    badgeClass: "bg-red-100 text-red-800",
+    label: "Error",
+  },
+  warning: {
+    icon: AlertTriangle,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-200",
+    badgeClass: "bg-amber-100 text-amber-800",
+    label: "Warning",
+  },
+  info: {
+    icon: Info,
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+    borderColor: "border-blue-200",
+    badgeClass: "bg-blue-100 text-blue-800",
+    label: "Info",
+  },
+};
+
+// Category configuration
+const CATEGORY_CONFIG = {
+  coverage: {
+    icon: Target,
+    label: "Coverage",
+    description: "Traceability between documents",
+  },
+  effectiveness: {
+    icon: Shield,
+    label: "Effectiveness",
+    description: "Risk mitigation quality",
+  },
+  documentation: {
+    icon: FileCheck,
+    label: "Documentation",
+    description: "Document control requirements",
+  },
+  compliance: {
+    icon: CheckCircle2,
+    label: "Compliance",
+    description: "IATF 16949 / AIAG-VDA requirements",
+  },
+};
+
+export default function AutoReviewPanel({
+  documentType,
+  documentId,
+  documentTitle,
+  onFindingClick,
+}: AutoReviewPanelProps) {
+  const { toast } = useToast();
+  const [result, setResult] = useState<ReviewResult | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set(["error", "warning"])
+  );
+
+  // Determine API endpoint based on document type
+  const getEndpoint = () => {
+    switch (documentType) {
+      case "pfmea":
+        return `/api/pfmeas/${documentId}/auto-review`;
+      case "control-plan":
+        return `/api/control-plans/${documentId}/auto-review`;
+      case "part":
+        return `/api/parts/${documentId}/auto-review`;
+    }
+  };
+
+  // Run review mutation
+  const reviewMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(getEndpoint(), { method: "POST" });
+    },
+    onSuccess: (data: ReviewResult) => {
+      setResult(data);
+      if (data.summary.errors > 0) {
+        toast({
+          title: "Review Complete",
+          description: `Found ${data.summary.errors} error(s), ${data.summary.warnings} warning(s)`,
+          variant: "destructive",
+        });
+      } else if (data.summary.warnings > 0) {
+        toast({
+          title: "Review Complete",
+          description: `Found ${data.summary.warnings} warning(s)`,
+        });
+      } else {
+        toast({
+          title: "Review Complete",
+          description: "No issues found!",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Review Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
+
+  // Group findings by level, then by category
+  const groupedFindings = result?.findings.reduce(
+    (acc, finding) => {
+      if (!acc[finding.level]) {
+        acc[finding.level] = {};
+      }
+      if (!acc[finding.level][finding.category]) {
+        acc[finding.level][finding.category] = [];
+      }
+      acc[finding.level][finding.category].push(finding);
+      return acc;
+    },
+    {} as Record<string, Record<string, ReviewFinding[]>>
+  );
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Auto-Review
+            </CardTitle>
+            <CardDescription>
+              Validate compliance with AIAG-VDA 2019 and IATF 16949
+            </CardDescription>
+          </div>
+          <Button
+            onClick={() => reviewMutation.mutate()}
+            disabled={reviewMutation.isPending}
+          >
+            {reviewMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Reviewing...
+              </>
+            ) : result ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Re-run Review
+              </>
+            ) : (
+              <>
+                <Play className="mr-2 h-4 w-4" />
+                Run Review
+              </>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {!result && !reviewMutation.isPending && (
+          <div className="text-center py-8 text-muted-foreground">
+            <Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Click "Run Review" to validate this document</p>
+            <p className="text-sm mt-1">
+              Checks coverage, effectiveness, and compliance
+            </p>
+          </div>
+        )}
+
+        {result && (
+          <div className="space-y-4">
+            {/* Summary */}
+            <div className="grid grid-cols-4 gap-3">
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <div className="text-2xl font-bold">{result.summary.total}</div>
+                <div className="text-xs text-muted-foreground">Total Issues</div>
+              </div>
+              <div className="text-center p-3 bg-red-50 rounded-lg border border-red-200">
+                <div className="text-2xl font-bold text-red-600">
+                  {result.summary.errors}
+                </div>
+                <div className="text-xs text-red-600">Errors</div>
+              </div>
+              <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="text-2xl font-bold text-amber-600">
+                  {result.summary.warnings}
+                </div>
+                <div className="text-xs text-amber-600">Warnings</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="text-2xl font-bold text-blue-600">
+                  {result.summary.info}
+                </div>
+                <div className="text-xs text-blue-600">Info</div>
+              </div>
+            </div>
+
+            {/* Pass indicator */}
+            {result.summary.errors === 0 && result.summary.warnings === 0 && (
+              <div className="flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle2 className="h-6 w-6 text-green-600" />
+                <div>
+                  <div className="font-medium text-green-800">All Checks Passed!</div>
+                  <div className="text-sm text-green-700">
+                    Document meets AIAG-VDA and IATF 16949 requirements
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Findings by Level */}
+            <ScrollArea className="h-[400px]">
+              <div className="space-y-3">
+                {(["error", "warning", "info"] as const).map((level) => {
+                  const levelFindings = groupedFindings?.[level];
+                  if (!levelFindings || Object.keys(levelFindings).length === 0) {
+                    return null;
+                  }
+
+                  const config = LEVEL_CONFIG[level];
+                  const Icon = config.icon;
+                  const isExpanded = expandedCategories.has(level);
+                  const totalCount = Object.values(levelFindings).flat().length;
+
+                  return (
+                    <Collapsible
+                      key={level}
+                      open={isExpanded}
+                      onOpenChange={() => toggleCategory(level)}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <div
+                          className={`flex items-center justify-between p-3 rounded-lg cursor-pointer hover:opacity-80 ${config.bgColor} border ${config.borderColor}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon className={`h-5 w-5 ${config.color}`} />
+                            <span className="font-medium">
+                              {config.label}s ({totalCount})
+                            </span>
+                          </div>
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="mt-2 space-y-2 pl-4">
+                          {Object.entries(levelFindings).map(([category, findings]) => {
+                            const catConfig = CATEGORY_CONFIG[category as keyof typeof CATEGORY_CONFIG];
+                            const CatIcon = catConfig?.icon || Info;
+
+                            return (
+                              <div key={category} className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                                  <CatIcon className="h-4 w-4" />
+                                  {catConfig?.label || category}
+                                </div>
+                                {findings.map((finding) => (
+                                  <FindingCard
+                                    key={finding.id}
+                                    finding={finding}
+                                    onClick={() => onFindingClick?.(finding)}
+                                  />
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+
+            {/* Review timestamp */}
+            <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+              Reviewed at {new Date(result.reviewedAt).toLocaleString()}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Finding Card Component
+function FindingCard({
+  finding,
+  onClick,
+}: {
+  finding: ReviewFinding;
+  onClick?: () => void;
+}) {
+  const config = LEVEL_CONFIG[finding.level];
+
+  return (
+    <div
+      className={`p-3 rounded-md border ${config.borderColor} ${config.bgColor} cursor-pointer hover:opacity-90 transition-opacity`}
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <Badge variant="outline" className={config.badgeClass}>
+              {finding.rule.replace(/_/g, " ")}
+            </Badge>
+            {finding.stepRef && (
+              <span className="text-xs text-muted-foreground">
+                Step: {finding.stepRef}
+              </span>
+            )}
+          </div>
+          <p className="text-sm">{finding.message}</p>
+          
+          {finding.suggestion && (
+            <div className="flex items-start gap-2 mt-2 p-2 bg-background/50 rounded text-xs">
+              <Lightbulb className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <span className="text-muted-foreground">{finding.suggestion}</span>
+            </div>
+          )}
+        </div>
+        
+        {finding.rowId && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Go to row</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    </div>
+  );
+}
