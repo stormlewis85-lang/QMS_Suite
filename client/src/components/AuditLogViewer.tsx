@@ -1,0 +1,415 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  History,
+  User,
+  Clock,
+  FileText,
+  Edit,
+  Trash2,
+  Plus,
+  CheckCircle,
+  PenTool,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+
+interface AuditLog {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actor: string;
+  actorName?: string;
+  at: string;
+  previousValue?: Record<string, any>;
+  newValue?: Record<string, any>;
+  changeNote?: string;
+  ipAddress?: string;
+  sessionId?: string;
+}
+
+interface AuditLogViewerProps {
+  entityType: string;
+  entityId: string;
+  title?: string;
+}
+
+const actionIcons: Record<string, any> = {
+  create: Plus,
+  update: Edit,
+  delete: Trash2,
+  status_change: ArrowRight,
+  approve: CheckCircle,
+  sign: PenTool,
+};
+
+const actionColors: Record<string, string> = {
+  create: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  update: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  delete: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  status_change: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  approve: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  sign: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
+};
+
+export function AuditLogViewer({ entityType, entityId, title }: AuditLogViewerProps) {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+
+  const { data: logs, isLoading } = useQuery<AuditLog[]>({
+    queryKey: ["/api/audit-logs", entityType, entityId],
+  });
+
+  const toggleRow = (id: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedRows(newExpanded);
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString();
+  };
+
+  const formatRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const renderDiff = (prev: any, next: any) => {
+    if (!prev && !next) return null;
+
+    const allKeys = new Set([
+      ...Object.keys(prev || {}),
+      ...Object.keys(next || {}),
+    ]);
+
+    const changes: { field: string; from: any; to: any }[] = [];
+    
+    allKeys.forEach((key) => {
+      const prevVal = prev?.[key];
+      const nextVal = next?.[key];
+      
+      if (JSON.stringify(prevVal) !== JSON.stringify(nextVal)) {
+        changes.push({
+          field: key,
+          from: prevVal,
+          to: nextVal,
+        });
+      }
+    });
+
+    if (changes.length === 0) return null;
+
+    return (
+      <div className="mt-2 space-y-1">
+        {changes.map((change, idx) => (
+          <div key={idx} className="text-xs bg-muted rounded p-2">
+            <span className="font-medium">{change.field}:</span>
+            <div className="flex items-center gap-2 mt-1">
+              {change.from !== undefined && (
+                <span className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2 py-0.5 rounded line-through">
+                  {typeof change.from === 'object' 
+                    ? JSON.stringify(change.from) 
+                    : String(change.from)}
+                </span>
+              )}
+              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+              {change.to !== undefined && (
+                <span className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-0.5 rounded">
+                  {typeof change.to === 'object' 
+                    ? JSON.stringify(change.to) 
+                    : String(change.to)}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            {title || "Audit History"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          {title || "Audit History"}
+        </CardTitle>
+        <CardDescription>
+          Complete change history for this document
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!logs || logs.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <History className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            <p>No audit history available</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[400px]">
+            <div className="space-y-3">
+              {logs.map((log) => {
+                const ActionIcon = actionIcons[log.action] || Edit;
+                const isExpanded = expandedRows.has(log.id);
+                const hasDetails = log.previousValue || log.newValue || log.changeNote;
+
+                return (
+                  <div
+                    key={log.id}
+                    className="border rounded-lg p-3 hover-elevate transition-colors"
+                    data-testid={`audit-log-${log.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-full ${actionColors[log.action] || 'bg-muted'}`}>
+                          <ActionIcon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="outline" className="capitalize">
+                              {log.action.replace('_', ' ')}
+                            </Badge>
+                            {log.changeNote && (
+                              <span className="text-sm text-muted-foreground">
+                                — {log.changeNote}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {log.actorName || log.actor}
+                            </span>
+                            <span className="flex items-center gap-1" title={formatDate(log.at)}>
+                              <Clock className="h-3 w-3" />
+                              {formatRelativeTime(log.at)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-1">
+                        {hasDetails && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => toggleRow(log.id)}
+                            data-testid={`button-expand-${log.id}`}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSelectedLog(log)}
+                              data-testid={`button-details-${log.id}`}
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Audit Log Details</DialogTitle>
+                              <DialogDescription>
+                                Full details of this change event
+                              </DialogDescription>
+                            </DialogHeader>
+                            {selectedLog && (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-sm font-medium text-muted-foreground">
+                                      Action
+                                    </label>
+                                    <p className="capitalize">{selectedLog.action.replace('_', ' ')}</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-sm font-medium text-muted-foreground">
+                                      Timestamp
+                                    </label>
+                                    <p>{formatDate(selectedLog.at)}</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-sm font-medium text-muted-foreground">
+                                      Actor
+                                    </label>
+                                    <p>{selectedLog.actorName || selectedLog.actor}</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-sm font-medium text-muted-foreground">
+                                      Entity
+                                    </label>
+                                    <p className="font-mono text-xs">
+                                      {selectedLog.entityType}/{selectedLog.entityId}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {selectedLog.changeNote && (
+                                  <div>
+                                    <label className="text-sm font-medium text-muted-foreground">
+                                      Change Note
+                                    </label>
+                                    <p className="bg-muted rounded p-2 mt-1">
+                                      {selectedLog.changeNote}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {(selectedLog.previousValue || selectedLog.newValue) && (
+                                  <div>
+                                    <label className="text-sm font-medium text-muted-foreground">
+                                      Changes
+                                    </label>
+                                    <div className="bg-muted rounded p-2 mt-1">
+                                      {renderDiff(selectedLog.previousValue, selectedLog.newValue)}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {selectedLog.ipAddress && (
+                                  <div className="text-xs text-muted-foreground">
+                                    IP: {selectedLog.ipAddress}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+
+                    {isExpanded && hasDetails && (
+                      <div className="mt-3 pt-3 border-t">
+                        {renderDiff(log.previousValue, log.newValue)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function GlobalActivityFeed({ limit = 50 }: { limit?: number }) {
+  const { data: logs, isLoading } = useQuery<AuditLog[]>({
+    queryKey: ["/api/audit-logs", { limit }],
+  });
+
+  const formatRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {logs?.map((log) => {
+        const ActionIcon = actionIcons[log.action] || Edit;
+        
+        return (
+          <div
+            key={log.id}
+            className="flex items-center gap-3 p-2 rounded hover-elevate"
+            data-testid={`activity-${log.id}`}
+          >
+            <div className={`p-1.5 rounded-full ${actionColors[log.action] || 'bg-muted'}`}>
+              <ActionIcon className="h-3 w-3" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm truncate">
+                <span className="font-medium">{log.actorName || 'User'}</span>
+                {' '}{log.action.replace('_', ' ')}{' '}
+                <span className="text-muted-foreground">{log.entityType}</span>
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {formatRelativeTime(log.at)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
