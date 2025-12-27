@@ -1,0 +1,767 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useToast } from "@/hooks/use-toast";
+import {
+  User,
+  Users,
+  UserPlus,
+  Shield,
+  Eye,
+  Mail,
+  Bell,
+  BellOff,
+  Crown,
+  ArrowRightLeft,
+  X,
+  Check,
+  Search,
+} from "lucide-react";
+
+interface Ownership {
+  id: string;
+  entityType: string;
+  entityId: string;
+  ownerUserId: string;
+  ownerName: string;
+  ownerEmail?: string;
+  delegateUserId?: string;
+  delegateName?: string;
+  watchers: { userId: string; name: string; email?: string }[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface OwnershipPanelProps {
+  entityType: string;
+  entityId: string;
+  entityName?: string;
+  currentUserId: string;
+  currentUserName: string;
+  currentUserEmail?: string;
+  availableUsers?: { id: string; name: string; email?: string }[];
+  compact?: boolean;
+}
+
+export function OwnershipPanel({
+  entityType,
+  entityId,
+  entityName,
+  currentUserId,
+  currentUserName,
+  currentUserEmail,
+  availableUsers = [],
+  compact = false,
+}: OwnershipPanelProps) {
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+  const [isDelegateDialogOpen, setIsDelegateDialogOpen] = useState(false);
+  const [isAddWatcherDialogOpen, setIsAddWatcherDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: ownership, isLoading } = useQuery<Ownership>({
+    queryKey: ["/api/ownership", entityType, entityId],
+  });
+
+  const setOwnershipMutation = useMutation({
+    mutationFn: async (data: Partial<Ownership>) => {
+      const response = await fetch("/api/ownership", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entityType,
+          entityId,
+          ...data,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to update ownership");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/ownership", entityType, entityId],
+      });
+      toast({
+        title: "Ownership Updated",
+        description: "Document ownership has been updated",
+      });
+      setIsTransferDialogOpen(false);
+      setIsDelegateDialogOpen(false);
+      setSelectedUserId("");
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const addWatcherMutation = useMutation({
+    mutationFn: async (watcher: { userId: string; name: string; email?: string }) => {
+      const response = await fetch(
+        `/api/ownership/${entityType}/${entityId}/watchers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(watcher),
+        }
+      );
+      if (!response.ok) throw new Error("Failed to add watcher");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/ownership", entityType, entityId],
+      });
+      toast({
+        title: "Watcher Added",
+        description: "User will now receive notifications for this document",
+      });
+      setIsAddWatcherDialogOpen(false);
+      setSelectedUserId("");
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeWatcherMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch(
+        `/api/ownership/${entityType}/${entityId}/watchers/${userId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      if (!response.ok) throw new Error("Failed to remove watcher");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/ownership", entityType, entityId],
+      });
+      toast({
+        title: "Watcher Removed",
+        description: "User will no longer receive notifications",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const isOwner = ownership?.ownerUserId === currentUserId;
+  const isDelegate = ownership?.delegateUserId === currentUserId;
+  const isWatcher = ownership?.watchers?.some((w) => w.userId === currentUserId);
+  const canManage = isOwner || isDelegate;
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  const filteredUsers = availableUsers.filter(
+    (user) =>
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleClaimOwnership = () => {
+    setOwnershipMutation.mutate({
+      ownerUserId: currentUserId,
+      ownerName: currentUserName,
+      ownerEmail: currentUserEmail,
+      watchers: [],
+    });
+  };
+
+  const handleToggleWatch = () => {
+    if (isWatcher) {
+      removeWatcherMutation.mutate(currentUserId);
+    } else {
+      addWatcherMutation.mutate({
+        userId: currentUserId,
+        name: currentUserName,
+        email: currentUserEmail,
+      });
+    }
+  };
+
+  if (isLoading) {
+    return compact ? (
+      <div className="animate-pulse h-8 w-32 bg-muted rounded"></div>
+    ) : (
+      <Card>
+        <CardContent className="py-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2" data-testid="ownership-compact">
+        {ownership ? (
+          <>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8" data-testid="button-owner-info">
+                  <Avatar className="h-6 w-6 mr-2">
+                    <AvatarFallback className="text-xs">
+                      {getInitials(ownership.ownerName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm">{ownership.ownerName}</span>
+                  {isOwner && <Crown className="h-3 w-3 ml-1 text-yellow-500" />}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Owner</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        {getInitials(ownership.ownerName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{ownership.ownerName}</p>
+                      {ownership.ownerEmail && (
+                        <p className="text-xs text-muted-foreground">
+                          {ownership.ownerEmail}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {ownership.watchers && ownership.watchers.length > 0 && (
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-muted-foreground mb-1">
+                        {ownership.watchers.length} watcher(s)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleToggleWatch}
+              title={isWatcher ? "Stop watching" : "Watch this document"}
+              data-testid="button-toggle-watch"
+            >
+              {isWatcher ? (
+                <Bell className="h-4 w-4 text-primary" />
+              ) : (
+                <BellOff className="h-4 w-4 text-muted-foreground" />
+              )}
+            </Button>
+          </>
+        ) : (
+          <Button variant="outline" size="sm" onClick={handleClaimOwnership} data-testid="button-claim-ownership">
+            <UserPlus className="h-4 w-4 mr-2" />
+            Claim Ownership
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Document Ownership
+        </CardTitle>
+        <CardDescription>
+          Manage ownership and notifications for {entityName || "this document"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <Label className="flex items-center gap-2">
+              <Crown className="h-4 w-4 text-yellow-500" />
+              Owner
+            </Label>
+            {canManage && ownership && (
+              <Dialog
+                open={isTransferDialogOpen}
+                onOpenChange={setIsTransferDialogOpen}
+              >
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm" data-testid="button-transfer-ownership">
+                    <ArrowRightLeft className="h-4 w-4 mr-1" />
+                    Transfer
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Transfer Ownership</DialogTitle>
+                    <DialogDescription>
+                      Select a new owner for this document. You will lose
+                      management rights unless designated as delegate.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Search Users</Label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          placeholder="Search by name or email..."
+                          className="pl-9"
+                          data-testid="input-search-users"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {filteredUsers.map((user) => (
+                        <button
+                          key={user.id}
+                          onClick={() => setSelectedUserId(user.id)}
+                          className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors ${
+                            selectedUserId === user.id
+                              ? "bg-primary/10 border border-primary"
+                              : "hover-elevate"
+                          }`}
+                          data-testid={`user-option-${user.id}`}
+                        >
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback>
+                              {getInitials(user.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {user.name}
+                            </p>
+                            {user.email && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {user.email}
+                              </p>
+                            )}
+                          </div>
+                          {selectedUserId === user.id && (
+                            <Check className="h-4 w-4 text-primary" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsTransferDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        const user = availableUsers.find(
+                          (u) => u.id === selectedUserId
+                        );
+                        if (user) {
+                          setOwnershipMutation.mutate({
+                            ownerUserId: user.id,
+                            ownerName: user.name,
+                            ownerEmail: user.email,
+                          });
+                        }
+                      }}
+                      disabled={!selectedUserId || setOwnershipMutation.isPending}
+                      data-testid="button-confirm-transfer"
+                    >
+                      Transfer Ownership
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+
+          {ownership ? (
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>{getInitials(ownership.ownerName)}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{ownership.ownerName}</p>
+                  {isOwner && (
+                    <Badge variant="outline" className="text-xs">
+                      You
+                    </Badge>
+                  )}
+                </div>
+                {ownership.ownerEmail && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Mail className="h-3 w-3" />
+                    {ownership.ownerEmail}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 border-2 border-dashed rounded-lg text-center">
+              <User className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mb-2">
+                No owner assigned
+              </p>
+              <Button size="sm" onClick={handleClaimOwnership} data-testid="button-claim-ownership">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Claim Ownership
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {ownership && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <Label className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" />
+                Delegate
+              </Label>
+              {canManage && (
+                <Dialog
+                  open={isDelegateDialogOpen}
+                  onOpenChange={setIsDelegateDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" data-testid="button-assign-delegate">
+                      {ownership.delegateUserId ? (
+                        <>
+                          <ArrowRightLeft className="h-4 w-4 mr-1" />
+                          Change
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="h-4 w-4 mr-1" />
+                          Assign
+                        </>
+                      )}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Assign Delegate</DialogTitle>
+                      <DialogDescription>
+                        A delegate can manage this document on behalf of the owner.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <Select
+                        value={selectedUserId}
+                        onValueChange={setSelectedUserId}
+                      >
+                        <SelectTrigger data-testid="select-delegate">
+                          <SelectValue placeholder="Select a delegate" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {availableUsers
+                            .filter((u) => u.id !== ownership.ownerUserId)
+                            .map((user) => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsDelegateDialogOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const user = availableUsers.find(
+                            (u) => u.id === selectedUserId
+                          );
+                          setOwnershipMutation.mutate({
+                            delegateUserId: selectedUserId === "none" ? undefined : selectedUserId,
+                            delegateName: user?.name,
+                          });
+                        }}
+                        disabled={setOwnershipMutation.isPending}
+                        data-testid="button-confirm-delegate"
+                      >
+                        {ownership.delegateUserId ? "Update" : "Assign"} Delegate
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+
+            {ownership.delegateUserId ? (
+              <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>
+                    {getInitials(ownership.delegateName || "")}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{ownership.delegateName}</p>
+                    {isDelegate && (
+                      <Badge variant="outline" className="text-xs">
+                        You
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                {canManage && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      setOwnershipMutation.mutate({
+                        delegateUserId: undefined,
+                        delegateName: undefined,
+                      })
+                    }
+                    data-testid="button-remove-delegate"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                No delegate assigned
+              </p>
+            )}
+          </div>
+        )}
+
+        {ownership && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <Label className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-muted-foreground" />
+                Watchers ({ownership.watchers?.length || 0})
+              </Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleToggleWatch}
+                  data-testid="button-toggle-watch-full"
+                >
+                  {isWatcher ? (
+                    <>
+                      <BellOff className="h-4 w-4 mr-1" />
+                      Unwatch
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="h-4 w-4 mr-1" />
+                      Watch
+                    </>
+                  )}
+                </Button>
+                {canManage && (
+                  <Dialog
+                    open={isAddWatcherDialogOpen}
+                    onOpenChange={setIsAddWatcherDialogOpen}
+                  >
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="sm" data-testid="button-add-watcher">
+                        <UserPlus className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add Watcher</DialogTitle>
+                        <DialogDescription>
+                          Watchers receive notifications about changes to this document.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <Select
+                          value={selectedUserId}
+                          onValueChange={setSelectedUserId}
+                        >
+                          <SelectTrigger data-testid="select-watcher">
+                            <SelectValue placeholder="Select a user" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableUsers
+                              .filter(
+                                (u) =>
+                                  !ownership.watchers?.some((w) => w.userId === u.id)
+                              )
+                              .map((user) => (
+                                <SelectItem key={user.id} value={user.id}>
+                                  {user.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsAddWatcherDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const user = availableUsers.find(
+                              (u) => u.id === selectedUserId
+                            );
+                            if (user) {
+                              addWatcherMutation.mutate({
+                                userId: user.id,
+                                name: user.name,
+                                email: user.email,
+                              });
+                            }
+                          }}
+                          disabled={!selectedUserId || addWatcherMutation.isPending}
+                          data-testid="button-confirm-add-watcher"
+                        >
+                          Add Watcher
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            </div>
+
+            {ownership.watchers && ownership.watchers.length > 0 ? (
+              <div className="space-y-2">
+                {ownership.watchers.map((watcher) => (
+                  <div
+                    key={watcher.userId}
+                    className="flex items-center gap-3 p-2 bg-muted rounded-lg"
+                    data-testid={`watcher-${watcher.userId}`}
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>{getInitials(watcher.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{watcher.name}</p>
+                      {watcher.email && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {watcher.email}
+                        </p>
+                      )}
+                    </div>
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeWatcherMutation.mutate(watcher.userId)}
+                        data-testid={`button-remove-watcher-${watcher.userId}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                No watchers
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function OwnerBadge({
+  ownerName,
+  isCurrentUser,
+}: {
+  ownerName: string;
+  isCurrentUser?: boolean;
+}) {
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Avatar className="h-6 w-6">
+        <AvatarFallback className="text-xs">{getInitials(ownerName)}</AvatarFallback>
+      </Avatar>
+      <span className="text-sm">{ownerName}</span>
+      {isCurrentUser && <Crown className="h-3 w-3 text-yellow-500" />}
+    </div>
+  );
+}
