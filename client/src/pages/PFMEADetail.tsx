@@ -84,6 +84,22 @@ import {
 } from "lucide-react";
 import type { Part, PFMEA, PFMEARow, InsertPFMEARow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
+import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
+import { SignatureStatusBadge } from "@/components/SignaturePanel";
+import { OwnershipPanel } from "@/components/OwnershipPanel";
+
+const CURRENT_USER = {
+  id: "user-001",
+  name: "John Engineer",
+  email: "john@example.com",
+  role: "quality_manager",
+};
+
+const AVAILABLE_USERS = [
+  { id: "user-001", name: "John Engineer", email: "john@example.com" },
+  { id: "user-002", name: "Jane Quality", email: "jane@example.com" },
+  { id: "user-003", name: "Bob Process", email: "bob@example.com" },
+];
 
 // Types
 interface PFMEAWithDetails extends PFMEA {
@@ -998,6 +1014,46 @@ export default function PFMEADetail() {
           }}
         />
       </div>
+
+      {/* Governance Section */}
+      <Separator className="my-8" />
+      
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
+        <h2 className="text-xl font-semibold">Document Governance</h2>
+        <div className="flex items-center gap-4">
+          <OwnershipPanel
+            entityType="pfmea"
+            entityId={pfmea.id}
+            currentUserId={CURRENT_USER.id}
+            currentUserName={CURRENT_USER.name}
+            currentUserEmail={CURRENT_USER.email}
+            compact
+          />
+          <SignatureStatusBadge
+            entityType="pfmea"
+            entityId={pfmea.id}
+          />
+        </div>
+      </div>
+
+      <GovernanceTabPanel
+        entityType="pfmea"
+        entityId={pfmea.id}
+        entityName={`PFMEA - ${pfmea.docNo || pfmea.id}`}
+        currentRev={pfmea.rev}
+        currentStatus={pfmea.status}
+        currentUserId={CURRENT_USER.id}
+        currentUserName={CURRENT_USER.name}
+        currentUserEmail={CURRENT_USER.email}
+        currentUserRole={CURRENT_USER.role}
+        availableUsers={AVAILABLE_USERS}
+        onRevisionCreated={(newId) => {
+          console.log("New revision created:", newId);
+        }}
+        onApprovalComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/pfmeas"] });
+        }}
+      />
 
       {/* Row Editor Dialog */}
       <RowEditorDialog
