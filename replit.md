@@ -25,8 +25,17 @@ The application uses a modern web stack:
 - **Standards Compliance**: Adheres to AIAG-VDA 2019 7-step FMEA methodology and IATF 16949 requirements for customer-specific requirements, special characteristics, and change management.
 
 **Database Schema Overview**:
-- **Core Entities**: `process_def`, `process_step`, `fmea_template_row`, `control_template_row`, `part`, `pfmea`, `control_plan`.
+- **Core Entities**: `process_def`, `process_step`, `fmea_template_row`, `control_template_row`, `part`, `pfmea`, `control_plan`, `pfd`, `pfd_step`.
 - **Supporting Entities**: `rating_scale`, `gage_library`, `calibration_link`, `equipment_library`, `equipment_error_proofing`, `equipment_control_methods`.
+- **Governance Entities**: `audit_log`, `signature`, `approval_matrix`, `change_package`, `change_package_item`, `change_package_affected_part`, `training_ack`, `ownership`.
+- **Library Entities**: `failure_modes_library`, `controls_library`, `control_pairings`, `fmea_template_catalog_link`.
+
+**Recent Schema Updates** (Dec 2024):
+- Added Process Flow Diagram (PFD) tables for visual process documentation
+- Extended Part table with mold/tooling info and CSR notes
+- Extended PFMEA with document header fields (number, key contact, team)
+- Extended PFMEA Row with action tracking fields (recommended action, responsibility, target date, post-action ratings)
+- Added subprocess support in process steps (step_type, parent_step_id, subprocess_ref_id)
 
 **API Endpoints**: The system exposes RESTful APIs for managing Parts, Processes, PFMEA, Control Plans, and Equipment Library, supporting full CRUD operations for these entities and their related sub-entities.
 

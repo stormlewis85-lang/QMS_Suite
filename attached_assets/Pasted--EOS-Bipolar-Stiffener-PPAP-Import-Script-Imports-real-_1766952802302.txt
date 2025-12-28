@@ -1,0 +1,588 @@
+/**
+ * EOS Bipolar Stiffener PPAP Import Script
+ * 
+ * Imports real production data from EOS_Bipolar_Stiffener_PPAP_Docs_v14.xlsx
+ * into the QMS database.
+ * 
+ * SETUP:
+ * 1. npm install xlsx
+ * 2. Copy this file to your Replit project as: server/import-eos-ppap.ts
+ * 3. Run: npx tsx server/import-eos-ppap.ts
+ */
+
+import * as XLSX from 'xlsx';
+import { db } from './db';
+import * as schema from '@shared/schema';
+import { eq } from 'drizzle-orm';
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+// Path to Excel file - adjust if different location in your Replit
+const EXCEL_FILE = './attached_assets/EOS_Bipolar_Stiffener_PPAP_Docs_v14.xlsx';
+const SEED_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function cleanText(val: any): string | null {
+  if (val === undefined || val === null || val === '') return null;
+  return String(val).trim();
+}
+
+function cleanNumber(val: any): number | null {
+  if (val === undefined || val === null || val === '') return null;
+  const num = Number(val);
+  return isNaN(num) ? null : num;
+}
+
+function parseActionStatus(recommended: string | null, actionsTaken: string | null): 'none' | 'open' | 'in_progress' | 'complete' {
+  if (!recommended) return 'none';
+  const rec = recommended.toUpperCase();
+  if (rec.includes('PROCESSED OUT') || rec.includes('COMPLETE')) return 'complete';
+  if (rec.includes('IN PROGRESS')) return 'in_progress';
+  if (actionsTaken && actionsTaken.trim()) return 'in_progress';
+  return 'open';
+}
+
+function mapSymbol(symbolText: string | null): string | null {
+  if (!symbolText) return null;
+  if (symbolText.includes('◇') || symbolText.toLowerCase().includes('inspection')) return '◇';
+  if (symbolText.includes('▽') || symbolText.toLowerCase().includes('storage')) return '▽';
+  if (symbolText.includes('→') || symbolText.toLowerCase().includes('transport')) return '→';
+  if (symbolText.includes('★') || symbolText.toLowerCase().includes('cqt')) return '★';
+  return '○';
+}
+
+function mapCsrSymbol(classVal: string | null): string | null {
+  if (!classVal) return null;
+  const upper = classVal.toUpperCase();
+  if (upper === 'CQT' || upper === 'S') return 'Ⓢ';
+  if (upper === 'C') return 'ⓒ';
+  if (upper === 'SC') return '◆';
+  return null;
+}
+
+function calculateAP(severity: number, occurrence: number, detection: number): string {
+  if (severity >= 9) return 'H';
+  if (severity >= 7 && (occurrence >= 7 || detection >= 7)) return 'H';
+  if (detection >= 9) return 'H';
+  if (severity >= 5 && (occurrence >= 7 || detection >= 7)) return 'M';
+  if (severity >= 7 && occurrence >= 4 && detection >= 4) return 'M';
+  return 'L';
+}
+
+// ============================================================================
+// MAIN IMPORT FUNCTION
+// ============================================================================
+
+async function importEosPpap() {
+  console.log('🚀 Starting EOS PPAP Import...\n');
+
+  // Load workbook
+  console.log('📂 Loading Excel file...');
+  const workbook = XLSX.readFile(EXCEL_FILE);
+  console.log('   Sheets found:', workbook.SheetNames.join(', '));
+  
+  // ============================================================================
+  // 1. PARSE PROCESS FLOW SHEET
+  // ============================================================================
+  console.log('\n📋 Parsing Process Flow...');
+  
+  const pfSheet = workbook.Sheets['11_Process Flow'];
+  const pfData = XLSX.utils.sheet_to_json(pfSheet, { header: 1 }) as any[][];
+  
+  // Extract header info (rows 0-7)
+  const pfdHeader = {
+    customer: cleanText(pfData[2]?.[1]) || 'EOS Energy',
+    mold: cleanText(pfData[2]?.[5]) || 'Cells 5-8 (Cav 33-64)',
+    partName: cleanText(pfData[3]?.[1]) || 'Bipolar Stiffener',
+    partRevLevel: cleanText(pfData[3]?.[5]) || 'A',
+    preparedBy: cleanText(pfData[4]?.[1]) || 'S. Lewis',
+    equipment: cleanText(pfData[6]?.[1]) || '',
+    revDate: cleanText(pfData[5]?.[5]) || '2024-12-22',
+  };
+  
+  // Parse steps (data starts at row 9)
+  const processSteps: any[] = [];
+  for (let i = 9; i < pfData.length; i++) {
+    const row = pfData[i];
+    const stepNum = cleanNumber(row[0]);
+    if (!stepNum) continue;
+    
+    processSteps.push({
+      seq: stepNum,
+      name: cleanText(row[2]) || `Step ${stepNum}`,
+      area: 'Production',
+      symbol: mapSymbol(cleanText(row[3])),
+      keyInputs: cleanText(row[4]),
+      keyOutputs: cleanText(row[5]),
+      controlMethod: cleanText(row[6]),
+    });
+  }
+  
+  console.log(`   ✓ Found ${processSteps.length} process steps`);
+
+  // ============================================================================
+  // 2. PARSE PFMEA SHEET
+  // ============================================================================
+  console.log('\n📋 Parsing PFMEA...');
+  
+  const fmeaSheet = workbook.Sheets['12_PFMEA'];
+  const fmeaData = XLSX.utils.sheet_to_json(fmeaSheet, { header: 1 }) as any[][];
+  
+  // Extract header info
+  const pfmeaHeader = {
+    pfmeaNumber: cleanText(fmeaData[2]?.[2]) || 'EOS-PFMEA-001',
+    keyContact: cleanText(fmeaData[2]?.[8]) || '[Name]',
+    preparedBy: cleanText(fmeaData[4]?.[1]) || 'S. Lewis',
+    pfmeaTeam: cleanText(fmeaData[4]?.[5]) || 'S. Lewis',
+    origDate: '2024-12-22',
+    revisionDate: '2024-12-22',
+  };
+  
+  // Parse PFMEA rows (data starts at row 9)
+  const fmeaRows: any[] = [];
+  for (let i = 9; i < fmeaData.length; i++) {
+    const row = fmeaData[i];
+    const processNo = cleanNumber(row[0]);
+    const failureMode = cleanText(row[2]);
+    if (!processNo || !failureMode) continue;
+    
+    const severity = cleanNumber(row[4]) || 1;
+    const occurrence = cleanNumber(row[8]) || 1;
+    const detection = cleanNumber(row[10]) || 1;
+    const classVal = cleanText(row[5]);
+    const ap = calculateAP(severity, occurrence, detection);
+    
+    const recommendedAction = cleanText(row[12]);
+    const actionsTaken = cleanText(row[15]);
+    
+    fmeaRows.push({
+      processNo,
+      processFunction: cleanText(row[1]) || '',
+      failureMode,
+      effect: cleanText(row[3]) || '',
+      severity,
+      classColumn: classVal,
+      cause: cleanText(row[6]) || '',
+      preventionControls: cleanText(row[7]) || '',
+      occurrence,
+      detectionControls: cleanText(row[9]) || '',
+      detection,
+      ap,
+      specialFlag: classVal === 'CQT',
+      csrSymbol: mapCsrSymbol(classVal),
+      recommendedAction,
+      responsibility: cleanText(row[13]),
+      targetDate: cleanText(row[14]),
+      actionsTaken,
+      actionStatus: parseActionStatus(recommendedAction, actionsTaken),
+      postActionSeverity: cleanNumber(row[16]),
+      postActionOccurrence: cleanNumber(row[17]),
+      postActionDetection: cleanNumber(row[18]),
+    });
+  }
+  
+  console.log(`   ✓ Found ${fmeaRows.length} PFMEA rows`);
+  console.log(`   ✓ CQT (Critical): ${fmeaRows.filter(r => r.classColumn === 'CQT').length}`);
+  console.log(`   ✓ With Actions: ${fmeaRows.filter(r => r.actionStatus !== 'none').length}`);
+
+  // ============================================================================
+  // 3. PARSE CONTROL PLAN SHEET
+  // ============================================================================
+  console.log('\n📋 Parsing Control Plan...');
+  
+  const cpSheet = workbook.Sheets['13_Control Plan'];
+  const cpData = XLSX.utils.sheet_to_json(cpSheet, { header: 1 }) as any[][];
+  
+  // Extract header info
+  const cpHeader = {
+    controlPlanNumber: cleanText(cpData[2]?.[1]) || 'EOS-CP-001',
+    customer: cleanText(cpData[2]?.[5]) || 'EOS Energy',
+    keyContact: cleanText(cpData[3]?.[5]) || '[Name]',
+    preparedBy: cleanText(cpData[4]?.[1]) || 'S. Lewis',
+    phase: cleanText(cpData[5]?.[1]) || 'Production',
+    moldCells: cleanText(cpData[5]?.[5]) || 'Cells 5-8 (Cav 33-64)',
+  };
+  
+  // Parse Control Plan rows (data starts at row 9)
+  const cpRows: any[] = [];
+  let lastProcessNo: number | null = null;
+  let lastProcessName: string | null = null;
+  
+  for (let i = 9; i < cpData.length; i++) {
+    const row = cpData[i];
+    const charNo = cleanNumber(row[3]);
+    const characteristic = cleanText(row[4]);
+    if (!charNo || !characteristic) continue;
+    
+    const processNo = cleanNumber(row[0]) || lastProcessNo;
+    const processName = cleanText(row[1]) || lastProcessName;
+    if (processNo) lastProcessNo = processNo;
+    if (processName) lastProcessName = processName;
+    
+    const classVal = cleanText(row[5]);
+    
+    cpRows.push({
+      processNo,
+      processName,
+      machineDevice: cleanText(row[2]),
+      charId: `C-${String(charNo).padStart(3, '0')}`,
+      characteristicName: characteristic,
+      classColumn: classVal,
+      specialFlag: classVal === 'CQT',
+      csrSymbol: mapCsrSymbol(classVal),
+      specification: cleanText(row[6]),
+      measurementSystem: cleanText(row[7]),
+      sampleSize: cleanText(row[8]),
+      frequency: cleanText(row[9]),
+      controlMethod: cleanText(row[10]),
+      reactionPlan: cleanText(row[11]),
+      responsibility: cleanText(row[12]),
+    });
+  }
+  
+  console.log(`   ✓ Found ${cpRows.length} Control Plan characteristics`);
+  console.log(`   ✓ CQT (Critical): ${cpRows.filter(r => r.classColumn === 'CQT').length}`);
+
+  // ============================================================================
+  // 4. INSERT INTO DATABASE
+  // ============================================================================
+  console.log('\n💾 Inserting into database...');
+
+  // 4.1 Create Part
+  console.log('   Creating Part...');
+  const [newPart] = await db.insert(schema.part).values({
+    customer: pfdHeader.customer,
+    program: 'EOS',
+    partNumber: 'EOS-BIPOLAR-STIFFENER-001',
+    partName: pfdHeader.partName,
+    plant: 'Fraser',
+    partRevLevel: pfdHeader.partRevLevel,
+    mold: pfdHeader.mold,
+    primaryEquipment: pfdHeader.equipment,
+    csrNotes: 'CQT characteristics require Cpk ≥ 1.67. Critical: Brittleness, Seal Height, Flatness.',
+  }).returning();
+  console.log(`   ✓ Part created: ${newPart.id}`);
+
+  // 4.2 Create Process Definition
+  console.log('   Creating Process Definition...');
+  const [newProcessDef] = await db.insert(schema.processDef).values({
+    name: 'EOS Bipolar Stiffener - Injection Molding + Overmold',
+    rev: '1.0.0',
+    status: 'effective',
+    effectiveFrom: new Date('2024-12-22'),
+    createdBy: SEED_USER_ID,
+    changeNote: 'Imported from EOS PPAP v14',
+  }).returning();
+  console.log(`   ✓ Process Definition created: ${newProcessDef.id}`);
+
+  // 4.3 Create Process Steps
+  console.log('   Creating Process Steps...');
+  const stepIdMap = new Map<number, string>();
+  
+  for (const step of processSteps) {
+    const [newStep] = await db.insert(schema.processStep).values({
+      processDefId: newProcessDef.id,
+      seq: step.seq,
+      name: step.name,
+      area: step.area,
+      symbol: step.symbol,
+      keyInputs: step.keyInputs,
+      keyOutputs: step.keyOutputs,
+      controlMethod: step.controlMethod,
+    }).returning();
+    stepIdMap.set(step.seq, newStep.id);
+  }
+  console.log(`   ✓ ${processSteps.length} Process Steps created`);
+
+  // 4.4 Create FMEA Template Rows
+  console.log('   Creating FMEA Template Rows...');
+  const fmeaTemplateIdMap = new Map<string, string>();
+  
+  let fmeaIndex = 0;
+  for (const row of fmeaRows) {
+    const stepId = stepIdMap.get(row.processNo);
+    if (!stepId) {
+      console.warn(`   ⚠ No step found for Process No ${row.processNo}`);
+      continue;
+    }
+    
+    const [newRow] = await db.insert(schema.fmeaTemplateRow).values({
+      processDefId: newProcessDef.id,
+      stepId,
+      function: row.processFunction,
+      requirement: row.effect,
+      failureMode: row.failureMode,
+      effect: row.effect,
+      severity: row.severity,
+      cause: row.cause,
+      occurrence: row.occurrence,
+      preventionControls: row.preventionControls ? [row.preventionControls] : [],
+      detectionControls: row.detectionControls ? [row.detectionControls] : [],
+      detection: row.detection,
+      ap: row.ap,
+      specialFlag: row.specialFlag,
+      csrSymbol: row.csrSymbol,
+      classColumn: row.classColumn,
+      defaultResponsibility: row.responsibility,
+    }).returning();
+    
+    fmeaTemplateIdMap.set(`${row.processNo}-${fmeaIndex}`, newRow.id);
+    fmeaIndex++;
+  }
+  console.log(`   ✓ ${fmeaRows.length} FMEA Template Rows created`);
+
+  // 4.5 Create Control Template Rows
+  console.log('   Creating Control Template Rows...');
+  
+  for (const row of cpRows) {
+    await db.insert(schema.controlTemplateRow).values({
+      processDefId: newProcessDef.id,
+      characteristicName: row.characteristicName,
+      charId: row.charId,
+      type: row.machineDevice ? 'Process' : 'Product',
+      classColumn: row.classColumn,
+      specification: row.specification,
+      specialFlag: row.specialFlag,
+      csrSymbol: row.csrSymbol,
+      measurementSystem: row.measurementSystem,
+      defaultSampleSize: row.sampleSize,
+      defaultFrequency: row.frequency,
+      controlMethod: row.controlMethod,
+      reactionPlan: row.reactionPlan,
+      defaultResponsibility: row.responsibility,
+    });
+  }
+  console.log(`   ✓ ${cpRows.length} Control Template Rows created`);
+
+  // 4.6 Create Part-Process Mapping
+  console.log('   Creating Part-Process Mapping...');
+  await db.insert(schema.partProcessMap).values({
+    partId: newPart.id,
+    processDefId: newProcessDef.id,
+    processRev: newProcessDef.rev,
+    sequence: 1,
+    assumptions: 'Full PPAP documentation imported from EOS v14',
+  });
+  console.log(`   ✓ Part-Process Mapping created`);
+
+  // 4.7 Create PFD (Part-Level Instance)
+  console.log('   Creating PFD Document...');
+  const mermaidDiagram = generateMermaid(processSteps);
+  
+  const [newPfd] = await db.insert(schema.pfd).values({
+    partId: newPart.id,
+    rev: '1.0.0',
+    status: 'effective',
+    effectiveFrom: new Date('2024-12-22'),
+    pfdNumber: 'EOS-PFD-001',
+    preparedBy: pfdHeader.preparedBy,
+    primaryEquipment: pfdHeader.equipment,
+    moldCells: pfdHeader.mold,
+    mermaidDiagram,
+    diagramJson: { steps: processSteps },
+    docNo: 'EOS-PFD-001',
+  }).returning();
+  console.log(`   ✓ PFD created: ${newPfd.id}`);
+
+  // 4.8 Create PFD Steps
+  console.log('   Creating PFD Steps...');
+  for (const step of processSteps) {
+    const sourceStepId = stepIdMap.get(step.seq);
+    await db.insert(schema.pfdStep).values({
+      pfdId: newPfd.id,
+      sourceStepId,
+      seq: step.seq,
+      processNo: String(step.seq),
+      name: step.name,
+      area: step.area,
+      symbol: step.symbol,
+      keyInputs: step.keyInputs,
+      keyOutputs: step.keyOutputs,
+      controlMethod: step.controlMethod,
+    });
+  }
+  console.log(`   ✓ ${processSteps.length} PFD Steps created`);
+
+  // 4.9 Create PFMEA (Part-Level Instance)
+  console.log('   Creating PFMEA Document...');
+  const [newPfmea] = await db.insert(schema.pfmea).values({
+    partId: newPart.id,
+    rev: '1.0.0',
+    status: 'effective',
+    basis: 'AIAG-VDA 2019',
+    effectiveFrom: new Date('2024-12-22'),
+    pfmeaNumber: pfmeaHeader.pfmeaNumber,
+    keyContact: pfmeaHeader.keyContact,
+    preparedBy: pfmeaHeader.preparedBy,
+    pfmeaTeam: [pfmeaHeader.pfmeaTeam],
+    origDate: new Date(pfmeaHeader.origDate),
+    revisionDate: new Date(pfmeaHeader.revisionDate),
+    docNo: pfmeaHeader.pfmeaNumber,
+  }).returning();
+  console.log(`   ✓ PFMEA created: ${newPfmea.id}`);
+
+  // 4.10 Create PFMEA Rows
+  console.log('   Creating PFMEA Rows...');
+  let rowIndex = 0;
+  for (const row of fmeaRows) {
+    const templateRowId = fmeaTemplateIdMap.get(`${row.processNo}-${rowIndex}`);
+    
+    let postActionAp: string | null = null;
+    if (row.postActionSeverity && row.postActionOccurrence && row.postActionDetection) {
+      postActionAp = calculateAP(row.postActionSeverity, row.postActionOccurrence, row.postActionDetection);
+    }
+    
+    await db.insert(schema.pfmeaRow).values({
+      pfmeaId: newPfmea.id,
+      parentTemplateRowId: templateRowId,
+      stepRef: String(row.processNo),
+      function: row.processFunction,
+      requirement: row.effect,
+      failureMode: row.failureMode,
+      effect: row.effect,
+      severity: row.severity,
+      cause: row.cause,
+      occurrence: row.occurrence,
+      preventionControls: row.preventionControls ? [row.preventionControls] : [],
+      detectionControls: row.detectionControls ? [row.detectionControls] : [],
+      detection: row.detection,
+      ap: row.ap,
+      specialFlag: row.specialFlag,
+      csrSymbol: row.csrSymbol,
+      classColumn: row.classColumn,
+      recommendedAction: row.recommendedAction,
+      responsibility: row.responsibility,
+      targetDate: row.targetDate ? new Date(row.targetDate) : null,
+      actionsTaken: row.actionsTaken,
+      actionStatus: row.actionStatus,
+      postActionSeverity: row.postActionSeverity,
+      postActionOccurrence: row.postActionOccurrence,
+      postActionDetection: row.postActionDetection,
+      postActionAp,
+      actionCompletedAt: row.actionStatus === 'complete' ? new Date() : null,
+    });
+    rowIndex++;
+  }
+  console.log(`   ✓ ${fmeaRows.length} PFMEA Rows created`);
+
+  // 4.11 Create Control Plan (Part-Level Instance)
+  console.log('   Creating Control Plan Document...');
+  const [newControlPlan] = await db.insert(schema.controlPlan).values({
+    partId: newPart.id,
+    rev: '1.0.0',
+    type: cpHeader.phase,
+    status: 'effective',
+    effectiveFrom: new Date('2024-12-22'),
+    controlPlanNumber: cpHeader.controlPlanNumber,
+    keyContact: cpHeader.keyContact,
+    preparedBy: cpHeader.preparedBy,
+    moldCells: cpHeader.moldCells,
+    customer: cpHeader.customer,
+    docNo: cpHeader.controlPlanNumber,
+  }).returning();
+  console.log(`   ✓ Control Plan created: ${newControlPlan.id}`);
+
+  // 4.12 Create Control Plan Rows
+  console.log('   Creating Control Plan Rows...');
+  for (const row of cpRows) {
+    await db.insert(schema.controlPlanRow).values({
+      controlPlanId: newControlPlan.id,
+      processNo: String(row.processNo),
+      processName: row.processName,
+      machineDevice: row.machineDevice,
+      charId: row.charId,
+      characteristicName: row.characteristicName,
+      type: row.machineDevice ? 'Process' : 'Product',
+      classColumn: row.classColumn,
+      specification: row.specification,
+      specialFlag: row.specialFlag,
+      csrSymbol: row.csrSymbol,
+      measurementSystem: row.measurementSystem,
+      sampleSize: row.sampleSize,
+      frequency: row.frequency,
+      controlMethod: row.controlMethod,
+      reactionPlan: row.reactionPlan,
+      responsibility: row.responsibility,
+    });
+  }
+  console.log(`   ✓ ${cpRows.length} Control Plan Rows created`);
+
+  // ============================================================================
+  // SUMMARY
+  // ============================================================================
+  console.log('\n' + '═'.repeat(60));
+  console.log('✅ EOS PPAP IMPORT COMPLETE!');
+  console.log('═'.repeat(60));
+  console.log('\nSummary:');
+  console.log('─'.repeat(60));
+  console.log(`Part:             ${newPart.partName} (${newPart.partNumber})`);
+  console.log(`Customer:         ${newPart.customer}`);
+  console.log(`Process:          ${newProcessDef.name}`);
+  console.log(`─`.repeat(60));
+  console.log(`Process Steps:    ${processSteps.length}`);
+  console.log(`PFMEA Rows:       ${fmeaRows.length}`);
+  console.log(`  └─ CQT:         ${fmeaRows.filter(r => r.classColumn === 'CQT').length}`);
+  console.log(`  └─ Actions:     ${fmeaRows.filter(r => r.actionStatus !== 'none').length}`);
+  console.log(`CP Chars:         ${cpRows.length}`);
+  console.log(`  └─ CQT:         ${cpRows.filter(r => r.classColumn === 'CQT').length}`);
+  console.log('─'.repeat(60));
+  console.log('\n📌 Record IDs:');
+  console.log(`  Part ID:         ${newPart.id}`);
+  console.log(`  Process Def ID:  ${newProcessDef.id}`);
+  console.log(`  PFD ID:          ${newPfd.id}`);
+  console.log(`  PFMEA ID:        ${newPfmea.id}`);
+  console.log(`  Control Plan ID: ${newControlPlan.id}`);
+  console.log('\n🎉 You can now view your EOS data in the Parts page!');
+}
+
+// ============================================================================
+// MERMAID GENERATOR
+// ============================================================================
+
+function generateMermaid(steps: any[]): string {
+  let mermaid = 'graph TD\n';
+  mermaid += '  Start([Start])\n';
+  
+  steps.forEach((step, idx) => {
+    const nodeId = `S${step.seq}`;
+    const label = `${step.seq}: ${step.name}`;
+    const shape = step.symbol === '◇' ? `{${label}}` : `[${label}]`;
+    
+    mermaid += `  ${nodeId}${shape}\n`;
+    
+    if (idx === 0) {
+      mermaid += `  Start --> ${nodeId}\n`;
+    } else {
+      const prevNodeId = `S${steps[idx - 1].seq}`;
+      mermaid += `  ${prevNodeId} --> ${nodeId}\n`;
+    }
+  });
+  
+  const lastNodeId = `S${steps[steps.length - 1].seq}`;
+  mermaid += `  ${lastNodeId} --> End([End])\n`;
+  
+  mermaid += '\n  %% Style critical steps\n';
+  mermaid += '  classDef critical fill:#fee,stroke:#f00,stroke-width:2px\n';
+  mermaid += '  classDef inspection fill:#eff,stroke:#0aa,stroke-width:2px\n';
+  
+  return mermaid;
+}
+
+// ============================================================================
+// RUN IMPORT
+// ============================================================================
+
+importEosPpap()
+  .then(() => {
+    console.log('\n✨ Done!');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('\n❌ Import failed:', error);
+    process.exit(1);
+  });

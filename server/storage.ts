@@ -648,8 +648,7 @@ class DatabaseStorage implements IStorage {
       conditions.push(
         or(
           ilike(failureModesLibrary.failureMode, `%${filters.search}%`),
-          ilike(failureModesLibrary.genericEffect, `%${filters.search}%`),
-          ilike(failureModesLibrary.genericCause, `%${filters.search}%`)
+          ilike(failureModesLibrary.genericEffect, `%${filters.search}%`)
         )
       );
     }
@@ -657,11 +656,11 @@ class DatabaseStorage implements IStorage {
     if (conditions.length > 0) {
       return await db.select().from(failureModesLibrary)
         .where(and(...conditions))
-        .orderBy(desc(failureModesLibrary.usageCount));
+        .orderBy(desc(failureModesLibrary.createdAt));
     }
     
     return await db.select().from(failureModesLibrary)
-      .orderBy(desc(failureModesLibrary.usageCount));
+      .orderBy(desc(failureModesLibrary.createdAt));
   }
 
   async getFailureModeById(id: string): Promise<FailureModesLibrary | undefined> {
@@ -690,8 +689,7 @@ class DatabaseStorage implements IStorage {
   async updateFailureModeLastUsed(id: string): Promise<void> {
     await db.update(failureModesLibrary)
       .set({ 
-        lastUsed: new Date(),
-        usageCount: sql`${failureModesLibrary.usageCount} + 1`
+        lastUsed: new Date()
       })
       .where(eq(failureModesLibrary.id, id));
   }
@@ -740,11 +738,11 @@ class DatabaseStorage implements IStorage {
     if (conditions.length > 0) {
       return await db.select().from(controlsLibrary)
         .where(and(...conditions))
-        .orderBy(desc(controlsLibrary.usageCount));
+        .orderBy(desc(controlsLibrary.createdAt));
     }
     
     return await db.select().from(controlsLibrary)
-      .orderBy(desc(controlsLibrary.usageCount));
+      .orderBy(desc(controlsLibrary.createdAt));
   }
 
   async getControlById(id: string): Promise<ControlsLibrary | undefined> {
@@ -773,8 +771,7 @@ class DatabaseStorage implements IStorage {
   async updateControlLastUsed(id: string): Promise<void> {
     await db.update(controlsLibrary)
       .set({ 
-        lastUsed: new Date(),
-        usageCount: sql`${controlsLibrary.usageCount} + 1`
+        lastUsed: new Date()
       })
       .where(eq(controlsLibrary.id, id));
   }
