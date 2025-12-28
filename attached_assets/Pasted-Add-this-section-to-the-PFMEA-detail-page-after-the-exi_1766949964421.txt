@@ -1,0 +1,70 @@
+Add this section to the PFMEA detail page (after the existing content, before closing tags):
+typescript// Add these imports at the top of PFMEA.tsx
+import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
+import { SignatureStatusBadge } from "@/components/SignaturePanel";
+import { OwnershipPanel } from "@/components/OwnershipPanel";
+import { Separator } from "@/components/ui/separator";
+
+// Mock current user - in production, get from auth context
+const CURRENT_USER = {
+  id: "user-001",
+  name: "John Engineer",
+  email: "john@example.com",
+  role: "quality_manager",
+};
+
+// Mock available users - in production, fetch from API
+const AVAILABLE_USERS = [
+  { id: "user-001", name: "John Engineer", email: "john@example.com" },
+  { id: "user-002", name: "Jane Quality", email: "jane@example.com" },
+  { id: "user-003", name: "Bob Process", email: "bob@example.com" },
+];
+
+// Add this inside your PFMEA detail component, after the PFMEA rows table:
+{/* Governance Section */}
+{selectedPfmea && (
+  <>
+    <Separator className="my-8" />
+    
+    {/* Header with status badges */}
+    <div className="flex items-center justify-between mb-6">
+      <h2 className="text-xl font-semibold">Document Governance</h2>
+      <div className="flex items-center gap-4">
+        <OwnershipPanel
+          entityType="pfmea"
+          entityId={selectedPfmea.id}
+          currentUserId={CURRENT_USER.id}
+          currentUserName={CURRENT_USER.name}
+          currentUserEmail={CURRENT_USER.email}
+          compact
+        />
+        <SignatureStatusBadge
+          entityType="pfmea"
+          entityId={selectedPfmea.id}
+        />
+      </div>
+    </div>
+
+    {/* Governance Tabs */}
+    <GovernanceTabPanel
+      entityType="pfmea"
+      entityId={selectedPfmea.id}
+      entityName={`PFMEA - ${selectedPfmea.docNo || selectedPfmea.id}`}
+      currentRev={selectedPfmea.rev}
+      currentStatus={selectedPfmea.status}
+      currentUserId={CURRENT_USER.id}
+      currentUserName={CURRENT_USER.name}
+      currentUserEmail={CURRENT_USER.email}
+      currentUserRole={CURRENT_USER.role}
+      availableUsers={AVAILABLE_USERS}
+      onRevisionCreated={(newId) => {
+        // Navigate to new revision or refresh
+        console.log("New revision created:", newId);
+      }}
+      onApprovalComplete={() => {
+        // Refresh PFMEA data
+        queryClient.invalidateQueries({ queryKey: ["/api/pfmeas"] });
+      }}
+    />
+  </>
+)}
