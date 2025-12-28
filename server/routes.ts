@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { runAutoReview, runControlPlanReview } from "./auto-review";
+import { runAllSeeds } from "./seed";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -27,6 +28,9 @@ import { z } from "zod";
 import { fromError } from "zod-validation-error";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Run seeds on startup
+  runAllSeeds().catch(console.error);
+
   // Parts API
   app.get("/api/parts", async (req, res) => {
     try {
