@@ -128,6 +128,13 @@ export interface IStorage {
   deleteControlTemplateRow(id: string): Promise<boolean>;
   duplicateControlTemplateRow(id: string): Promise<ControlTemplateRow | undefined>;
   
+  // PFD (Process Flow Diagrams)
+  getPFDsByPartId(partId: string): Promise<PFD[]>;
+  getPFDById(id: string): Promise<(PFD & { steps: PFDStep[] }) | undefined>;
+  createPFD(insertPFD: InsertPFD): Promise<PFD>;
+  createPFDStep(insertStep: InsertPFDStep): Promise<PFDStep>;
+  createPFDWithSteps(insertPFD: InsertPFD, steps: InsertPFDStep[]): Promise<PFD & { steps: PFDStep[] }>;
+
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
   getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined>;
@@ -1183,6 +1190,41 @@ class DatabaseStorage implements IStorage {
   computeContentHash(content: any): string {
     const json = JSON.stringify(content, Object.keys(content).sort());
     return crypto.createHash('sha256').update(json).digest('hex');
+  }
+
+  // ============================================
+  // PFD (Process Flow Diagrams)
+  // ============================================
+
+  async getPFDsByPartId(partId: string): Promise<PFD[]> {
+    return await db.select().from(pfd).where(eq(pfd.partId, partId)).orderBy(desc(pfd.createdAt));
+  }
+
+  async getPFDById(id: string): Promise<(PFD & { steps: PFDStep[] }) | undefined> {
+    const [pfdDoc] = await db.select().from(pfd).where(eq(pfd.id, id));
+    if (!pfdDoc) return undefined;
+    const steps = await db.select().from(pfdStep).where(eq(pfdStep.pfdId, id)).orderBy(pfdStep.sequence);
+    return { ...pfdDoc, steps };
+  }
+
+  async createPFD(insertPFD: InsertPFD): Promise<PFD> {
+    const [created] = await db.insert(pfd).values(insertPFD).returning();
+    return created;
+  }
+
+  async createPFDStep(insertStep: InsertPFDStep): Promise<PFDStep> {
+    const [created] = await db.insert(pfdStep).values(insertStep).returning();
+    return created;
+  }
+
+  async createPFDWithSteps(insertPFD: InsertPFD, steps: InsertPFDStep[]): Promise<PFD & { steps: PFDStep[] }> {
+    const createdPFD = await this.createPFD(insertPFD);
+    const createdSteps: PFDStep[] = [];
+    for (const step of steps) {
+      const createdStep = await this.createPFDStep({ ...step, pfdId: createdPFD.id });
+      createdSteps.push(createdStep);
+    }
+    return { ...createdPFD, steps: createdSteps };
   }
 }
 
