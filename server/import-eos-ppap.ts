@@ -10,7 +10,7 @@
  * 3. Run: npx tsx server/import-eos-ppap.ts
  */
 
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx';
 import { db } from './db';
 import * as schema from '@shared/schema';
 import { eq } from 'drizzle-orm';
@@ -20,7 +20,7 @@ import { eq } from 'drizzle-orm';
 // ============================================================================
 
 // Path to Excel file - adjust if different location in your Replit
-const EXCEL_FILE = './attached_assets/EOS_Bipolar_Stiffener_PPAP_Docs_v14.xlsx';
+const EXCEL_FILE = './attached_assets/EOS_Bipolar_Stiffener_PPAP_Docs_v14_1766953400297.xlsx';
 const SEED_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // ============================================================================
@@ -457,7 +457,7 @@ async function importEosPpap() {
       classColumn: row.classColumn,
       recommendedAction: row.recommendedAction,
       responsibility: row.responsibility,
-      targetDate: row.targetDate ? new Date(row.targetDate) : null,
+      targetDate: row.targetDate && !isNaN(new Date(row.targetDate).getTime()) ? new Date(row.targetDate) : null,
       actionsTaken: row.actionsTaken,
       actionStatus: row.actionStatus,
       postActionSeverity: row.postActionSeverity,
