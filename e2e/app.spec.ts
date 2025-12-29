@@ -86,9 +86,11 @@ test.describe('Parts CRUD', () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
   });
 
-  test('should navigate to part detail', async ({ page }) => {
+  test('should navigate to part detail via link', async ({ page }) => {
     await page.goto('/parts');
-    await page.locator('table tbody tr').first().click();
+    await page.waitForSelector('table tbody tr');
+    // Click the part number link in the first row (first cell contains a link)
+    await page.locator('table tbody tr').first().locator('a').first().click();
     await expect(page).toHaveURL(/\/parts\/[a-zA-Z0-9-]+/);
   });
 });
@@ -101,17 +103,16 @@ test.describe('Equipment Library', () => {
 
   test('should open add equipment dialog', async ({ page }) => {
     await page.goto('/equipment');
-    await page.getByRole('button', { name: /add|create|new/i }).first().click();
+    // Use the specific data-testid
+    await page.click('[data-testid="button-new-equipment"]');
     await expect(page.locator('[role="dialog"]')).toBeVisible();
   });
 
   test('should search equipment', async ({ page }) => {
     await page.goto('/equipment');
-    const searchInput = page.locator('input[placeholder*="Search"], input[type="search"]').first();
-    if (await searchInput.isVisible()) {
-      await searchInput.fill('Press');
-      await page.waitForTimeout(500);
-    }
+    const searchInput = page.locator('[data-testid="input-search-equipment"]');
+    await searchInput.fill('Press');
+    await page.waitForTimeout(500);
   });
 });
 
@@ -123,7 +124,7 @@ test.describe('Failure Modes Library', () => {
 
   test('should open add failure mode dialog', async ({ page }) => {
     await page.goto('/failure-modes');
-    await page.getByRole('button', { name: /add|create|new/i }).first().click();
+    await page.click('[data-testid="button-add-failure-mode"]');
     await expect(page.locator('[role="dialog"]')).toBeVisible();
   });
 });
@@ -149,9 +150,11 @@ test.describe('Process Library', () => {
     await expect(page.locator('table').first()).toBeVisible();
   });
 
-  test('should navigate to process detail', async ({ page }) => {
+  test('should navigate to process detail via link', async ({ page }) => {
     await page.goto('/processes');
-    await page.locator('table tbody tr').first().click();
+    await page.waitForSelector('table tbody tr');
+    // Click the process name link in the first row
+    await page.locator('table tbody tr').first().locator('a').first().click();
     await expect(page).toHaveURL(/\/processes\/[a-zA-Z0-9-]+/);
   });
 });
@@ -159,7 +162,9 @@ test.describe('Process Library', () => {
 test.describe('Document Generation', () => {
   test('should access part detail and see tabs', async ({ page }) => {
     await page.goto('/parts');
-    await page.locator('table tbody tr').first().click();
+    await page.waitForSelector('table tbody tr');
+    // Click the part number link
+    await page.locator('table tbody tr').first().locator('a').first().click();
     await page.waitForURL(/\/parts\/[a-zA-Z0-9-]+/);
     await expect(page.locator('[role="tablist"]').first()).toBeVisible();
   });
@@ -193,6 +198,11 @@ test.describe('API Health', () => {
 
   test('pfmeas API should respond', async ({ request }) => {
     const response = await request.get('/api/pfmeas');
+    expect(response.status()).toBe(200);
+  });
+
+  test('control-plans API should respond', async ({ request }) => {
+    const response = await request.get('/api/control-plans');
     expect(response.status()).toBe(200);
   });
 });
