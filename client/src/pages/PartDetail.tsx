@@ -868,7 +868,7 @@ export default function PartDetail() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setWizardOpen(true)}>
+        <Button onClick={() => setWizardOpen(true)} data-testid="button-generate-documents">
           <Wand2 className="h-4 w-4 mr-2" />
           Generate Documents
         </Button>

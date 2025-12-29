@@ -39,6 +39,16 @@ The application uses a modern web stack:
 
 **API Endpoints**: The system exposes RESTful APIs for managing Parts, Processes, PFMEA, Control Plans, and Equipment Library, supporting full CRUD operations for these entities and their related sub-entities.
 
+## Testing
+- **E2E Tests**: Playwright test suite with 31 tests covering:
+  - Navigation tests (sidebar navigation to all pages)
+  - Scrolling & sticky header tests
+  - CRUD operations (Parts, Equipment, Failure Modes, Controls, Processes)
+  - Document generation workflows
+  - API health checks for all endpoints
+- **Test Data Attributes**: Components use `data-testid` attributes for reliable selectors
+- **Run Tests**: `npx playwright test e2e/app.spec.ts`
+
 ## External Dependencies
 - **Database**: PostgreSQL (specifically Neon for cloud-hosted PostgreSQL).
 - **UI Frameworks**: `shadcn/ui`, Tailwind CSS, Radix UI.

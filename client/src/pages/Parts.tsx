@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Card,
   CardContent,
@@ -97,6 +97,21 @@ const PLANTS = [
   "Fremont",
   "Other",
 ];
+
+function ViewDetailsButton({ partId }: { partId: string }) {
+  const [, navigate] = useLocation();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      data-testid={`button-view-details-${partId}`}
+      onClick={() => navigate(`/parts/${partId}`)}
+    >
+      <Eye className="h-4 w-4 mr-1" />
+      View Details
+    </Button>
+  );
+}
 
 export default function PartsPage() {
   const { toast } = useToast();
@@ -425,18 +440,7 @@ export default function PartsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Link href={`/parts/${part.id}`}>
-                            <Wand2 className="h-4 w-4 mr-1" />
-                            Generate
-                            <ChevronRight className="h-4 w-4 ml-1" />
-                          </Link>
-                        </Button>
+                        <ViewDetailsButton partId={part.id} />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">

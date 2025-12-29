@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -273,6 +273,21 @@ function ProcessFormDialog({
   );
 }
 
+function ProcessViewDetailsButton({ processId }: { processId: string }) {
+  const [, navigate] = useLocation();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      data-testid={`button-view-details-${processId}`}
+      onClick={() => navigate(`/processes/${processId}`)}
+    >
+      <Eye className="mr-1 h-4 w-4" />
+      View Details
+    </Button>
+  );
+}
+
 // Main Processes page
 export default function Processes() {
   const { toast } = useToast();
@@ -466,19 +481,15 @@ export default function Processes() {
                       {new Date(process.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <Settings2 className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <Link href={`/processes/${process.id}`}>
-                            <DropdownMenuItem>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </DropdownMenuItem>
-                          </Link>
+                      <div className="flex items-center gap-1">
+                        <ProcessViewDetailsButton processId={process.id} />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Settings2 className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() => {
                               setEditingProcess(process);
@@ -501,7 +512,8 @@ export default function Processes() {
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
