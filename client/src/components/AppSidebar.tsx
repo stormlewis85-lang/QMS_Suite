@@ -1,4 +1,3 @@
-import { Home, Package, Layers, FileText, BookOpen, Settings2, Settings, ChevronRight, Library, Shield, GitPullRequest } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -12,92 +11,172 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import {
+  LayoutDashboard,
+  Package,
+  GitBranch,
+  FileWarning,
+  ClipboardList,
+  Wrench,
+  AlertTriangle,
+  Shield,
+  Settings,
+} from "lucide-react";
 
-const navigationItems = [
-  { title: "Dashboard", url: "/", icon: Home, testId: "nav-dashboard" },
-  { title: "Parts", url: "/parts", icon: Package, testId: "nav-parts" },
-  { title: "Processes", url: "/processes", icon: Layers, testId: "nav-processes" },
-  { title: "PFMEA", url: "/pfmea", icon: FileText, testId: "nav-pfmea" },
-  { title: "Control Plans", url: "/control-plans", icon: BookOpen, testId: "nav-control-plans" },
-  { title: "Equipment", url: "/equipment", icon: Settings2, testId: "nav-equipment" },
-  { title: "Failure Modes", url: "/failure-modes", icon: Library, testId: "nav-failure-modes" },
-  { title: "Controls Library", url: "/controls-library", icon: Shield, testId: "nav-controls-library" },
-  { title: "Change Packages", url: "/change-packages", icon: GitPullRequest, testId: "nav-change-packages" },
+const mainNavItems = [
+  {
+    title: "Dashboard",
+    url: "/",
+    icon: LayoutDashboard,
+    testId: "nav-dashboard",
+  },
+  {
+    title: "Parts",
+    url: "/parts",
+    icon: Package,
+    testId: "nav-parts",
+  },
+  {
+    title: "Processes",
+    url: "/processes",
+    icon: GitBranch,
+    testId: "nav-processes",
+  },
+  {
+    title: "PFMEA",
+    url: "/pfmea",
+    icon: FileWarning,
+    testId: "nav-pfmea",
+  },
+  {
+    title: "Control Plans",
+    url: "/control-plans",
+    icon: ClipboardList,
+    testId: "nav-control-plans",
+  },
 ];
 
-const settingsItems = [
-  { title: "Settings", url: "/settings", icon: Settings, testId: "nav-settings" },
+const libraryNavItems = [
+  {
+    title: "Equipment",
+    url: "/equipment",
+    icon: Wrench,
+    testId: "nav-equipment",
+  },
+  {
+    title: "Failure Modes",
+    url: "/failure-modes",
+    icon: AlertTriangle,
+    testId: "nav-failure-modes",
+  },
+  {
+    title: "Controls Library",
+    url: "/controls-library",
+    icon: Shield,
+    testId: "nav-controls-library",
+  },
+];
+
+const settingsNavItems = [
+  {
+    title: "Settings",
+    url: "/settings",
+    icon: Settings,
+    testId: "nav-settings",
+  },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
 
+  const isActive = (url: string) => {
+    if (url === "/") {
+      return location === "/";
+    }
+    return location.startsWith(url);
+  };
+
   return (
     <Sidebar>
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <FileText className="h-5 w-5 text-primary-foreground" />
+      <SidebarHeader className="border-b px-6 py-4">
+        <Link href="/">
+          <div className="flex items-center gap-2 cursor-pointer">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+              <FileWarning className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-semibold text-sm">PFMEA Suite</span>
+              <span className="text-xs text-muted-foreground">QMS Platform</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold">PFMEA Suite</span>
-            <span className="text-xs text-muted-foreground">Quality Management</span>
-          </div>
-        </div>
+        </Link>
       </SidebarHeader>
-      
+
       <SidebarContent>
+        {/* Main Navigation */}
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wide">
-            Main Menu
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigationItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} data-testid={item.testId}>
-                      <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={item.testId}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <Separator className="my-4" />
-
+        {/* Libraries */}
         <SidebarGroup>
+          <SidebarGroupLabel>Libraries</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {settingsItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} data-testid={item.testId}>
-                      <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {libraryNavItems.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={item.testId}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t">
-        <div className="text-xs text-muted-foreground">
-          IATF 16949 Compliant
-        </div>
+      <SidebarFooter className="border-t">
+        <SidebarMenu>
+          {settingsNavItems.map((item) => (
+            <SidebarMenuItem key={item.url}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive(item.url)}
+                data-testid={item.testId}
+              >
+                <Link href={item.url}>
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.title}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   );
