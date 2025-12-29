@@ -270,6 +270,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PFD (Process Flow Diagram) API
+  app.get("/api/pfd", async (req, res) => {
+    try {
+      const partId = req.query.partId as string;
+      if (!partId) {
+        return res.status(400).json({ error: "partId query parameter is required" });
+      }
+      const pfds = await storage.getPFDsByPartId(partId);
+      res.json(pfds);
+    } catch (error) {
+      console.error("Error fetching PFDs:", error);
+      res.status(500).json({ error: "Failed to fetch PFDs" });
+    }
+  });
+
+  app.get("/api/pfd/:id", async (req, res) => {
+    try {
+      const pfdDoc = await storage.getPFDById(req.params.id);
+      if (!pfdDoc) {
+        return res.status(404).json({ error: "PFD not found" });
+      }
+      res.json(pfdDoc);
+    } catch (error) {
+      console.error("Error fetching PFD:", error);
+      res.status(500).json({ error: "Failed to fetch PFD" });
+    }
+  });
+
   // PFMEA API
   app.get("/api/pfmea", async (req, res) => {
     try {
