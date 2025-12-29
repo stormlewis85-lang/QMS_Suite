@@ -1,0 +1,341 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - generic [ref=e9]:
+        - img [ref=e11]
+        - generic [ref=e14]:
+          - generic [ref=e15]: PFMEA Suite
+          - generic [ref=e16]: Quality Management
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]: Main Menu
+          - list [ref=e21]:
+            - listitem [ref=e22]:
+              - link "Dashboard" [ref=e23] [cursor=pointer]:
+                - /url: /
+                - img [ref=e24]
+                - generic [ref=e27]: Dashboard
+            - listitem [ref=e28]:
+              - link "Parts" [ref=e29] [cursor=pointer]:
+                - /url: /parts
+                - img [ref=e30]
+                - generic [ref=e34]: Parts
+            - listitem [ref=e35]:
+              - link "Processes" [ref=e36] [cursor=pointer]:
+                - /url: /processes
+                - img [ref=e37]
+                - generic [ref=e41]: Processes
+            - listitem [ref=e42]:
+              - link "PFMEA" [ref=e43] [cursor=pointer]:
+                - /url: /pfmea
+                - img [ref=e44]
+                - generic [ref=e47]: PFMEA
+            - listitem [ref=e48]:
+              - link "Control Plans" [ref=e49] [cursor=pointer]:
+                - /url: /control-plans
+                - img [ref=e50]
+                - generic [ref=e52]: Control Plans
+            - listitem [ref=e53]:
+              - link "Equipment" [ref=e54] [cursor=pointer]:
+                - /url: /equipment
+                - img [ref=e55]
+                - generic [ref=e58]: Equipment
+            - listitem [ref=e59]:
+              - link "Failure Modes" [ref=e60] [cursor=pointer]:
+                - /url: /failure-modes
+                - img [ref=e61]
+                - generic [ref=e63]: Failure Modes
+            - listitem [ref=e64]:
+              - link "Controls Library" [ref=e65] [cursor=pointer]:
+                - /url: /controls-library
+                - img [ref=e66]
+                - generic [ref=e68]: Controls Library
+            - listitem [ref=e69]:
+              - link "Change Packages" [ref=e70] [cursor=pointer]:
+                - /url: /change-packages
+                - img [ref=e71]
+                - generic [ref=e75]: Change Packages
+        - list [ref=e78]:
+          - listitem [ref=e79]:
+            - link "Settings" [ref=e80] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e81]
+              - generic [ref=e84]: Settings
+      - generic [ref=e86]: IATF 16949 Compliant
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - button "Toggle Sidebar" [ref=e89] [cursor=pointer]:
+          - img
+          - generic [ref=e90]: Toggle Sidebar
+        - button "Toggle theme" [ref=e91] [cursor=pointer]:
+          - img
+          - img
+          - generic [ref=e92]: Toggle theme
+      - main [ref=e93]:
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - generic [ref=e97]:
+              - heading "Parts" [level=1] [ref=e98]
+              - paragraph [ref=e99]: Manage parts and generate quality documents
+            - button "Add Part" [ref=e100] [cursor=pointer]:
+              - img
+              - text: Add Part
+          - generic [ref=e101]:
+            - generic [ref=e103]:
+              - generic [ref=e104]: Total Parts
+              - generic [ref=e105]:
+                - img [ref=e106]
+                - text: "8"
+            - generic [ref=e111]:
+              - generic [ref=e112]: Customers
+              - generic [ref=e113]:
+                - img [ref=e114]
+                - text: "7"
+            - generic [ref=e120]:
+              - generic [ref=e121]: Plants
+              - generic [ref=e122]:
+                - img [ref=e123]
+                - text: "6"
+          - generic [ref=e127]:
+            - generic [ref=e129]:
+              - img [ref=e130]
+              - textbox "Search by part number, name, or program..." [ref=e133]
+            - combobox [ref=e134] [cursor=pointer]:
+              - generic: All Customers
+              - img [ref=e135]
+            - combobox [ref=e137] [cursor=pointer]:
+              - generic: All Plants
+              - img [ref=e138]
+          - table [ref=e143]:
+            - rowgroup [ref=e144]:
+              - row "Part Number Part Name Customer Program Plant Documents Actions" [ref=e145]:
+                - columnheader "Part Number" [ref=e146]
+                - columnheader "Part Name" [ref=e147]
+                - columnheader "Customer" [ref=e148]
+                - columnheader "Program" [ref=e149]
+                - columnheader "Plant" [ref=e150]
+                - columnheader "Documents" [ref=e151]
+                - columnheader "Actions" [ref=e152]
+            - rowgroup [ref=e153]:
+              - row "WHL-2024-001 Wheel Assembly Ford F-150 Detroit PFMEA CP Generate" [ref=e154]:
+                - cell "WHL-2024-001" [ref=e155]:
+                  - link "WHL-2024-001" [ref=e156] [cursor=pointer]:
+                    - /url: /parts/d304e500-f991-4d02-82f6-46b21ff5e74d
+                - cell "Wheel Assembly" [ref=e157]
+                - cell "Ford" [ref=e158]:
+                  - generic [ref=e159]: Ford
+                - cell "F-150" [ref=e160]
+                - cell "Detroit" [ref=e161]:
+                  - generic [ref=e162]: Detroit
+                - cell "PFMEA CP" [ref=e163]:
+                  - generic [ref=e164]:
+                    - generic [ref=e165]:
+                      - img [ref=e166]
+                      - text: PFMEA
+                    - generic [ref=e169]:
+                      - img [ref=e170]
+                      - text: CP
+                - cell "Generate" [ref=e173]:
+                  - generic [ref=e174]:
+                    - link "Generate" [ref=e175] [cursor=pointer]:
+                      - /url: /parts/d304e500-f991-4d02-82f6-46b21ff5e74d
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e176] [cursor=pointer]:
+                      - img
+              - row "TST-xno1Eh Test Part K2Xm CUST-HFkPhv Test Program EV0M Test Plant PFMEA CP Generate" [ref=e177]:
+                - cell "TST-xno1Eh" [ref=e178]:
+                  - link "TST-xno1Eh" [ref=e179] [cursor=pointer]:
+                    - /url: /parts/6e4b241f-4067-4e3a-937f-65f6990fd5ea
+                - cell "Test Part K2Xm" [ref=e180]
+                - cell "CUST-HFkPhv" [ref=e181]:
+                  - generic [ref=e182]: CUST-HFkPhv
+                - cell "Test Program EV0M" [ref=e183]
+                - cell "Test Plant" [ref=e184]:
+                  - generic [ref=e185]: Test Plant
+                - cell "PFMEA CP" [ref=e186]:
+                  - generic [ref=e187]:
+                    - generic [ref=e188]:
+                      - img [ref=e189]
+                      - text: PFMEA
+                    - generic [ref=e192]:
+                      - img [ref=e193]
+                      - text: CP
+                - cell "Generate" [ref=e196]:
+                  - generic [ref=e197]:
+                    - link "Generate" [ref=e198] [cursor=pointer]:
+                      - /url: /parts/6e4b241f-4067-4e3a-937f-65f6990fd5ea
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e199] [cursor=pointer]:
+                      - img
+              - row "TST-E_w7ql Test Part Bwhv Test Customer fg7Uon Test Program mv8n Test Plant PFMEA CP Generate" [ref=e200]:
+                - cell "TST-E_w7ql" [ref=e201]:
+                  - link "TST-E_w7ql" [ref=e202] [cursor=pointer]:
+                    - /url: /parts/59f2b9ba-9ca3-437e-b421-c0823c83473e
+                - cell "Test Part Bwhv" [ref=e203]
+                - cell "Test Customer fg7Uon" [ref=e204]:
+                  - generic [ref=e205]: Test Customer fg7Uon
+                - cell "Test Program mv8n" [ref=e206]
+                - cell "Test Plant" [ref=e207]:
+                  - generic [ref=e208]: Test Plant
+                - cell "PFMEA CP" [ref=e209]:
+                  - generic [ref=e210]:
+                    - generic [ref=e211]:
+                      - img [ref=e212]
+                      - text: PFMEA
+                    - generic [ref=e215]:
+                      - img [ref=e216]
+                      - text: CP
+                - cell "Generate" [ref=e219]:
+                  - generic [ref=e220]:
+                    - link "Generate" [ref=e221] [cursor=pointer]:
+                      - /url: /parts/59f2b9ba-9ca3-437e-b421-c0823c83473e
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e222] [cursor=pointer]:
+                      - img
+              - row "SUS-2024-004 Suspension Arm Ford Mustang Flat Rock PFMEA CP Generate" [ref=e223]:
+                - cell "SUS-2024-004" [ref=e224]:
+                  - link "SUS-2024-004" [ref=e225] [cursor=pointer]:
+                    - /url: /parts/506ee69f-ee61-4052-a54e-10b8a6b3e876
+                - cell "Suspension Arm" [ref=e226]
+                - cell "Ford" [ref=e227]:
+                  - generic [ref=e228]: Ford
+                - cell "Mustang" [ref=e229]
+                - cell "Flat Rock" [ref=e230]:
+                  - generic [ref=e231]: Flat Rock
+                - cell "PFMEA CP" [ref=e232]:
+                  - generic [ref=e233]:
+                    - generic [ref=e234]:
+                      - img [ref=e235]
+                      - text: PFMEA
+                    - generic [ref=e238]:
+                      - img [ref=e239]
+                      - text: CP
+                - cell "Generate" [ref=e242]:
+                  - generic [ref=e243]:
+                    - link "Generate" [ref=e244] [cursor=pointer]:
+                      - /url: /parts/506ee69f-ee61-4052-a54e-10b8a6b3e876
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e245] [cursor=pointer]:
+                      - img
+              - row "EOS-BIPOLAR-STIFFENER-001 Bipolar Stiffener EOS Energy EOS Fraser PFMEA CP Generate" [ref=e246]:
+                - cell "EOS-BIPOLAR-STIFFENER-001" [ref=e247]:
+                  - link "EOS-BIPOLAR-STIFFENER-001" [ref=e248] [cursor=pointer]:
+                    - /url: /parts/b9a2272a-73cc-49a4-bccb-77c146648672
+                - cell "Bipolar Stiffener" [ref=e249]
+                - cell "EOS Energy" [ref=e250]:
+                  - generic [ref=e251]: EOS Energy
+                - cell "EOS" [ref=e252]
+                - cell "Fraser" [ref=e253]:
+                  - generic [ref=e254]: Fraser
+                - cell "PFMEA CP" [ref=e255]:
+                  - generic [ref=e256]:
+                    - generic [ref=e257]:
+                      - img [ref=e258]
+                      - text: PFMEA
+                    - generic [ref=e261]:
+                      - img [ref=e262]
+                      - text: CP
+                - cell "Generate" [ref=e265]:
+                  - generic [ref=e266]:
+                    - link "Generate" [ref=e267] [cursor=pointer]:
+                      - /url: /parts/b9a2272a-73cc-49a4-bccb-77c146648672
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e268] [cursor=pointer]:
+                      - img
+              - row "ENG-2024-012 Engine Mount Tesla Model Y Austin PFMEA CP Generate" [ref=e269]:
+                - cell "ENG-2024-012" [ref=e270]:
+                  - link "ENG-2024-012" [ref=e271] [cursor=pointer]:
+                    - /url: /parts/9fb4c516-dc78-4aa6-8e6c-b47383b6c5b6
+                - cell "Engine Mount" [ref=e272]
+                - cell "Tesla" [ref=e273]:
+                  - generic [ref=e274]: Tesla
+                - cell "Model Y" [ref=e275]
+                - cell "Austin" [ref=e276]:
+                  - generic [ref=e277]: Austin
+                - cell "PFMEA CP" [ref=e278]:
+                  - generic [ref=e279]:
+                    - generic [ref=e280]:
+                      - img [ref=e281]
+                      - text: PFMEA
+                    - generic [ref=e284]:
+                      - img [ref=e285]
+                      - text: CP
+                - cell "Generate" [ref=e288]:
+                  - generic [ref=e289]:
+                    - link "Generate" [ref=e290] [cursor=pointer]:
+                      - /url: /parts/9fb4c516-dc78-4aa6-8e6c-b47383b6c5b6
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e291] [cursor=pointer]:
+                      - img
+              - row "BRK-2024-007 Brake Caliper GM Silverado Arlington PFMEA CP Generate" [ref=e292]:
+                - cell "BRK-2024-007" [ref=e293]:
+                  - link "BRK-2024-007" [ref=e294] [cursor=pointer]:
+                    - /url: /parts/0c2a4ba1-c2f8-4852-954c-fd2cfb20d49b
+                - cell "Brake Caliper" [ref=e295]
+                - cell "GM" [ref=e296]:
+                  - generic [ref=e297]: GM
+                - cell "Silverado" [ref=e298]
+                - cell "Arlington" [ref=e299]:
+                  - generic [ref=e300]: Arlington
+                - cell "PFMEA CP" [ref=e301]:
+                  - generic [ref=e302]:
+                    - generic [ref=e303]:
+                      - img [ref=e304]
+                      - text: PFMEA
+                    - generic [ref=e307]:
+                      - img [ref=e308]
+                      - text: CP
+                - cell "Generate" [ref=e311]:
+                  - generic [ref=e312]:
+                    - link "Generate" [ref=e313] [cursor=pointer]:
+                      - /url: /parts/0c2a4ba1-c2f8-4852-954c-fd2cfb20d49b
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e314] [cursor=pointer]:
+                      - img
+              - row "105077022 Fuel Tank Protector Kautex 15 PL Fraser PFMEA CP Generate" [ref=e315]:
+                - cell "105077022" [ref=e316]:
+                  - link "105077022" [ref=e317] [cursor=pointer]:
+                    - /url: /parts/344f4d50-eb86-4036-8d93-5a6ff86ec017
+                - cell "Fuel Tank Protector" [ref=e318]
+                - cell "Kautex" [ref=e319]:
+                  - generic [ref=e320]: Kautex
+                - cell "15 PL" [ref=e321]
+                - cell "Fraser" [ref=e322]:
+                  - generic [ref=e323]: Fraser
+                - cell "PFMEA CP" [ref=e324]:
+                  - generic [ref=e325]:
+                    - generic [ref=e326]:
+                      - img [ref=e327]
+                      - text: PFMEA
+                    - generic [ref=e330]:
+                      - img [ref=e331]
+                      - text: CP
+                - cell "Generate" [ref=e334]:
+                  - generic [ref=e335]:
+                    - link "Generate" [ref=e336] [cursor=pointer]:
+                      - /url: /parts/344f4d50-eb86-4036-8d93-5a6ff86ec017
+                      - img
+                      - text: Generate
+                      - img
+                    - button [ref=e337] [cursor=pointer]:
+                      - img
+  - region "Notifications (F8)":
+    - list
+```

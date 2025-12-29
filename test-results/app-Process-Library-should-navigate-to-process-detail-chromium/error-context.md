@@ -1,0 +1,171 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - generic [ref=e9]:
+        - img [ref=e11]
+        - generic [ref=e14]:
+          - generic [ref=e15]: PFMEA Suite
+          - generic [ref=e16]: Quality Management
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]: Main Menu
+          - list [ref=e21]:
+            - listitem [ref=e22]:
+              - link "Dashboard" [ref=e23] [cursor=pointer]:
+                - /url: /
+                - img [ref=e24]
+                - generic [ref=e27]: Dashboard
+            - listitem [ref=e28]:
+              - link "Parts" [ref=e29] [cursor=pointer]:
+                - /url: /parts
+                - img [ref=e30]
+                - generic [ref=e34]: Parts
+            - listitem [ref=e35]:
+              - link "Processes" [ref=e36] [cursor=pointer]:
+                - /url: /processes
+                - img [ref=e37]
+                - generic [ref=e41]: Processes
+            - listitem [ref=e42]:
+              - link "PFMEA" [ref=e43] [cursor=pointer]:
+                - /url: /pfmea
+                - img [ref=e44]
+                - generic [ref=e47]: PFMEA
+            - listitem [ref=e48]:
+              - link "Control Plans" [ref=e49] [cursor=pointer]:
+                - /url: /control-plans
+                - img [ref=e50]
+                - generic [ref=e52]: Control Plans
+            - listitem [ref=e53]:
+              - link "Equipment" [ref=e54] [cursor=pointer]:
+                - /url: /equipment
+                - img [ref=e55]
+                - generic [ref=e58]: Equipment
+            - listitem [ref=e59]:
+              - link "Failure Modes" [ref=e60] [cursor=pointer]:
+                - /url: /failure-modes
+                - img [ref=e61]
+                - generic [ref=e63]: Failure Modes
+            - listitem [ref=e64]:
+              - link "Controls Library" [ref=e65] [cursor=pointer]:
+                - /url: /controls-library
+                - img [ref=e66]
+                - generic [ref=e68]: Controls Library
+            - listitem [ref=e69]:
+              - link "Change Packages" [ref=e70] [cursor=pointer]:
+                - /url: /change-packages
+                - img [ref=e71]
+                - generic [ref=e75]: Change Packages
+        - list [ref=e78]:
+          - listitem [ref=e79]:
+            - link "Settings" [ref=e80] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e81]
+              - generic [ref=e84]: Settings
+      - generic [ref=e86]: IATF 16949 Compliant
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - button "Toggle Sidebar" [ref=e89] [cursor=pointer]:
+          - img
+          - generic [ref=e90]: Toggle Sidebar
+        - button "Toggle theme" [ref=e91] [cursor=pointer]:
+          - img
+          - img
+          - generic [ref=e92]: Toggle theme
+      - main [ref=e93]:
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - generic [ref=e97]:
+              - heading "Process Library" [level=1] [ref=e98]:
+                - img [ref=e99]
+                - text: Process Library
+              - paragraph [ref=e103]: Manage reusable process definitions with FMEA and Control Plan templates
+            - button "New Process" [ref=e104] [cursor=pointer]:
+              - img
+              - text: New Process
+          - generic [ref=e105]:
+            - generic [ref=e107]:
+              - generic [ref=e108]: "3"
+              - generic [ref=e109]: Total Processes
+            - generic [ref=e111]:
+              - generic [ref=e112]: "3"
+              - generic [ref=e113]: Effective
+            - generic [ref=e115]:
+              - generic [ref=e116]: "0"
+              - generic [ref=e117]: Draft
+            - generic [ref=e119]:
+              - generic [ref=e120]: "0"
+              - generic [ref=e121]: In Review
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - img [ref=e124]
+              - textbox "Search processes..." [ref=e127]
+            - combobox [ref=e128] [cursor=pointer]:
+              - img [ref=e129]
+              - generic: All Statuses
+              - img [ref=e131]
+          - table [ref=e136]:
+            - rowgroup [ref=e137]:
+              - row "Process Name Revision Status Effective Date Last Updated Actions" [ref=e138]:
+                - columnheader "Process Name" [ref=e139]
+                - columnheader "Revision" [ref=e140]
+                - columnheader "Status" [ref=e141]
+                - columnheader "Effective Date" [ref=e142]
+                - columnheader "Last Updated" [ref=e143]
+                - columnheader "Actions" [ref=e144]
+            - rowgroup [ref=e145]:
+              - row "EOS Bipolar Stiffener - Injection Molding + Overmold Imported from EOS PPAP v14 1.0.0 Effective 12/22/2024 12/28/2025" [ref=e146]:
+                - cell "EOS Bipolar Stiffener - Injection Molding + Overmold Imported from EOS PPAP v14" [ref=e147]:
+                  - link "EOS Bipolar Stiffener - Injection Molding + Overmold" [ref=e148] [cursor=pointer]:
+                    - /url: /processes/a0847d10-529d-4932-a585-72b1c46821b8
+                    - generic [ref=e149]:
+                      - generic [ref=e150]: EOS Bipolar Stiffener - Injection Molding + Overmold
+                      - img [ref=e151]
+                  - paragraph [ref=e153]: Imported from EOS PPAP v14
+                - cell "1.0.0" [ref=e154]:
+                  - generic [ref=e155]: 1.0.0
+                - cell "Effective" [ref=e156]:
+                  - generic [ref=e157]: Effective
+                - cell "12/22/2024" [ref=e158]
+                - cell "12/28/2025" [ref=e159]
+                - cell [ref=e160]:
+                  - button [ref=e161] [cursor=pointer]:
+                    - img
+              - row "Plastic Injection Molding - Complete PFMEA Comprehensive PFMEA per AIAG-VDA 2019 methodology A Effective 1/1/2024 11/25/2025" [ref=e162]:
+                - cell "Plastic Injection Molding - Complete PFMEA Comprehensive PFMEA per AIAG-VDA 2019 methodology" [ref=e163]:
+                  - link "Plastic Injection Molding - Complete PFMEA" [ref=e164] [cursor=pointer]:
+                    - /url: /processes/7add6fa3-2dad-4493-8e0f-5197d7400cfc
+                    - generic [ref=e165]:
+                      - generic [ref=e166]: Plastic Injection Molding - Complete PFMEA
+                      - img [ref=e167]
+                  - paragraph [ref=e169]: Comprehensive PFMEA per AIAG-VDA 2019 methodology
+                - cell "A" [ref=e170]:
+                  - generic [ref=e171]: A
+                - cell "Effective" [ref=e172]:
+                  - generic [ref=e173]: Effective
+                - cell "1/1/2024" [ref=e174]
+                - cell "11/25/2025" [ref=e175]
+                - cell [ref=e176]:
+                  - button [ref=e177] [cursor=pointer]:
+                    - img
+              - row "Injection Molding A Effective 1/1/2024 11/23/2025" [ref=e178]:
+                - cell "Injection Molding" [ref=e179]:
+                  - link "Injection Molding" [ref=e180] [cursor=pointer]:
+                    - /url: /processes/801ddb57-2aa7-494b-b84c-980806a0036c
+                    - generic [ref=e181]:
+                      - generic [ref=e182]: Injection Molding
+                      - img [ref=e183]
+                - cell "A" [ref=e185]:
+                  - generic [ref=e186]: A
+                - cell "Effective" [ref=e187]:
+                  - generic [ref=e188]: Effective
+                - cell "1/1/2024" [ref=e189]
+                - cell "11/23/2025" [ref=e190]
+                - cell [ref=e191]:
+                  - button [ref=e192] [cursor=pointer]:
+                    - img
+  - region "Notifications (F8)":
+    - list
+```
