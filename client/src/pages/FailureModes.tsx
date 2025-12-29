@@ -549,7 +549,7 @@ export default function FailureModes() {
             Standardized failure modes catalog for PFMEA analysis
           </p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-fm">
+        <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-add-failure-mode">
           <Plus className="mr-2 h-4 w-4" />
           Add Failure Mode
         </Button>
