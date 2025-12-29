@@ -1197,7 +1197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Review each PFMEA
       for (const pfmeaDoc of partData.pfmeas) {
         const pfmeaRows = await storage.getPFMEARowsForReview(pfmeaDoc.id);
-        const cpForPfmea = partData.controlPlans.find(cp => cp.pfmeaId === pfmeaDoc.id);
+        const cpForPfmea = partData.controlPlans[0];
         let cpRows: any[] = [];
         if (cpForPfmea) {
           cpRows = await storage.getControlPlanRowsForReview(cpForPfmea.id);
@@ -1221,7 +1221,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Review each Control Plan
       for (const cp of partData.controlPlans) {
         const cpRows = await storage.getControlPlanRowsForReview(cp.id);
-        const pfmeaForCp = partData.pfmeas.find(p => p.id === cp.pfmeaId);
+        const pfmeaForCp = partData.pfmeas[0];
         let pfmeaRows: any[] = [];
         if (pfmeaForCp) {
           pfmeaRows = await storage.getPFMEARowsForReview(pfmeaForCp.id);
@@ -1289,8 +1289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/audit-logs/actor/:actorId", async (req, res) => {
     try {
       const { actorId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const logs = await storage.getAuditLogsByActor(actorId, limit);
+      const logs = await storage.getAuditLogsByActor(actorId);
       res.json(logs);
     } catch (error) {
       console.error("Error fetching audit logs:", error);
@@ -1652,11 +1651,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/training-acks/:id/acknowledge", async (req, res) => {
     try {
       const { id } = req.params;
-      const { trainingMethod, evidence } = req.body;
+      const { notes } = req.body;
       const ack = await storage.updateTrainingAck(id, {
         acknowledgedAt: new Date(),
-        trainingMethod,
-        evidence,
+        status: 'completed',
+        notes,
       });
       res.json(ack);
     } catch (error) {
