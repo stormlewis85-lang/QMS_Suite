@@ -133,7 +133,7 @@ export interface IStorage {
   getPFDById(id: string): Promise<(PFD & { steps: PFDStep[] }) | undefined>;
   createPFD(insertPFD: InsertPFD): Promise<PFD>;
   createPFDStep(insertStep: InsertPFDStep): Promise<PFDStep>;
-  createPFDWithSteps(insertPFD: InsertPFD, steps: InsertPFDStep[]): Promise<PFD & { steps: PFDStep[] }>;
+  createPFDWithSteps(insertPfd: InsertPFD, steps: Omit<InsertPFDStep, 'pfdId'>[]): Promise<PFD & { steps: PFDStep[] }>;
 
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
@@ -1217,8 +1217,8 @@ class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async createPFDWithSteps(insertPFD: InsertPFD, steps: InsertPFDStep[]): Promise<PFD & { steps: PFDStep[] }> {
-    const createdPFD = await this.createPFD(insertPFD);
+  async createPFDWithSteps(insertPfd: InsertPFD, steps: Omit<InsertPFDStep, 'pfdId'>[]): Promise<PFD & { steps: PFDStep[] }> {
+    const createdPFD = await this.createPFD(insertPfd);
     const createdSteps: PFDStep[] = [];
     for (const step of steps) {
       const createdStep = await this.createPFDStep({ ...step, pfdId: createdPFD.id });
