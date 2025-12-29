@@ -15,19 +15,19 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 const navigationItems = [
-  { title: "Dashboard", url: "/", icon: Home },
-  { title: "Parts", url: "/parts", icon: Package },
-  { title: "Processes", url: "/processes", icon: Layers },
-  { title: "PFMEA", url: "/pfmea", icon: FileText },
-  { title: "Control Plans", url: "/control-plans", icon: BookOpen },
-  { title: "Equipment", url: "/equipment", icon: Settings2 },
-  { title: "Failure Modes", url: "/failure-modes", icon: Library },
-  { title: "Controls Library", url: "/controls-library", icon: Shield },
-  { title: "Change Packages", url: "/change-packages", icon: GitPullRequest },
+  { title: "Dashboard", url: "/", icon: Home, testId: "nav-dashboard" },
+  { title: "Parts", url: "/parts", icon: Package, testId: "nav-parts" },
+  { title: "Processes", url: "/processes", icon: Layers, testId: "nav-processes" },
+  { title: "PFMEA", url: "/pfmea", icon: FileText, testId: "nav-pfmea" },
+  { title: "Control Plans", url: "/control-plans", icon: BookOpen, testId: "nav-control-plans" },
+  { title: "Equipment", url: "/equipment", icon: Settings2, testId: "nav-equipment" },
+  { title: "Failure Modes", url: "/failure-modes", icon: Library, testId: "nav-failure-modes" },
+  { title: "Controls Library", url: "/controls-library", icon: Shield, testId: "nav-controls-library" },
+  { title: "Change Packages", url: "/change-packages", icon: GitPullRequest, testId: "nav-change-packages" },
 ];
 
 const settingsItems = [
-  { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Settings", url: "/settings", icon: Settings, testId: "nav-settings" },
 ];
 
 export function AppSidebar() {
@@ -58,7 +58,7 @@ export function AppSidebar() {
                 const isActive = location === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} data-testid={`link-${item.title.toLowerCase()}`}>
+                    <SidebarMenuButton asChild isActive={isActive} data-testid={item.testId}>
                       <Link href={item.url}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
@@ -80,7 +80,7 @@ export function AppSidebar() {
                 const isActive = location === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} data-testid={`link-${item.title.toLowerCase()}`}>
+                    <SidebarMenuButton asChild isActive={isActive} data-testid={item.testId}>
                       <Link href={item.url}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
