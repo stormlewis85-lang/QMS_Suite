@@ -380,12 +380,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Control Plans API
   app.get("/api/control-plans", async (req, res) => {
     try {
-      const partId = req.query.partId as string;
-      if (!partId) {
-        return res.status(400).json({ error: "partId query parameter is required" });
+      const partId = req.query.partId as string | undefined;
+      if (partId) {
+        const controlPlans = await storage.getControlPlansByPartId(partId);
+        res.json(controlPlans);
+      } else {
+        // Return all control plans when no partId specified
+        const controlPlans = await storage.getAllControlPlans();
+        res.json(controlPlans);
       }
-      const controlPlans = await storage.getControlPlansByPartId(partId);
-      res.json(controlPlans);
     } catch (error) {
       console.error("Error fetching control plans:", error);
       res.status(500).json({ error: "Failed to fetch control plans" });
