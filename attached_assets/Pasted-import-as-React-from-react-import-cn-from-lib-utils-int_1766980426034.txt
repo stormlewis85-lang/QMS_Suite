@@ -1,0 +1,84 @@
+import * as React from "react"
+import { cn } from "@/lib/utils"
+
+interface PageHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+  title: string
+  description?: string
+  actions?: React.ReactNode
+  breadcrumbs?: React.ReactNode
+}
+
+const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
+  ({ className, title, description, actions, breadcrumbs, children, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(
+        "sticky top-0 z-20 bg-background pb-4 mb-4 border-b",
+        className
+      )}
+      {...props}
+    >
+      {breadcrumbs && (
+        <div className="mb-2 text-sm text-muted-foreground">
+          {breadcrumbs}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          {description && (
+            <p className="text-muted-foreground">{description}</p>
+          )}
+        </div>
+        {actions && (
+          <div className="flex items-center gap-2">
+            {actions}
+          </div>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+)
+PageHeader.displayName = "PageHeader"
+
+interface PageHeaderFiltersProps extends React.HTMLAttributes<HTMLDivElement> {}
+
+const PageHeaderFilters = React.forwardRef<HTMLDivElement, PageHeaderFiltersProps>(
+  ({ className, children, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn("flex flex-wrap items-center gap-4 mt-4", className)}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+)
+PageHeaderFilters.displayName = "PageHeaderFilters"
+
+interface PageContentProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Enable scrolling within this container instead of the page */
+  scrollable?: boolean
+  /** Maximum height when scrollable (default: calc(100vh - 200px)) */
+  maxHeight?: string
+}
+
+const PageContent = React.forwardRef<HTMLDivElement, PageContentProps>(
+  ({ className, scrollable = false, maxHeight = "calc(100vh - 200px)", children, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(
+        scrollable && "overflow-auto",
+        className
+      )}
+      style={scrollable ? { maxHeight } : undefined}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+)
+PageContent.displayName = "PageContent"
+
+export { PageHeader, PageHeaderFilters, PageContent }
