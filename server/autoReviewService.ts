@@ -40,57 +40,93 @@ export interface AutoReviewResult {
  * AIAG-VDA 2019 Action Priority (AP) Calculation
  * Based on the official AIAG-VDA 2019 FMEA Handbook AP lookup table.
  * 
- * HIGH (H): Immediate action required - highest priority
- * MEDIUM (M): Action required - secondary priority  
- * LOW (L): Action may be taken - lowest priority
+ * The AP is determined by the combination of Severity × Occurrence × Detection.
+ * 
+ * HIGH (H): Highest priority - immediate action required
+ * MEDIUM (M): Secondary priority - action should be taken  
+ * LOW (L): Lowest priority - action may be considered
+ * 
+ * Key AIAG-VDA 2019 principles:
+ * - Safety/regulatory failures (S=9-10) always require at least Medium action
+ * - S=9-10 with poor detection OR high occurrence requires High priority
+ * - S=7-8 with high O or D requires High priority
+ * - Combined moderate O and D increases priority
  */
 export function calculateAP(severity: number, occurrence: number, detection: number): 'H' | 'M' | 'L' {
   const s = Math.max(1, Math.min(10, severity));
   const o = Math.max(1, Math.min(10, occurrence));
   const d = Math.max(1, Math.min(10, detection));
 
-  // HIGH Priority Conditions (per AIAG-VDA 2019)
-  // S=9-10: Always high regardless of O and D
-  if (s >= 9 && o >= 4) return 'H';
-  if (s >= 9 && d >= 4) return 'H';
+  // ========================================
+  // HIGH Priority Conditions (AIAG-VDA 2019)
+  // ========================================
   
-  // S=7-8 with high O or D
+  // S=9-10: HIGH if detection is poor (D≥5) regardless of occurrence
+  if (s >= 9 && d >= 5) return 'H';
+  
+  // S=9-10: HIGH if occurrence is moderate or higher (O≥5) regardless of detection
+  if (s >= 9 && o >= 5) return 'H';
+  
+  // S=9-10: HIGH if both O≥3 AND D≥4 (lower thresholds when combined)
+  if (s >= 9 && o >= 3 && d >= 4) return 'H';
+  if (s >= 9 && d >= 3 && o >= 4) return 'H';
+  
+  // S=7-8 with high O (O≥7) regardless of D
   if (s >= 7 && s <= 8 && o >= 7) return 'H';
+  
+  // S=7-8 with high D (D≥7) regardless of O  
   if (s >= 7 && s <= 8 && d >= 7) return 'H';
+  
+  // S=7-8 with moderate O AND D together (synergy effect)
   if (s >= 7 && s <= 8 && o >= 5 && d >= 5) return 'H';
   
-  // Very high D regardless of S (D=9-10)
+  // Very high D (D≥9) with any moderate O (O≥4), any severity
   if (d >= 9 && o >= 4) return 'H';
   
-  // S=5-6 with very high O and D
+  // Very high O (O≥9) with any moderate D (D≥4), any severity
+  if (o >= 9 && d >= 4) return 'H';
+  
+  // S=5-6 with high O AND high D (synergy)
   if (s >= 5 && s <= 6 && o >= 7 && d >= 7) return 'H';
 
-  // MEDIUM Priority Conditions
-  // S=9-10 with low O and D
-  if (s >= 9 && o >= 4 && o <= 6 && d >= 4 && d <= 6) return 'M';
-  if (s >= 9 && o <= 3 && d >= 4) return 'M';
-  if (s >= 9 && d <= 3 && o >= 4) return 'M';
+  // ========================================
+  // MEDIUM Priority Conditions (AIAG-VDA 2019)
+  // ========================================
   
-  // S=7-8 with moderate O and D
-  if (s >= 7 && s <= 8 && o >= 4 && o <= 6 && d >= 4 && d <= 6) return 'M';
-  if (s >= 7 && s <= 8 && o >= 4 && o <= 6 && d >= 2 && d <= 3) return 'M';
-  if (s >= 7 && s <= 8 && d >= 4 && d <= 6 && o >= 2 && o <= 3) return 'M';
+  // S=9-10: Always at least Medium (even with low O and D)
+  // Critical safety/regulatory failures always require some action
+  if (s >= 9) return 'M';
   
-  // S=5-6 with high O or high D
+  // S=7-8 with moderate O and D combinations
+  if (s >= 7 && s <= 8 && o >= 4 && d >= 4) return 'M';
+  if (s >= 7 && s <= 8 && o >= 4 && d >= 2) return 'M';
+  if (s >= 7 && s <= 8 && d >= 4 && o >= 2) return 'M';
+  
+  // S=5-6 with high O (D less important)
   if (s >= 5 && s <= 6 && o >= 7) return 'M';
-  if (s >= 5 && s <= 6 && d >= 7) return 'M';
-  if (s >= 5 && s <= 6 && o >= 4 && o <= 6 && d >= 4 && d <= 6) return 'M';
   
-  // S=4 with very high O and D
+  // S=5-6 with high D (O less important)
+  if (s >= 5 && s <= 6 && d >= 7) return 'M';
+  
+  // S=5-6 with moderate O AND moderate D
+  if (s >= 5 && s <= 6 && o >= 4 && d >= 4) return 'M';
+  
+  // S=4 with very high O AND D
   if (s === 4 && o >= 7 && d >= 7) return 'M';
   
-  // D=7-8 with moderate S and O
-  if (d >= 7 && d <= 8 && s >= 4 && s <= 6 && o >= 4) return 'M';
+  // S=2-4 with very high O and high D
+  if (s >= 2 && s <= 4 && o >= 8 && d >= 6) return 'M';
+  if (s >= 2 && s <= 4 && d >= 8 && o >= 6) return 'M';
   
-  // O=7-8 with moderate S and D
-  if (o >= 7 && o <= 8 && s >= 4 && s <= 6 && d >= 4) return 'M';
+  // High D with moderate O and S
+  if (d >= 7 && o >= 4 && s >= 4) return 'M';
+  
+  // High O with moderate D and S
+  if (o >= 7 && d >= 4 && s >= 4) return 'M';
 
+  // ========================================
   // LOW Priority - everything else
+  // ========================================
   return 'L';
 }
 
