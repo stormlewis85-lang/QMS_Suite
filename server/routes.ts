@@ -1,7 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { runAutoReview, runControlPlanReview } from "./auto-review";
+import { 
+  runAutoReview as runAutoReviewService, 
+  getAutoReviewHistory, 
+  getAutoReviewRun, 
+  resolveFinding, 
+  waiveFinding 
+} from "./autoReviewService";
 import { runAllSeeds } from "./seed";
 import {
   insertPartSchema,
@@ -1096,46 +1102,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
-  // AUTO-REVIEW ENDPOINTS (Phase 7)
+  // AUTO-REVIEW ENDPOINTS (Phase 9)
   // ============================================
 
   // Run auto-review for a PFMEA
   app.post("/api/pfmeas/:id/auto-review", async (req, res) => {
     try {
       const { id } = req.params;
-      
-      const pfmea = await storage.getPFMEAById(id);
-      if (!pfmea) {
+      const pfmeaData = await storage.getPFMEAById(id);
+      if (!pfmeaData) {
         return res.status(404).json({ message: "PFMEA not found" });
       }
 
-      const pfmeaRows = await storage.getPFMEARowsForReview(id);
-      
-      const controlPlans = await storage.getControlPlansByPartId(pfmea.partId);
-      const latestCP = controlPlans[0];
-      let cpRows: any[] = [];
-      if (latestCP) {
-        cpRows = await storage.getControlPlanRowsForReview(latestCP.id);
-      }
+      const controlPlans = await storage.getControlPlansByPartId(pfmeaData.partId);
+      const latestCPId = controlPlans[0]?.id;
 
-      const findings = runAutoReview({
-        pfmea,
-        pfmeaRows,
-        controlPlan: latestCP,
-        cpRows,
-      });
-
-      res.json({
-        pfmeaId: id,
-        reviewedAt: new Date().toISOString(),
-        summary: {
-          total: findings.length,
-          errors: findings.filter(f => f.level === 'error').length,
-          warnings: findings.filter(f => f.level === 'warning').length,
-          info: findings.filter(f => f.level === 'info').length,
-        },
-        findings,
-      });
+      const result = await runAutoReviewService(id, latestCPId, req.body.runBy);
+      res.json(result);
     } catch (error) {
       console.error("Auto-review error:", error);
       res.status(500).json({ message: "Failed to run auto-review" });
@@ -1146,42 +1129,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/control-plans/:id/auto-review", async (req, res) => {
     try {
       const { id } = req.params;
-      
-      const controlPlan = await storage.getControlPlanById(id);
-      if (!controlPlan) {
+      const cpData = await storage.getControlPlanById(id);
+      if (!cpData) {
         return res.status(404).json({ message: "Control Plan not found" });
       }
 
-      const cpRows = await storage.getControlPlanRowsForReview(id);
-      
-      const pfmeas = await storage.getPFMEAsByPartId(controlPlan.partId);
-      const latestPFMEA = pfmeas[0];
-      let pfmeaRows: any[] = [];
-      if (latestPFMEA) {
-        pfmeaRows = await storage.getPFMEARowsForReview(latestPFMEA.id);
-      }
+      const pfmeas = await storage.getPFMEAsByPartId(cpData.partId);
+      const latestPFMEAId = pfmeas[0]?.id;
 
-      const findings = runControlPlanReview({
-        controlPlan,
-        cpRows,
-        pfmea: latestPFMEA,
-        pfmeaRows,
-      });
-
-      res.json({
-        controlPlanId: id,
-        reviewedAt: new Date().toISOString(),
-        summary: {
-          total: findings.length,
-          errors: findings.filter(f => f.level === 'error').length,
-          warnings: findings.filter(f => f.level === 'warning').length,
-          info: findings.filter(f => f.level === 'info').length,
-        },
-        findings,
-      });
+      const result = await runAutoReviewService(latestPFMEAId, id, req.body.runBy);
+      res.json(result);
     } catch (error) {
       console.error("Auto-review error:", error);
       res.status(500).json({ message: "Failed to run auto-review" });
+    }
+  });
+
+  // Get auto-review history
+  app.get("/api/auto-reviews", async (req, res) => {
+    try {
+      const { pfmeaId, controlPlanId, limit } = req.query;
+      const history = await getAutoReviewHistory(
+        pfmeaId as string | undefined,
+        controlPlanId as string | undefined,
+        limit ? parseInt(limit as string) : 10
+      );
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching auto-review history:", error);
+      res.status(500).json({ message: "Failed to fetch auto-review history" });
+    }
+  });
+
+  // Get single auto-review run with findings
+  app.get("/api/auto-reviews/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const run = await getAutoReviewRun(id);
+      if (!run) {
+        return res.status(404).json({ message: "Auto-review run not found" });
+      }
+      res.json(run);
+    } catch (error) {
+      console.error("Error fetching auto-review run:", error);
+      res.status(500).json({ message: "Failed to fetch auto-review run" });
+    }
+  });
+
+  // Resolve a finding
+  app.post("/api/auto-review-findings/:id/resolve", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { resolution, resolvedBy } = req.body;
+      const finding = await resolveFinding(id, resolution, resolvedBy);
+      if (!finding) {
+        return res.status(404).json({ message: "Finding not found" });
+      }
+      res.json(finding);
+    } catch (error) {
+      console.error("Error resolving finding:", error);
+      res.status(500).json({ message: "Failed to resolve finding" });
+    }
+  });
+
+  // Waive a finding
+  app.post("/api/auto-review-findings/:id/waive", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { waiverReason } = req.body;
+      const finding = await waiveFinding(id, waiverReason);
+      if (!finding) {
+        return res.status(404).json({ message: "Finding not found" });
+      }
+      res.json(finding);
+    } catch (error) {
+      console.error("Error waiving finding:", error);
+      res.status(500).json({ message: "Failed to waive finding" });
     }
   });
 
@@ -1189,73 +1212,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/parts/:id/auto-review", async (req, res) => {
     try {
       const { id } = req.params;
-      
       const partData = await storage.getPartWithDocuments(id);
       if (!partData) {
         return res.status(404).json({ message: "Part not found" });
       }
 
-      const allFindings: any[] = [];
+      const results: any[] = [];
+      const reviewedCPs = new Set<string>();
 
-      // Review each PFMEA
+      // Review each PFMEA with all associated Control Plans
       for (const pfmeaDoc of partData.pfmeas) {
-        const pfmeaRows = await storage.getPFMEARowsForReview(pfmeaDoc.id);
-        const cpForPfmea = partData.controlPlans[0];
-        let cpRows: any[] = [];
-        if (cpForPfmea) {
-          cpRows = await storage.getControlPlanRowsForReview(cpForPfmea.id);
+        // For each PFMEA, pair it with each Control Plan for comprehensive cross-validation
+        if (partData.controlPlans.length > 0) {
+          for (const cp of partData.controlPlans) {
+            const result = await runAutoReviewService(pfmeaDoc.id, cp.id, req.body.runBy);
+            results.push({
+              documentType: 'PFMEA_CP_Pair',
+              pfmeaId: pfmeaDoc.id,
+              pfmeaRev: pfmeaDoc.rev,
+              controlPlanId: cp.id,
+              controlPlanRev: cp.rev,
+              ...result
+            });
+            reviewedCPs.add(cp.id);
+          }
+        } else {
+          // PFMEA with no Control Plans
+          const result = await runAutoReviewService(pfmeaDoc.id, undefined, req.body.runBy);
+          results.push({
+            documentType: 'PFMEA',
+            documentId: pfmeaDoc.id,
+            documentRev: pfmeaDoc.rev,
+            ...result
+          });
         }
-        
-        const findings = runAutoReview({
-          pfmea: pfmeaDoc,
-          pfmeaRows,
-          controlPlan: cpForPfmea,
-          cpRows,
-        });
-        
-        allFindings.push(...findings.map(f => ({
-          ...f,
-          documentType: 'PFMEA',
-          documentId: pfmeaDoc.id,
-          documentRev: pfmeaDoc.rev,
-        })));
       }
 
-      // Review each Control Plan
+      // Review any Control Plans not yet paired with PFMEAs
       for (const cp of partData.controlPlans) {
-        const cpRows = await storage.getControlPlanRowsForReview(cp.id);
-        const pfmeaForCp = partData.pfmeas[0];
-        let pfmeaRows: any[] = [];
-        if (pfmeaForCp) {
-          pfmeaRows = await storage.getPFMEARowsForReview(pfmeaForCp.id);
+        if (!reviewedCPs.has(cp.id)) {
+          const result = await runAutoReviewService(undefined, cp.id, req.body.runBy);
+          results.push({
+            documentType: 'ControlPlan',
+            documentId: cp.id,
+            documentRev: cp.rev,
+            ...result
+          });
         }
-
-        const findings = runControlPlanReview({
-          controlPlan: cp,
-          cpRows,
-          pfmea: pfmeaForCp,
-          pfmeaRows,
-        });
-
-        allFindings.push(...findings.map(f => ({
-          ...f,
-          documentType: 'ControlPlan',
-          documentId: cp.id,
-          documentRev: cp.rev,
-        })));
       }
+
+      const totalFindings = results.reduce((sum, r) => sum + (r.totalFindings || 0), 0);
+      const totalErrors = results.reduce((sum, r) => sum + (r.errorCount || 0), 0);
+      const totalWarnings = results.reduce((sum, r) => sum + (r.warningCount || 0), 0);
+      const totalInfo = results.reduce((sum, r) => sum + (r.infoCount || 0), 0);
 
       res.json({
         partId: id,
         partNumber: partData.part.partNumber,
         reviewedAt: new Date().toISOString(),
         summary: {
-          total: allFindings.length,
-          errors: allFindings.filter(f => f.level === 'error').length,
-          warnings: allFindings.filter(f => f.level === 'warning').length,
-          info: allFindings.filter(f => f.level === 'info').length,
+          total: totalFindings,
+          errors: totalErrors,
+          warnings: totalWarnings,
+          info: totalInfo,
         },
-        findings: allFindings,
+        results,
       });
     } catch (error) {
       console.error("Auto-review error:", error);
@@ -1264,191 +1285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
-  // AUDIT LOG ENDPOINTS (Phase 8)
-  // ============================================
-
-  app.get("/api/audit-logs/:entityType/:entityId", async (req, res) => {
-    try {
-      const { entityType, entityId } = req.params;
-      const logs = await storage.getAuditLogsByEntity(entityType, entityId);
-      res.json(logs);
-    } catch (error) {
-      console.error("Error fetching audit logs:", error);
-      res.status(500).json({ message: "Failed to fetch audit logs" });
-    }
-  });
-
-  app.get("/api/audit-logs", async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 100;
-      const logs = await storage.getRecentAuditLogs(limit);
-      res.json(logs);
-    } catch (error) {
-      console.error("Error fetching audit logs:", error);
-      res.status(500).json({ message: "Failed to fetch audit logs" });
-    }
-  });
-
-  app.get("/api/audit-logs/actor/:actorId", async (req, res) => {
-    try {
-      const { actorId } = req.params;
-      const logs = await storage.getAuditLogsByActor(actorId);
-      res.json(logs);
-    } catch (error) {
-      console.error("Error fetching audit logs:", error);
-      res.status(500).json({ message: "Failed to fetch audit logs" });
-    }
-  });
-
-  // ============================================
-  // SIGNATURE ENDPOINTS (Phase 8)
-  // ============================================
-
-  app.get("/api/signatures/:entityType/:entityId", async (req, res) => {
-    try {
-      const { entityType, entityId } = req.params;
-      const signatures = await storage.getSignaturesByEntity(entityType, entityId);
-      res.json(signatures);
-    } catch (error) {
-      console.error("Error fetching signatures:", error);
-      res.status(500).json({ message: "Failed to fetch signatures" });
-    }
-  });
-
-  app.post("/api/signatures", async (req, res) => {
-    try {
-      const data = req.body;
-      
-      let content: any = null;
-      if (data.entityType === 'pfmea') {
-        content = await storage.getPFMEAById(data.entityId);
-      } else if (data.entityType === 'control_plan') {
-        content = await storage.getControlPlanById(data.entityId);
-      } else if (data.entityType === 'process_def') {
-        content = await storage.getProcessById(data.entityId);
-      }
-
-      const contentHash = storage.computeContentHash(content);
-      
-      const signature = await storage.createSignature({
-        ...data,
-        contentHash,
-      });
-
-      await storage.logAuditEvent(
-        data.entityType,
-        data.entityId,
-        'sign',
-        data.signerUserId,
-        data.signerName,
-        undefined,
-        { role: data.role, meaning: data.meaning },
-        `Signed as ${data.role}`
-      );
-
-      const approvalStatus = await storage.checkApprovalStatus(data.entityType, data.entityId);
-      
-      if (approvalStatus.complete) {
-        if (data.entityType === 'pfmea') {
-          await storage.updatePFMEA(data.entityId, { 
-            status: 'effective',
-            approvedBy: data.signerUserId,
-            approvedAt: new Date(),
-            effectiveFrom: new Date(),
-          });
-        } else if (data.entityType === 'control_plan') {
-          await storage.updateControlPlan(data.entityId, { 
-            status: 'effective',
-            approvedBy: data.signerUserId,
-            approvedAt: new Date(),
-            effectiveFrom: new Date(),
-          });
-        } else if (data.entityType === 'process_def') {
-          await storage.updateProcess(data.entityId, { 
-            status: 'effective',
-            effectiveFrom: new Date(),
-          });
-        }
-      }
-
-      res.status(201).json({ signature, approvalStatus });
-    } catch (error) {
-      console.error("Error creating signature:", error);
-      res.status(500).json({ message: "Failed to create signature" });
-    }
-  });
-
-  app.delete("/api/signatures/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await storage.deleteSignature(id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting signature:", error);
-      res.status(500).json({ message: "Failed to delete signature" });
-    }
-  });
-
-  app.get("/api/approval-status/:entityType/:entityId", async (req, res) => {
-    try {
-      const { entityType, entityId } = req.params;
-      const status = await storage.checkApprovalStatus(entityType, entityId);
-      res.json(status);
-    } catch (error) {
-      console.error("Error checking approval status:", error);
-      res.status(500).json({ message: "Failed to check approval status" });
-    }
-  });
-
-  // ============================================
-  // APPROVAL MATRIX ENDPOINTS (Phase 8)
-  // ============================================
-
-  app.get("/api/approval-matrix/:documentType", async (req, res) => {
-    try {
-      const { documentType } = req.params;
-      const matrix = await storage.getApprovalMatrixByDocType(documentType);
-      res.json(matrix);
-    } catch (error) {
-      console.error("Error fetching approval matrix:", error);
-      res.status(500).json({ message: "Failed to fetch approval matrix" });
-    }
-  });
-
-  app.post("/api/approval-matrix", async (req, res) => {
-    try {
-      const entry = await storage.createApprovalMatrix(req.body);
-      res.status(201).json(entry);
-    } catch (error) {
-      console.error("Error creating approval matrix entry:", error);
-      res.status(500).json({ message: "Failed to create approval matrix entry" });
-    }
-  });
-
-  app.patch("/api/approval-matrix/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const entry = await storage.updateApprovalMatrix(id, req.body);
-      res.json(entry);
-    } catch (error) {
-      console.error("Error updating approval matrix entry:", error);
-      res.status(500).json({ message: "Failed to update approval matrix entry" });
-    }
-  });
-
-  app.delete("/api/approval-matrix/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await storage.deleteApprovalMatrix(id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting approval matrix entry:", error);
-      res.status(500).json({ message: "Failed to delete approval matrix entry" });
-    }
-  });
-
-  // ============================================
-  // CHANGE PACKAGE ENDPOINTS (Phase 8)
+  // CHANGE PACKAGE ENDPOINTS (Phase 9)
   // ============================================
 
   app.get("/api/change-packages", async (req, res) => {
@@ -1468,8 +1305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!pkg) {
         return res.status(404).json({ message: "Change package not found" });
       }
-      const signatures = await storage.getSignaturesByEntity('change_package', id);
-      res.json({ ...pkg, signatures });
+      res.json(pkg);
     } catch (error) {
       console.error("Error fetching change package:", error);
       res.status(500).json({ message: "Failed to fetch change package" });
@@ -1483,18 +1319,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         packageNumber,
       });
-
-      await storage.logAuditEvent(
-        'change_package',
-        pkg.id,
-        'create',
-        req.body.initiatedBy,
-        req.body.initiatedByName,
-        undefined,
-        pkg as any,
-        'Change package created'
-      );
-
       res.status(201).json(pkg);
     } catch (error) {
       console.error("Error creating change package:", error);
@@ -1505,20 +1329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/change-packages/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = await storage.getChangePackageById(id);
       const pkg = await storage.updateChangePackage(id, req.body);
-
-      await storage.logAuditEvent(
-        'change_package',
-        id,
-        'update',
-        req.body.updatedBy || 'system',
-        req.body.updatedByName,
-        existing as any,
-        pkg as any,
-        req.body.changeNote
-      );
-
       res.json(pkg);
     } catch (error) {
       console.error("Error updating change package:", error);
@@ -1540,7 +1351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/change-packages/:id/transition", async (req, res) => {
     try {
       const { id } = req.params;
-      const { newStatus, actor, actorName, note } = req.body;
+      const { newStatus } = req.body;
       
       const existing = await storage.getChangePackageById(id);
       if (!existing) {
@@ -1563,18 +1374,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const pkg = await storage.updateChangePackage(id, { status: newStatus });
-
-      await storage.logAuditEvent(
-        'change_package',
-        id,
-        'status_change',
-        actor,
-        actorName,
-        { status: existing.status },
-        { status: newStatus },
-        note
-      );
-
       res.json(pkg);
     } catch (error) {
       console.error("Error transitioning change package:", error);
@@ -1583,7 +1382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
-  // CHANGE PACKAGE ITEM ENDPOINTS (Phase 8)
+  // CHANGE PACKAGE ITEM ENDPOINTS (Phase 9)
   // ============================================
 
   app.post("/api/change-packages/:packageId/items", async (req, res) => {
@@ -1600,17 +1399,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/change-package-items/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const item = await storage.updateChangePackageItem(id, req.body);
-      res.json(item);
-    } catch (error) {
-      console.error("Error updating change package item:", error);
-      res.status(500).json({ message: "Failed to update change package item" });
-    }
-  });
-
   app.delete("/api/change-package-items/:id", async (req, res) => {
     try {
       const { id } = req.params;
@@ -1623,122 +1411,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
-  // TRAINING ACKNOWLEDGMENT ENDPOINTS (Phase 8)
+  // CHANGE PACKAGE APPROVAL ENDPOINTS (Phase 9)
   // ============================================
 
-  app.get("/api/change-packages/:packageId/training", async (req, res) => {
+  app.get("/api/change-packages/:packageId/approvals", async (req, res) => {
     try {
       const { packageId } = req.params;
-      const acks = await storage.getTrainingAcks(packageId);
-      res.json(acks);
+      const approvals = await storage.getChangePackageApprovals(packageId);
+      res.json(approvals);
     } catch (error) {
-      console.error("Error fetching training acks:", error);
-      res.status(500).json({ message: "Failed to fetch training acknowledgments" });
+      console.error("Error fetching approvals:", error);
+      res.status(500).json({ message: "Failed to fetch approvals" });
     }
   });
 
-  app.post("/api/change-packages/:packageId/training", async (req, res) => {
+  app.post("/api/change-packages/:packageId/approvals", async (req, res) => {
     try {
       const { packageId } = req.params;
-      const ack = await storage.createTrainingAck({
+      const approval = await storage.createChangePackageApproval({
         ...req.body,
         changePackageId: packageId,
       });
-      res.status(201).json(ack);
+      res.status(201).json(approval);
     } catch (error) {
-      console.error("Error creating training ack:", error);
-      res.status(500).json({ message: "Failed to create training requirement" });
+      console.error("Error creating approval:", error);
+      res.status(500).json({ message: "Failed to create approval" });
     }
   });
 
-  app.post("/api/training-acks/:id/acknowledge", async (req, res) => {
+  app.patch("/api/change-package-approvals/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { notes } = req.body;
-      const ack = await storage.updateTrainingAck(id, {
-        acknowledgedAt: new Date(),
-        status: 'completed',
-        notes,
-      });
-      res.json(ack);
-    } catch (error) {
-      console.error("Error acknowledging training:", error);
-      res.status(500).json({ message: "Failed to acknowledge training" });
-    }
-  });
-
-  app.get("/api/users/:userId/pending-training", async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const pending = await storage.getPendingTrainingForUser(userId);
-      res.json(pending);
-    } catch (error) {
-      console.error("Error fetching pending training:", error);
-      res.status(500).json({ message: "Failed to fetch pending training" });
-    }
-  });
-
-  // ============================================
-  // OWNERSHIP ENDPOINTS (Phase 8)
-  // ============================================
-
-  app.get("/api/ownership/:entityType/:entityId", async (req, res) => {
-    try {
-      const { entityType, entityId } = req.params;
-      const own = await storage.getOwnershipByEntity(entityType, entityId);
-      res.json(own);
-    } catch (error) {
-      console.error("Error fetching ownership:", error);
-      res.status(500).json({ message: "Failed to fetch ownership" });
-    }
-  });
-
-  app.post("/api/ownership", async (req, res) => {
-    try {
-      const existing = await storage.getOwnershipByEntity(req.body.entityType, req.body.entityId);
-      let own;
-      if (existing) {
-        own = await storage.updateOwnership(existing.id, req.body);
-      } else {
-        own = await storage.createOwnership(req.body);
+      const approval = await storage.updateChangePackageApproval(id, req.body);
+      if (!approval) {
+        return res.status(404).json({ message: "Approval not found" });
       }
-      res.status(201).json(own);
+      res.json(approval);
     } catch (error) {
-      console.error("Error setting ownership:", error);
-      res.status(500).json({ message: "Failed to set ownership" });
+      console.error("Error updating approval:", error);
+      res.status(500).json({ message: "Failed to update approval" });
     }
   });
 
-  app.post("/api/ownership/:entityType/:entityId/watchers", async (req, res) => {
+  // ============================================
+  // CHANGE PACKAGE PROPAGATION ENDPOINTS (Phase 9)
+  // ============================================
+
+  app.get("/api/change-packages/:packageId/propagations", async (req, res) => {
     try {
-      const { entityType, entityId } = req.params;
-      const own = await storage.addWatcher(entityType, entityId, req.body);
-      res.json(own);
+      const { packageId } = req.params;
+      const propagations = await storage.getChangePackagePropagations(packageId);
+      res.json(propagations);
     } catch (error) {
-      console.error("Error adding watcher:", error);
-      res.status(500).json({ message: "Failed to add watcher" });
+      console.error("Error fetching propagations:", error);
+      res.status(500).json({ message: "Failed to fetch propagations" });
     }
   });
 
-  app.delete("/api/ownership/:entityType/:entityId/watchers/:userId", async (req, res) => {
+  app.post("/api/change-packages/:packageId/propagations", async (req, res) => {
     try {
-      const { entityType, entityId, userId } = req.params;
-      const own = await storage.removeWatcher(entityType, entityId, userId);
-      res.json(own);
+      const { packageId } = req.params;
+      const propagation = await storage.createChangePackagePropagation({
+        ...req.body,
+        changePackageId: packageId,
+      });
+      res.status(201).json(propagation);
     } catch (error) {
-      console.error("Error removing watcher:", error);
-      res.status(500).json({ message: "Failed to remove watcher" });
+      console.error("Error creating propagation:", error);
+      res.status(500).json({ message: "Failed to create propagation" });
     }
   });
 
-  app.get("/api/users/:userId/owned-entities", async (req, res) => {
+  app.patch("/api/change-package-propagations/:id", async (req, res) => {
     try {
-      const { userId } = req.params;
-      const owned = await storage.getOwnedEntities(userId);
-      res.json(owned);
+      const { id } = req.params;
+      const propagation = await storage.updateChangePackagePropagation(id, req.body);
+      if (!propagation) {
+        return res.status(404).json({ message: "Propagation not found" });
+      }
+      res.json(propagation);
     } catch (error) {
-      console.error("Error fetching owned entities:", error);
-      res.status(500).json({ message: "Failed to fetch owned entities" });
+      console.error("Error updating propagation:", error);
+      res.status(500).json({ message: "Failed to update propagation" });
     }
   });
 
