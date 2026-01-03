@@ -27,10 +27,19 @@ The application uses a modern web stack:
 **Database Schema Overview**:
 - **Core Entities**: `process_def`, `process_step`, `fmea_template_row`, `control_template_row`, `part`, `pfmea`, `control_plan`, `pfd`, `pfd_step`.
 - **Supporting Entities**: `rating_scale`, `gage_library`, `calibration_link`, `equipment_library`, `equipment_error_proofing`, `equipment_control_methods`.
-- **Governance Entities**: `audit_log`, `signature`, `approval_matrix`, `change_package`, `change_package_item`, `change_package_affected_part`, `training_ack`, `ownership`.
+- **Auto-Review & Change Management**: `auto_review_run`, `auto_review_finding`, `change_package`, `change_package_item`, `change_package_approval`, `change_package_propagation`.
 - **Library Entities**: `failure_modes_library`, `controls_library`, `control_pairings`, `fmea_template_catalog_link`.
 
-**Recent Schema Updates** (Dec 2024):
+**Recent Schema Updates** (Jan 2025 - Phase 9):
+- Added Auto-Review system with `auto_review_run` and `auto_review_finding` tables for automated compliance validation
+- Enhanced Change Management with new approval workflow (`change_package_approval`) and propagation tracking (`change_package_propagation`)
+- Updated `change_package` with impact analysis, before/after snapshots, and redline JSON support
+- Removed deprecated governance tables (audit_log, signature, approval_matrix, ownership, training_ack)
+- Auto-scoring metadata in PFMEA/template rows: effectCategory, severityJustification, occurrenceMethod, detectionControlId
+- Enhanced failure modes library with effectCategory, severityMin/severityMax
+- Enhanced controls library with controlCategory, detectionMin/detectionMax
+
+**Previous Schema Updates** (Dec 2024):
 - Added Process Flow Diagram (PFD) tables for visual process documentation
 - Extended Part table with mold/tooling info and CSR notes
 - Extended PFMEA with document header fields (number, key contact, team)

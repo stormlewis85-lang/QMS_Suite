@@ -23,6 +23,37 @@ export const controlTypeEnum = pgEnum('control_type', ['prevention', 'detection'
 export const controlEffectivenessEnum = pgEnum('control_effectiveness', ['high', 'medium', 'low']);
 export const msaStatusEnum = pgEnum('msa_status', ['approved', 'planned', 'failed', 'not_required']);
 
+// NEW: Control Category Enum (for auto-scoring Detection)
+export const controlCategoryEnum = pgEnum('control_category', [
+  'error_proofing_prevent',  // D=1: Prevents defect from being made
+  'error_proofing_detect',   // D=2: Detects at station, stops process
+  'automated_100_percent',   // D=3: Automated inspection every part
+  'spc_immediate',           // D=4-5: SPC with immediate feedback
+  'manual_gage',             // D=6-7: Manual measurement with gage
+  'visual_standard',         // D=8: Visual with standard/sample
+  'visual_only',             // D=9: Visual check, operator discretion
+  'none'                     // D=10: No detection
+]);
+
+// NEW: Effect Category Enum (for auto-scoring Severity)
+export const effectCategoryEnum = pgEnum('effect_category', [
+  'safety_no_warning',       // S=10: Hazardous without warning
+  'safety_with_warning',     // S=9: Hazardous with warning
+  'regulatory_noncompliance',// S=9: Regulatory non-compliance
+  'function_loss',           // S=8: Vehicle/item inoperable
+  'function_degraded',       // S=7: Vehicle/item operable, reduced performance
+  'comfort_loss',            // S=6: Comfort/convenience inoperable
+  'comfort_reduced',         // S=5: Comfort/convenience reduced
+  'appearance_obvious',      // S=4: Fit/finish noticed by most customers
+  'appearance_subtle',       // S=3: Fit/finish noticed by some customers
+  'appearance_minor',        // S=2: Fit/finish noticed by discriminating customers
+  'none'                     // S=1: No discernible effect
+]);
+
+// NEW: Auto-Review Finding Level
+export const findingLevelEnum = pgEnum('finding_level', ['error', 'warning', 'info']);
+export const findingCategoryEnum = pgEnum('finding_category', ['coverage', 'effectiveness', 'document_control', 'scoring', 'csr']);
+
 // Process Library Tables
 export const processDef = pgTable('process_def', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -55,17 +86,15 @@ export const processStep = pgTable('process_step', {
   equipmentIds: jsonb('equipment_ids').$type<string[]>().default([]),
   branchTo: text('branch_to'),
   reworkTo: text('rework_to'),
-  // Process Flow Diagram fields (from EOS docs)
-  symbol: text('symbol'), // '◇' inspection, '▽' storage, '→' transportation, '★' CQT, '○' operation
-  keyInputs: text('key_inputs'), // What goes into this step
-  keyOutputs: text('key_outputs'), // What comes out of this step
-  controlMethod: text('control_method'), // High-level control method for PFD
-  // Hybrid subprocess support
-  stepType: stepTypeEnum('step_type').notNull().default('operation'), // 'operation' | 'group' | 'subprocess_ref'
-  parentStepId: uuid('parent_step_id').references((): any => processStep.id, { onDelete: 'cascade' }), // For grouping - which group this step belongs to
-  subprocessRefId: uuid('subprocess_ref_id').references(() => processDef.id, { onDelete: 'set null' }), // For subprocess_ref - links to another process definition
-  subprocessRev: text('subprocess_rev'), // Track which revision of the subprocess is referenced
-  collapsed: boolean('collapsed').default(false), // UI state for groups - whether to show children
+  symbol: text('symbol'),
+  keyInputs: text('key_inputs'),
+  keyOutputs: text('key_outputs'),
+  controlMethod: text('control_method'),
+  stepType: stepTypeEnum('step_type').notNull().default('operation'),
+  parentStepId: uuid('parent_step_id').references((): any => processStep.id, { onDelete: 'cascade' }),
+  subprocessRefId: uuid('subprocess_ref_id').references(() => processDef.id, { onDelete: 'set null' }),
+  subprocessRev: text('subprocess_rev'),
+  collapsed: boolean('collapsed').default(false),
 }, (table) => ({
   processDefSeqIdx: uniqueIndex('process_step_def_seq_idx').on(table.processDefId, table.seq),
   parentStepIdx: index('process_step_parent_idx').on(table.parentStepId),
@@ -89,10 +118,17 @@ export const fmeaTemplateRow = pgTable('fmea_template_row', {
   ap: text('ap').notNull(),
   specialFlag: boolean('special_flag').notNull().default(false),
   csrSymbol: text('csr_symbol'),
-  classColumn: text('class_column'), // Original "Class" column value from template
+  classColumn: text('class_column'),
   notes: text('notes'),
-  // Default action assignment for this failure mode type
-  defaultResponsibility: text('default_responsibility'), // Default owner when action needed
+  defaultResponsibility: text('default_responsibility'),
+  // NEW: Scoring metadata for auto-calculation
+  effectCategory: text('effect_category'),
+  severityJustification: text('severity_justification'),
+  occurrenceMethod: text('occurrence_method'),
+  cpkValue: text('cpk_value'),
+  occurrenceJustification: text('occurrence_justification'),
+  detectionControlId: uuid('detection_control_id'),
+  detectionJustification: text('detection_justification'),
 }, (table) => ({
   processDefIdx: index('fmea_template_process_def_idx').on(table.processDefId),
   stepIdx: index('fmea_template_step_idx').on(table.stepId),
@@ -102,29 +138,23 @@ export const controlTemplateRow = pgTable('control_template_row', {
   id: uuid('id').primaryKey().defaultRandom(),
   processDefId: uuid('process_def_id').notNull().references(() => processDef.id, { onDelete: 'cascade' }),
   sourceTemplateRowId: uuid('source_template_row_id').references(() => fmeaTemplateRow.id, { onDelete: 'cascade' }),
-  // Characteristic info
   characteristicName: text('characteristic_name').notNull(),
   charId: text('char_id').notNull(),
-  type: text('type').notNull(), // Product/Process
-  classColumn: text('class_column'), // Original "Class" column value
-  // Specification
-  specification: text('specification'), // Combined spec string
+  type: text('type').notNull(),
+  classColumn: text('class_column'),
+  specification: text('specification'),
   target: text('target'),
   tolerance: text('tolerance'),
   specialFlag: boolean('special_flag').notNull().default(false),
   csrSymbol: text('csr_symbol'),
-  // Measurement
   measurementSystem: text('measurement_system'),
   gageDetails: text('gage_details'),
-  // Sampling defaults
   defaultSampleSize: text('default_sample_size'),
   defaultFrequency: text('default_frequency'),
-  // Control
   controlMethod: text('control_method'),
   acceptanceCriteria: text('acceptance_criteria'),
   reactionPlan: text('reaction_plan'),
-  // Default responsibility
-  defaultResponsibility: text('default_responsibility'), // Default: who performs this check
+  defaultResponsibility: text('default_responsibility'),
 }, (table) => ({
   processDefIdx: index('control_template_process_def_idx').on(table.processDefId),
   sourceRowIdx: index('control_template_source_row_idx').on(table.sourceTemplateRowId),
@@ -153,14 +183,14 @@ export const ratingScale = pgTable('rating_scale', {
 // Equipment Library Tables
 export const equipmentLibrary = pgTable('equipment_library', {
   id: uuid('id').primaryKey().defaultRandom(),
-  type: text('type').notNull(), // 'injection_press', 'ultrasonic_welder', 'hot_plate_welder', 'robot', 'conveyor', 'test_station'
-  name: text('name').notNull().unique(), // 'Engel 200T #1', 'Branson Welder #3'
-  manufacturer: text('manufacturer'), // 'Engel', 'Branson', 'Fanuc'
-  model: text('model'), // 'Victory 200', 'M-710iC'
-  tonnage: integer('tonnage'), // For presses: 200, 500, 1000, etc.
+  type: text('type').notNull(),
+  name: text('name').notNull().unique(),
+  manufacturer: text('manufacturer'),
+  model: text('model'),
+  tonnage: integer('tonnage'),
   serialNumber: text('serial_number'),
-  location: text('location'), // 'Plant 1 - Cell 3'
-  status: text('status').notNull().default('active'), // 'active', 'maintenance', 'retired'
+  location: text('location'),
+  status: text('status').notNull().default('active'),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -169,11 +199,11 @@ export const equipmentLibrary = pgTable('equipment_library', {
 export const equipmentErrorProofing = pgTable('equipment_error_proofing', {
   id: uuid('id').primaryKey().defaultRandom(),
   equipmentId: uuid('equipment_id').notNull().references(() => equipmentLibrary.id, { onDelete: 'cascade' }),
-  controlType: text('control_type').notNull(), // 'prevention' or 'detection'
-  name: text('name').notNull(), // 'Cavity pressure monitoring'
-  description: text('description'), // Detailed description of how control works
-  failureModesAddressed: jsonb('failure_modes_addressed').$type<string[]>().default([]), // ['Short shot', 'Voids', 'Flash']
-  suggestedDetectionRating: integer('suggested_detection_rating'), // 3-7 typical, null for prevention
+  controlType: text('control_type').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  failureModesAddressed: jsonb('failure_modes_addressed').$type<string[]>().default([]),
+  suggestedDetectionRating: integer('suggested_detection_rating'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
@@ -181,108 +211,104 @@ export const equipmentErrorProofing = pgTable('equipment_error_proofing', {
 export const equipmentControlMethods = pgTable('equipment_control_methods', {
   id: uuid('id').primaryKey().defaultRandom(),
   equipmentId: uuid('equipment_id').notNull().references(() => equipmentLibrary.id, { onDelete: 'cascade' }),
-  characteristicType: text('characteristic_type').notNull(), // 'product' or 'process'
-  characteristicName: text('characteristic_name').notNull(), // 'Shot weight', 'Weld energy', 'Cavity pressure'
-  controlMethod: text('control_method').notNull(), // 'Automatic 100%', 'XÌ„-R Chart', 'Attribute check'
-  measurementSystem: text('measurement_system'), // 'Integrated scale', 'Pressure transducer'
-  sampleSize: text('sample_size'), // '100%', '5 pc', '1 pc'
-  frequency: text('frequency'), // 'Continuous', 'Every cycle', '1/hour'
-  acceptanceCriteria: text('acceptance_criteria'), // 'Â±2g', 'Within limits'
-  reactionPlan: text('reaction_plan'), // 'Auto-reject to quarantine', 'Alarm - stop process'
+  characteristicType: text('characteristic_type').notNull(),
+  characteristicName: text('characteristic_name').notNull(),
+  controlMethod: text('control_method').notNull(),
+  measurementSystem: text('measurement_system'),
+  sampleSize: text('sample_size'),
+  frequency: text('frequency'),
+  acceptanceCriteria: text('acceptance_criteria'),
+  reactionPlan: text('reaction_plan'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-// Failure Modes Library Tables
+// Failure Modes Library - ENHANCED with effect category
 export const failureModesLibrary = pgTable('failure_modes_library', {
   id: uuid('id').primaryKey().defaultRandom(),
   category: failureModeCategoryEnum('category').notNull(),
   failureMode: text('failure_mode').notNull(),
   genericEffect: text('generic_effect').notNull(),
   typicalCauses: jsonb('typical_causes').$type<string[]>().notNull().default([]),
-  industryStandard: text('industry_standard'), // 'AIAG-VDA 2019', 'Customer CSR', etc.
+  industryStandard: text('industry_standard'),
   applicableProcesses: jsonb('applicable_processes').$type<string[]>().default([]),
   defaultSeverity: integer('default_severity'),
   defaultOccurrence: integer('default_occurrence'),
   tags: jsonb('tags').$type<string[]>().default([]),
-  status: text('status').notNull().default('active'), // 'active' or 'deprecated'
+  status: text('status').notNull().default('active'),
   lastUsed: timestamp('last_used'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  // NEW: Effect classification for auto-severity scoring
+  effectCategory: text('effect_category'),
+  severityMin: integer('severity_min'),
+  severityMax: integer('severity_max'),
+  severityRationale: text('severity_rationale'),
 }, (table) => ({
   categoryIdx: index('failure_modes_category_idx').on(table.category),
   statusIdx: index('failure_modes_status_idx').on(table.status),
+  effectCategoryIdx: index('failure_modes_effect_category_idx').on(table.effectCategory),
 }));
 
-// Link table for tracking which catalog items are used in FMEA templates
 export const fmeaTemplateCatalogLink = pgTable('fmea_template_catalog_link', {
   id: uuid('id').primaryKey().defaultRandom(),
   templateRowId: uuid('template_row_id').notNull().references(() => fmeaTemplateRow.id, { onDelete: 'cascade' }),
   catalogItemId: uuid('catalog_item_id').notNull().references(() => failureModesLibrary.id, { onDelete: 'cascade' }),
-  customized: boolean('customized').notNull().default(false), // Did user modify from catalog?
+  customized: boolean('customized').notNull().default(false),
   adoptedAt: timestamp('adopted_at').notNull().defaultNow(),
 }, (table) => ({
   templateRowIdx: index('fmea_catalog_link_template_idx').on(table.templateRowId),
   catalogItemIdx: index('fmea_catalog_link_catalog_idx').on(table.catalogItemId),
 }));
 
-// Controls Library Tables
+// Controls Library - ENHANCED with control category for auto-detection scoring
 export const controlsLibrary = pgTable('controls_library', {
   id: uuid('id').primaryKey().defaultRandom(),
-  type: controlTypeEnum('type').notNull(), // 'prevention' or 'detection'
+  type: controlTypeEnum('type').notNull(),
   name: text('name').notNull(),
   description: text('description').notNull(),
-  
-  // Effectiveness
   effectiveness: controlEffectivenessEnum('effectiveness').notNull(),
-  typicalOccurrenceImpact: integer('typical_occurrence_impact'), // For prevention: reduces O by how much?
-  typicalDetectionRating: integer('typical_detection_rating'), // For detection: what D rating?
-  
-  // Implementation details
+  typicalOccurrenceImpact: integer('typical_occurrence_impact'),
+  typicalDetectionRating: integer('typical_detection_rating'),
   equipmentRequired: jsonb('equipment_required').$type<string[]>().default([]),
-  skillLevelRequired: text('skill_level_required'), // 'operator', 'technician', 'engineer'
+  skillLevelRequired: text('skill_level_required'),
   implementationNotes: text('implementation_notes'),
-  
-  // Measurement system (for detection controls)
   requiresMSA: boolean('requires_msa').default(false),
   msaStatus: msaStatusEnum('msa_status').default('not_required'),
-  gageType: text('gage_type'), // 'CMM', 'Micrometer', 'Vision', 'Functional Test', etc.
+  gageType: text('gage_type'),
   gageDetails: text('gage_details'),
   measurementResolution: text('measurement_resolution'),
-  
-  // Sampling and frequency
   defaultSampleSize: text('default_sample_size'),
   defaultFrequency: text('default_frequency'),
-  controlMethod: text('control_method'), // 'SPC', '100% inspection', 'Sampling', 'Audit'
-  
-  // Acceptance and reaction
+  controlMethod: text('control_method'),
   defaultAcceptanceCriteria: text('default_acceptance_criteria'),
   defaultReactionPlan: text('default_reaction_plan'),
-  
-  // Categorization
   applicableProcesses: jsonb('applicable_processes').$type<string[]>().default([]),
-  applicableFailureModes: jsonb('applicable_failure_modes').$type<string[]>().default([]), // Categories or tags
+  applicableFailureModes: jsonb('applicable_failure_modes').$type<string[]>().default([]),
   tags: jsonb('tags').$type<string[]>().default([]),
-  
-  // Metadata
   status: text('status').notNull().default('active'),
   industryStandard: text('industry_standard'),
   lastUsed: timestamp('last_used'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  // NEW: Control category for auto-detection scoring
+  controlCategory: text('control_category'),
+  detectionMin: integer('detection_min'),
+  detectionMax: integer('detection_max'),
+  detectionRationale: text('detection_rationale'),
 }, (table) => ({
   typeIdx: index('controls_library_type_idx').on(table.type),
   effectivenessIdx: index('controls_library_effectiveness_idx').on(table.effectiveness),
   statusIdx: index('controls_library_status_idx').on(table.status),
+  controlCategoryIdx: index('controls_library_control_category_idx').on(table.controlCategory),
 }));
 
-// Link table for recommended control pairings with failure modes
 export const controlPairings = pgTable('control_pairings', {
   id: uuid('id').primaryKey().defaultRandom(),
   failureModeId: uuid('failure_mode_id').notNull().references(() => failureModesLibrary.id, { onDelete: 'cascade' }),
   preventionControlId: uuid('prevention_control_id').references(() => controlsLibrary.id, { onDelete: 'set null' }),
   detectionControlId: uuid('detection_control_id').references(() => controlsLibrary.id, { onDelete: 'set null' }),
-  effectiveness: text('effectiveness').notNull(), // 'recommended', 'required', 'optional'
+  effectiveness: text('effectiveness').notNull(),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => ({
@@ -298,13 +324,11 @@ export const part = pgTable('part', {
   program: text('program').notNull(),
   partNumber: text('part_number').notNull(),
   partName: text('part_name').notNull(),
-  partRevLevel: text('part_rev_level'), // Drawing revision (e.g., "A", "B", "C")
+  partRevLevel: text('part_rev_level'),
   plant: text('plant').notNull(),
-  // Mold/tooling info
-  mold: text('mold'), // e.g., "Cells 5-8 (Cav 33-64)"
-  moldDescription: text('mold_description'), // Additional mold details
-  primaryEquipment: text('primary_equipment'), // e.g., "E13: Haitian JU7500V (750T)"
-  // CSR tracking
+  mold: text('mold'),
+  moldDescription: text('mold_description'),
+  primaryEquipment: text('primary_equipment'),
   csrNotes: text('csr_notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -323,28 +347,23 @@ export const partProcessMap = pgTable('part_process_map', {
   partSeqIdx: uniqueIndex('part_process_map_part_seq_idx').on(table.partId, table.sequence),
 }));
 
-// Process Flow Diagram - Document level tracking
+// PFD
 export const pfd = pgTable('pfd', {
   id: uuid('id').primaryKey().defaultRandom(),
   partId: uuid('part_id').notNull().references(() => part.id, { onDelete: 'cascade' }),
   rev: text('rev').notNull(),
   status: statusEnum('status').notNull().default('draft'),
-  // Document header fields (from EOS Excel)
-  pfdNumber: text('pfd_number'), // e.g., "EOS-PFD-001"
-  docNo: text('doc_no'), // Internal document number
-  preparedBy: text('prepared_by'), // Author name
-  approvedBy: text('approved_by'), // Approver name
-  revisionType: text('revision_type'), // e.g., "Production", "Pre-Launch"
+  pfdNumber: text('pfd_number'),
+  docNo: text('doc_no'),
+  preparedBy: text('prepared_by'),
+  approvedBy: text('approved_by'),
+  revisionType: text('revision_type'),
   revisionDate: timestamp('revision_date'),
-  // Equipment summary for header
-  primaryEquipment: text('primary_equipment'), // e.g., "E13: Haitian JU7500V (750T) - Substrate"
-  moldCells: text('mold_cells'), // e.g., "Cells 5-8 (Cav 33-64)"
-  // Cell layout notes
+  primaryEquipment: text('primary_equipment'),
+  moldCells: text('mold_cells'),
   cellLayoutNotes: text('cell_layout_notes'),
-  // Generated content
-  mermaidDiagram: text('mermaid_diagram'), // Generated Mermaid diagram
-  diagramJson: jsonb('diagram_json').$type<any>(), // Structured diagram data
-  // Timestamps
+  mermaidDiagram: text('mermaid_diagram'),
+  diagramJson: jsonb('diagram_json').$type<any>(),
   origDate: timestamp('orig_date'),
   approvedAt: timestamp('approved_at'),
   effectiveFrom: timestamp('effective_from'),
@@ -355,49 +374,47 @@ export const pfd = pgTable('pfd', {
   pfdNumberIdx: index('pfd_number_idx').on(table.pfdNumber),
 }));
 
-// PFD Step - Instance of process step for a specific part's PFD
 export const pfdStep = pgTable('pfd_step', {
   id: uuid('id').primaryKey().defaultRandom(),
   pfdId: uuid('pfd_id').notNull().references(() => pfd.id, { onDelete: 'cascade' }),
-  sourceStepId: uuid('source_step_id').references(() => processStep.id), // Link to template step
+  sourceStepId: uuid('source_step_id').references(() => processStep.id),
   seq: integer('seq').notNull(),
-  processNo: text('process_no'), // Display number (e.g., "70")
+  processNo: text('process_no'),
   name: text('name').notNull(),
   area: text('area'),
-  // Process Flow specific fields
-  symbol: text('symbol'), // '◇' inspection, '▽' storage, '→' transportation, '★' CQT
+  symbol: text('symbol'),
   keyInputs: text('key_inputs'),
   keyOutputs: text('key_outputs'),
   controlMethod: text('control_method'),
-  // Equipment at this step
   equipment: jsonb('equipment').$type<{ name: string; model?: string }[]>(),
-  // Override tracking
   overrideFlags: jsonb('override_flags').$type<Record<string, boolean>>().default({}),
 }, (table) => ({
   pfdSeqIdx: uniqueIndex('pfd_step_pfd_seq_idx').on(table.pfdId, table.seq),
   sourceStepIdx: index('pfd_step_source_idx').on(table.sourceStepId),
 }));
 
+// PFMEA
 export const pfmea = pgTable('pfmea', {
   id: uuid('id').primaryKey().defaultRandom(),
   partId: uuid('part_id').notNull().references(() => part.id, { onDelete: 'cascade' }),
   rev: text('rev').notNull(),
   status: statusEnum('status').notNull().default('draft'),
-  basis: text('basis'), // "AIAG-VDA 2019"
-  // Document header fields (from EOS Excel)
-  pfmeaNumber: text('pfmea_number'), // e.g., "EOS-PFMEA-001"
-  docNo: text('doc_no'), // Internal document number
-  keyContact: text('key_contact'), // Primary contact name
-  preparedBy: text('prepared_by'), // Author name
-  pfmeaTeam: jsonb('pfmea_team').$type<string[]>().default([]), // Team member names
-  origDate: timestamp('orig_date'), // Original creation date
-  revisionDate: timestamp('revision_date'), // Current revision date
-  // Approval
+  basis: text('basis'),
+  pfmeaNumber: text('pfmea_number'),
+  docNo: text('doc_no'),
+  keyContact: text('key_contact'),
+  preparedBy: text('prepared_by'),
+  pfmeaTeam: jsonb('pfmea_team').$type<string[]>().default([]),
+  origDate: timestamp('orig_date'),
+  revisionDate: timestamp('revision_date'),
   approvedBy: uuid('approved_by'),
   approvedAt: timestamp('approved_at'),
   effectiveFrom: timestamp('effective_from'),
   supersedesId: uuid('supersedes_id').references((): any => pfmea.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  // NEW: Last auto-review reference
+  lastAutoReviewId: uuid('last_auto_review_id'),
+  lastAutoReviewAt: timestamp('last_auto_review_at'),
 }, (table) => ({
   partRevIdx: uniqueIndex('pfmea_part_rev_idx').on(table.partId, table.rev),
   pfmeaNumberIdx: index('pfmea_number_idx').on(table.pfmeaNumber),
@@ -410,12 +427,16 @@ export const pfmeaRow = pgTable('pfmea_row', {
   id: uuid('id').primaryKey().defaultRandom(),
   pfmeaId: uuid('pfmea_id').notNull().references(() => pfmea.id, { onDelete: 'cascade' }),
   parentTemplateRowId: uuid('parent_template_row_id').references(() => fmeaTemplateRow.id),
+  rowSeq: integer('row_seq'),
+  processNo: text('process_no'),
+  processStep: text('process_step'),
   stepRef: text('step_ref').notNull(),
   function: text('function').notNull(),
   requirement: text('requirement').notNull(),
   failureMode: text('failure_mode').notNull(),
   effect: text('effect').notNull(),
   severity: integer('severity').notNull(),
+  classColumn: text('class_column'),
   cause: text('cause').notNull(),
   occurrence: integer('occurrence').notNull(),
   preventionControls: jsonb('prevention_controls').$type<string[]>().default([]),
@@ -424,48 +445,60 @@ export const pfmeaRow = pgTable('pfmea_row', {
   ap: text('ap').notNull(),
   specialFlag: boolean('special_flag').default(false),
   csrSymbol: text('csr_symbol'),
-  classColumn: text('class_column'), // Original "Class" column value from PFMEA (S, C, etc.)
   overrideFlags: jsonb('override_flags').$type<Record<string, boolean>>().default({}),
   notes: text('notes'),
-  // Action tracking fields (PFMEA columns 13-20)
+  // Action tracking
   recommendedAction: text('recommended_action'),
-  responsibility: text('responsibility'), // Who owns the action (name or role)
+  responsibility: text('responsibility'),
   targetDate: timestamp('target_date'),
   actionsTaken: text('actions_taken'),
-  actionStatus: actionStatusEnum('action_status').default('none'),
-  // Post-action ratings (after corrective action implemented)
-  postActionSeverity: integer('post_action_severity'),
-  postActionOccurrence: integer('post_action_occurrence'),
-  postActionDetection: integer('post_action_detection'),
-  postActionAp: text('post_action_ap'),
-  actionCompletedAt: timestamp('action_completed_at'),
+  completionDate: timestamp('completion_date'),
+  newSeverity: integer('new_severity'),
+  newOccurrence: integer('new_occurrence'),
+  newDetection: integer('new_detection'),
+  newAP: text('new_ap'),
+  actionStatus: text('action_status').default('none'),
+  // NEW: Scoring metadata
+  effectCategory: text('effect_category'),
+  severityJustification: text('severity_justification'),
+  occurrenceMethod: text('occurrence_method'),
+  cpkValue: text('cpk_value'),
+  occurrenceJustification: text('occurrence_justification'),
+  detectionControlId: uuid('detection_control_id'),
+  detectionJustification: text('detection_justification'),
 }, (table) => ({
   pfmeaIdx: index('pfmea_row_pfmea_idx').on(table.pfmeaId),
   parentTemplateIdx: index('pfmea_row_parent_template_idx').on(table.parentTemplateRowId),
-  actionStatusIdx: index('pfmea_row_action_status_idx').on(table.actionStatus),
+  processNoIdx: index('pfmea_row_process_no_idx').on(table.processNo),
 }));
 
+// Control Plan
 export const controlPlan = pgTable('control_plan', {
   id: uuid('id').primaryKey().defaultRandom(),
   partId: uuid('part_id').notNull().references(() => part.id, { onDelete: 'cascade' }),
   rev: text('rev').notNull(),
-  type: text('type').notNull(), // Pre-Launch/Production (Phase)
+  type: text('type').notNull(),
   status: statusEnum('status').notNull().default('draft'),
-  // Document header fields (from EOS Excel)
-  controlPlanNumber: text('control_plan_number'), // e.g., "EOS-CP-001"
-  docNo: text('doc_no'), // Internal document number
-  keyContact: text('key_contact'), // Primary contact name
-  preparedBy: text('prepared_by'), // Author name
-  moldCells: text('mold_cells'), // e.g., "Cells 5-8 (Cav 33-64)"
-  customer: text('customer'), // Customer name for doc header (denormalized from part)
-  origDate: timestamp('orig_date'), // Original creation date
-  revisionDate: timestamp('revision_date'), // Current revision date
-  // Approval
+  controlPlanNumber: text('control_plan_number'),
+  docNo: text('doc_no'),
+  keyContact: text('key_contact'),
+  phone: text('phone'),
+  coreTeam: jsonb('core_team').$type<string[]>().default([]),
+  origDate: timestamp('orig_date'),
+  revisionDate: timestamp('revision_date'),
+  preparedBy: text('prepared_by'),
+  customerApprovalDate: timestamp('customer_approval_date'),
+  otherApprovalDate: timestamp('other_approval_date'),
+  primaryEquipment: text('primary_equipment'),
+  moldCells: text('mold_cells'),
   approvedBy: uuid('approved_by'),
   approvedAt: timestamp('approved_at'),
   effectiveFrom: timestamp('effective_from'),
   supersedesId: uuid('supersedes_id').references((): any => controlPlan.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  // NEW: Last auto-review reference
+  lastAutoReviewId: uuid('last_auto_review_id'),
+  lastAutoReviewAt: timestamp('last_auto_review_at'),
 }, (table) => ({
   partRevIdx: uniqueIndex('control_plan_part_rev_idx').on(table.partId, table.rev),
   controlPlanNumberIdx: index('control_plan_number_idx').on(table.controlPlanNumber),
@@ -476,34 +509,28 @@ export const controlPlanRow = pgTable('control_plan_row', {
   controlPlanId: uuid('control_plan_id').notNull().references(() => controlPlan.id, { onDelete: 'cascade' }),
   sourcePfmeaRowId: uuid('source_pfmea_row_id').references(() => pfmeaRow.id),
   parentControlTemplateRowId: uuid('parent_control_template_row_id').references(() => controlTemplateRow.id),
-  // Process reference
-  processNo: text('process_no'), // Step number reference (e.g., "70")
-  processName: text('process_name'), // Step name (e.g., "Substrate Injection Molding")
-  machineDevice: text('machine_device'), // Specific machine (e.g., "E13: JU7500V (750T, 8-cav)")
-  // Characteristic info
+  rowSeq: integer('row_seq'),
+  processNo: text('process_no'),
+  processName: text('process_name'),
+  machineDeviceJigTools: text('machine_device_jig_tools'),
   charId: text('char_id').notNull(),
+  charNo: text('char_no'),
   characteristicName: text('characteristic_name').notNull(),
-  type: text('type').notNull(), // Product/Process
-  classColumn: text('class_column'), // Original "Class" column value (S, C, etc.)
-  // Specification
-  specification: text('specification'), // Combined spec string (e.g., "≤239 MPa")
+  type: text('type').notNull(),
+  classColumn: text('class_column'),
+  specification: text('specification'),
   target: text('target'),
   tolerance: text('tolerance'),
   specialFlag: boolean('special_flag').default(false),
   csrSymbol: text('csr_symbol'),
-  // Measurement
   measurementSystem: text('measurement_system'),
   gageDetails: text('gage_details'),
-  // Sampling
   sampleSize: text('sample_size'),
   frequency: text('frequency'),
-  // Control
   controlMethod: text('control_method'),
   acceptanceCriteria: text('acceptance_criteria'),
   reactionPlan: text('reaction_plan'),
-  // Responsibility
-  responsibility: text('responsibility'), // Who performs the check (WH, QC, PT, OP, Planning, etc.)
-  // Override tracking
+  responsibility: text('responsibility'),
   overrideFlags: jsonb('override_flags').$type<Record<string, boolean>>().default({}),
 }, (table) => ({
   controlPlanIdx: index('control_plan_row_plan_idx').on(table.controlPlanId),
@@ -521,7 +548,146 @@ export const calibrationLink = pgTable('calibration_link', {
   gageIdx: index('calibration_link_gage_idx').on(table.gageId),
 }));
 
+// ==========================================
+// NEW: Auto-Review Tables
+// ==========================================
+
+export const autoReviewRun = pgTable('auto_review_run', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pfmeaId: uuid('pfmea_id').references(() => pfmea.id, { onDelete: 'cascade' }),
+  controlPlanId: uuid('control_plan_id').references(() => controlPlan.id, { onDelete: 'cascade' }),
+  totalFindings: integer('total_findings').notNull().default(0),
+  errorCount: integer('error_count').notNull().default(0),
+  warningCount: integer('warning_count').notNull().default(0),
+  infoCount: integer('info_count').notNull().default(0),
+  passedValidation: boolean('passed_validation').notNull().default(false),
+  runBy: text('run_by'),
+  runAt: timestamp('run_at').notNull().defaultNow(),
+  durationMs: integer('duration_ms'),
+  rulesetVersion: text('ruleset_version').notNull().default('1.0.0'),
+}, (table) => ({
+  pfmeaIdx: index('auto_review_run_pfmea_idx').on(table.pfmeaId),
+  controlPlanIdx: index('auto_review_run_cp_idx').on(table.controlPlanId),
+  runAtIdx: index('auto_review_run_at_idx').on(table.runAt),
+}));
+
+export const autoReviewFinding = pgTable('auto_review_finding', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  reviewRunId: uuid('review_run_id').notNull().references(() => autoReviewRun.id, { onDelete: 'cascade' }),
+  level: text('level').notNull(),
+  category: text('category').notNull(),
+  ruleId: text('rule_id').notNull(),
+  message: text('message').notNull(),
+  entityType: text('entity_type'),
+  entityId: uuid('entity_id'),
+  details: jsonb('details').$type<Record<string, any>>().default({}),
+  resolved: boolean('resolved').notNull().default(false),
+  resolvedBy: text('resolved_by'),
+  resolvedAt: timestamp('resolved_at'),
+  resolution: text('resolution'),
+  waived: boolean('waived').notNull().default(false),
+  waiverReason: text('waiver_reason'),
+}, (table) => ({
+  reviewRunIdx: index('auto_review_finding_run_idx').on(table.reviewRunId),
+  levelIdx: index('auto_review_finding_level_idx').on(table.level),
+  categoryIdx: index('auto_review_finding_category_idx').on(table.category),
+  entityIdx: index('auto_review_finding_entity_idx').on(table.entityType, table.entityId),
+}));
+
+// ==========================================
+// NEW: Change Package Tables
+// ==========================================
+
+export const changePackage = pgTable('change_package', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  packageNumber: text('package_number').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  status: changeStatusEnum('status').notNull().default('draft'),
+  reasonCode: text('reason_code').notNull(),
+  priority: text('priority').notNull().default('medium'),
+  targetEntityType: text('target_entity_type').notNull(),
+  targetEntityId: uuid('target_entity_id').notNull(),
+  beforeSnapshot: jsonb('before_snapshot').$type<any>(),
+  afterSnapshot: jsonb('after_snapshot').$type<any>(),
+  redlineJson: jsonb('redline_json').$type<any>().default({}),
+  impactAnalysis: jsonb('impact_analysis').$type<{
+    affectedParts: { partId: string; partNumber: string; documents: string[] }[];
+    apDeltas: { rowId: string; oldAP: string; newAP: string; change: string }[];
+    csrImpacts: { charId: string; characteristic: string; impact: string }[];
+  }>(),
+  autoReviewId: uuid('auto_review_id').references(() => autoReviewRun.id),
+  autoReviewPassed: boolean('auto_review_passed'),
+  approverMatrix: jsonb('approver_matrix').$type<{
+    role: string;
+    userId?: string;
+    required: boolean;
+    approved?: boolean;
+    approvedAt?: string;
+  }[]>().default([]),
+  initiatedBy: text('initiated_by').notNull(),
+  initiatedAt: timestamp('initiated_at').notNull().defaultNow(),
+  effectiveFrom: timestamp('effective_from'),
+  completedAt: timestamp('completed_at'),
+  propagationMode: text('propagation_mode').default('prompt'),
+}, (table) => ({
+  packageNumberIdx: uniqueIndex('change_package_number_idx').on(table.packageNumber),
+  statusIdx: index('change_package_status_idx').on(table.status),
+  targetEntityIdx: index('change_package_target_idx').on(table.targetEntityType, table.targetEntityId),
+  initiatedAtIdx: index('change_package_initiated_at_idx').on(table.initiatedAt),
+}));
+
+export const changePackageItem = pgTable('change_package_item', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
+  fieldPath: text('field_path').notNull(),
+  fieldLabel: text('field_label').notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  changeType: text('change_type').notNull(),
+  impactLevel: text('impact_level'),
+  requiresPropagation: boolean('requires_propagation').notNull().default(true),
+}, (table) => ({
+  packageIdx: index('change_package_item_package_idx').on(table.changePackageId),
+}));
+
+export const changePackageApproval = pgTable('change_package_approval', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  approverId: text('approver_id').notNull(),
+  approverName: text('approver_name'),
+  status: text('status').notNull().default('pending'),
+  requestedAt: timestamp('requested_at').notNull().defaultNow(),
+  respondedAt: timestamp('responded_at'),
+  comments: text('comments'),
+  signatureHash: text('signature_hash'),
+}, (table) => ({
+  packageIdx: index('change_package_approval_package_idx').on(table.changePackageId),
+  statusIdx: index('change_package_approval_status_idx').on(table.status),
+}));
+
+export const changePackagePropagation = pgTable('change_package_propagation', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
+  targetEntityType: text('target_entity_type').notNull(),
+  targetEntityId: uuid('target_entity_id').notNull(),
+  targetRowId: uuid('target_row_id'),
+  decision: text('decision').notNull(),
+  decidedBy: text('decided_by'),
+  decidedAt: timestamp('decided_at'),
+  reason: text('reason'),
+  appliedAt: timestamp('applied_at'),
+  appliedBy: text('applied_by'),
+}, (table) => ({
+  packageIdx: index('change_propagation_package_idx').on(table.changePackageId),
+  targetIdx: index('change_propagation_target_idx').on(table.targetEntityType, table.targetEntityId),
+}));
+
+// ==========================================
 // Relations
+// ==========================================
+
 export const processDefRelations = relations(processDef, ({ many, one }) => ({
   steps: many(processStep),
   fmeaRows: many(fmeaTemplateRow),
@@ -603,6 +769,7 @@ export const pfmeaRelations = relations(pfmea, ({ one, many }) => ({
     fields: [pfmea.supersedesId],
     references: [pfmea.id],
   }),
+  autoReviews: many(autoReviewRun),
 }));
 
 export const pfmeaRowRelations = relations(pfmeaRow, ({ one }) => ({
@@ -626,6 +793,7 @@ export const controlPlanRelations = relations(controlPlan, ({ one, many }) => ({
     fields: [controlPlan.supersedesId],
     references: [controlPlan.id],
   }),
+  autoReviews: many(autoReviewRun),
 }));
 
 export const controlPlanRowRelations = relations(controlPlanRow, ({ one }) => ({
@@ -700,139 +868,62 @@ export const controlPairingsRelations = relations(controlPairings, ({ one }) => 
   }),
 }));
 
-// Phase 8: Governance & Document Control Tables
-export const auditLog = pgTable('audit_log', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  entityType: text('entity_type').notNull(),
-  entityId: uuid('entity_id').notNull(),
-  action: text('action').notNull(),
-  userId: text('user_id').notNull(),
-  userName: text('user_name'),
-  previousValue: jsonb('previous_value').$type<Record<string, any>>(),
-  newValue: jsonb('new_value').$type<Record<string, any>>(),
-  changeReason: text('change_reason'),
-  ipAddress: text('ip_address'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-}, (table) => ({
-  entityIdx: index('audit_log_entity_idx').on(table.entityType, table.entityId),
-  userIdx: index('audit_log_user_idx').on(table.userId),
-  actionIdx: index('audit_log_action_idx').on(table.action),
-  createdAtIdx: index('audit_log_created_at_idx').on(table.createdAt),
+// NEW: Auto-Review Relations
+export const autoReviewRunRelations = relations(autoReviewRun, ({ one, many }) => ({
+  pfmea: one(pfmea, {
+    fields: [autoReviewRun.pfmeaId],
+    references: [pfmea.id],
+  }),
+  controlPlan: one(controlPlan, {
+    fields: [autoReviewRun.controlPlanId],
+    references: [controlPlan.id],
+  }),
+  findings: many(autoReviewFinding),
 }));
 
-export const signature = pgTable('signature', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  entityType: text('entity_type').notNull(),
-  entityId: uuid('entity_id').notNull(),
-  role: roleEnum('role').notNull(),
-  userId: text('user_id').notNull(),
-  userName: text('user_name').notNull(),
-  signedAt: timestamp('signed_at'),
-  status: text('status').notNull().default('pending'),
-  comments: text('comments'),
-  contentHash: text('content_hash'),
-  delegatedFrom: text('delegated_from'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-}, (table) => ({
-  entityIdx: index('signature_entity_idx').on(table.entityType, table.entityId),
-  userIdx: index('signature_user_idx').on(table.userId),
-  statusIdx: index('signature_status_idx').on(table.status),
+export const autoReviewFindingRelations = relations(autoReviewFinding, ({ one }) => ({
+  reviewRun: one(autoReviewRun, {
+    fields: [autoReviewFinding.reviewRunId],
+    references: [autoReviewRun.id],
+  }),
 }));
 
-export const approvalMatrix = pgTable('approval_matrix', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  documentType: text('document_type').notNull(),
-  role: roleEnum('role').notNull(),
-  sequence: integer('sequence').notNull(),
-  required: boolean('required').notNull().default(true),
-  canDelegate: boolean('can_delegate').notNull().default(false),
-}, (table) => ({
-  docTypeSeqIdx: uniqueIndex('approval_matrix_doc_type_seq_idx').on(table.documentType, table.sequence),
+// NEW: Change Package Relations
+export const changePackageRelations = relations(changePackage, ({ one, many }) => ({
+  autoReview: one(autoReviewRun, {
+    fields: [changePackage.autoReviewId],
+    references: [autoReviewRun.id],
+  }),
+  items: many(changePackageItem),
+  approvals: many(changePackageApproval),
+  propagations: many(changePackagePropagation),
 }));
 
-export const changePackage = pgTable('change_package', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  packageNumber: text('package_number').notNull().unique(),
-  title: text('title').notNull(),
-  description: text('description'),
-  status: changeStatusEnum('status').notNull().default('draft'),
-  changeType: text('change_type').notNull(),
-  priority: text('priority').notNull().default('normal'),
-  requestedBy: text('requested_by').notNull(),
-  requestedByName: text('requested_by_name'),
-  assignedTo: text('assigned_to'),
-  assignedToName: text('assigned_to_name'),
-  targetDate: timestamp('target_date'),
-  completedAt: timestamp('completed_at'),
-  impactSummary: text('impact_summary'),
-  riskAssessment: text('risk_assessment'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (table) => ({
-  statusIdx: index('change_package_status_idx').on(table.status),
-  requestedByIdx: index('change_package_requested_by_idx').on(table.requestedBy),
+export const changePackageItemRelations = relations(changePackageItem, ({ one }) => ({
+  changePackage: one(changePackage, {
+    fields: [changePackageItem.changePackageId],
+    references: [changePackage.id],
+  }),
 }));
 
-export const changePackageItem = pgTable('change_package_item', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
-  entityType: text('entity_type').notNull(),
-  entityId: uuid('entity_id').notNull(),
-  changeDescription: text('change_description'),
-  beforeSnapshot: jsonb('before_snapshot').$type<Record<string, any>>(),
-  afterSnapshot: jsonb('after_snapshot').$type<Record<string, any>>(),
-  status: text('status').notNull().default('pending'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-}, (table) => ({
-  packageIdx: index('change_package_item_package_idx').on(table.changePackageId),
-  entityIdx: index('change_package_item_entity_idx').on(table.entityType, table.entityId),
+export const changePackageApprovalRelations = relations(changePackageApproval, ({ one }) => ({
+  changePackage: one(changePackage, {
+    fields: [changePackageApproval.changePackageId],
+    references: [changePackage.id],
+  }),
 }));
 
-export const changePackageAffectedPart = pgTable('change_package_affected_part', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  changePackageId: uuid('change_package_id').notNull().references(() => changePackage.id, { onDelete: 'cascade' }),
-  partId: uuid('part_id').notNull().references(() => part.id, { onDelete: 'cascade' }),
-  impactDescription: text('impact_description'),
-  requiresRevalidation: boolean('requires_revalidation').notNull().default(false),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-}, (table) => ({
-  packageIdx: index('change_affected_part_package_idx').on(table.changePackageId),
-  partIdx: index('change_affected_part_part_idx').on(table.partId),
+export const changePackagePropagationRelations = relations(changePackagePropagation, ({ one }) => ({
+  changePackage: one(changePackage, {
+    fields: [changePackagePropagation.changePackageId],
+    references: [changePackage.id],
+  }),
 }));
 
-export const trainingAck = pgTable('training_ack', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  entityType: text('entity_type').notNull(),
-  entityId: uuid('entity_id').notNull(),
-  userId: text('user_id').notNull(),
-  userName: text('user_name').notNull(),
-  acknowledgedAt: timestamp('acknowledged_at'),
-  dueDate: timestamp('due_date'),
-  status: text('status').notNull().default('pending'),
-  notes: text('notes'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-}, (table) => ({
-  entityIdx: index('training_ack_entity_idx').on(table.entityType, table.entityId),
-  userIdx: index('training_ack_user_idx').on(table.userId),
-  statusIdx: index('training_ack_status_idx').on(table.status),
-}));
-
-export const ownership = pgTable('ownership', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  entityType: text('entity_type').notNull(),
-  entityId: uuid('entity_id').notNull(),
-  ownerId: text('owner_id').notNull(),
-  ownerName: text('owner_name').notNull(),
-  ownerRole: roleEnum('owner_role').notNull(),
-  watchers: jsonb('watchers').$type<{ userId: string; userName: string; role: string }[]>().default([]),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (table) => ({
-  entityIdx: uniqueIndex('ownership_entity_idx').on(table.entityType, table.entityId),
-  ownerIdx: index('ownership_owner_idx').on(table.ownerId),
-}));
-
+// ==========================================
 // Insert schemas
+// ==========================================
+
 export const insertPartSchema = createInsertSchema(part).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProcessDefSchema = createInsertSchema(processDef).omit({ id: true, createdAt: true });
 export const insertProcessStepSchema = createInsertSchema(processStep).omit({ id: true });
@@ -855,18 +946,18 @@ export const insertFailureModesLibrarySchema = createInsertSchema(failureModesLi
 export const insertFmeaTemplateCatalogLinkSchema = createInsertSchema(fmeaTemplateCatalogLink).omit({ id: true, adoptedAt: true });
 export const insertControlsLibrarySchema = createInsertSchema(controlsLibrary).omit({ id: true, createdAt: true, updatedAt: true, lastUsed: true });
 export const insertControlPairingsSchema = createInsertSchema(controlPairings).omit({ id: true, createdAt: true });
+// NEW
+export const insertAutoReviewRunSchema = createInsertSchema(autoReviewRun).omit({ id: true, runAt: true });
+export const insertAutoReviewFindingSchema = createInsertSchema(autoReviewFinding).omit({ id: true });
+export const insertChangePackageSchema = createInsertSchema(changePackage).omit({ id: true, initiatedAt: true });
+export const insertChangePackageItemSchema = createInsertSchema(changePackageItem).omit({ id: true });
+export const insertChangePackageApprovalSchema = createInsertSchema(changePackageApproval).omit({ id: true, requestedAt: true });
+export const insertChangePackagePropagationSchema = createInsertSchema(changePackagePropagation).omit({ id: true });
 
-// Governance insert schemas
-export const insertAuditLogSchema = createInsertSchema(auditLog).omit({ id: true, createdAt: true });
-export const insertSignatureSchema = createInsertSchema(signature).omit({ id: true, createdAt: true });
-export const insertApprovalMatrixSchema = createInsertSchema(approvalMatrix).omit({ id: true });
-export const insertChangePackageSchema = createInsertSchema(changePackage).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertChangePackageItemSchema = createInsertSchema(changePackageItem).omit({ id: true, createdAt: true });
-export const insertChangePackageAffectedPartSchema = createInsertSchema(changePackageAffectedPart).omit({ id: true, createdAt: true });
-export const insertTrainingAckSchema = createInsertSchema(trainingAck).omit({ id: true, createdAt: true });
-export const insertOwnershipSchema = createInsertSchema(ownership).omit({ id: true, createdAt: true, updatedAt: true });
-
+// ==========================================
 // Types
+// ==========================================
+
 export type Part = typeof part.$inferSelect;
 export type InsertPart = z.infer<typeof insertPartSchema>;
 export type ProcessDef = typeof processDef.$inferSelect;
@@ -911,32 +1002,34 @@ export type ControlsLibrary = typeof controlsLibrary.$inferSelect;
 export type InsertControlsLibrary = z.infer<typeof insertControlsLibrarySchema>;
 export type ControlPairings = typeof controlPairings.$inferSelect;
 export type InsertControlPairings = z.infer<typeof insertControlPairingsSchema>;
-
-// Governance types
-export type AuditLog = typeof auditLog.$inferSelect;
-export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
-export type Signature = typeof signature.$inferSelect;
-export type InsertSignature = z.infer<typeof insertSignatureSchema>;
-export type ApprovalMatrix = typeof approvalMatrix.$inferSelect;
-export type InsertApprovalMatrix = z.infer<typeof insertApprovalMatrixSchema>;
+// NEW
+export type AutoReviewRun = typeof autoReviewRun.$inferSelect;
+export type InsertAutoReviewRun = z.infer<typeof insertAutoReviewRunSchema>;
+export type AutoReviewFinding = typeof autoReviewFinding.$inferSelect;
+export type InsertAutoReviewFinding = z.infer<typeof insertAutoReviewFindingSchema>;
 export type ChangePackage = typeof changePackage.$inferSelect;
 export type InsertChangePackage = z.infer<typeof insertChangePackageSchema>;
 export type ChangePackageItem = typeof changePackageItem.$inferSelect;
 export type InsertChangePackageItem = z.infer<typeof insertChangePackageItemSchema>;
-export type ChangePackageAffectedPart = typeof changePackageAffectedPart.$inferSelect;
-export type InsertChangePackageAffectedPart = z.infer<typeof insertChangePackageAffectedPartSchema>;
-export type TrainingAck = typeof trainingAck.$inferSelect;
-export type InsertTrainingAck = z.infer<typeof insertTrainingAckSchema>;
-export type Ownership = typeof ownership.$inferSelect;
-export type InsertOwnership = z.infer<typeof insertOwnershipSchema>;
+export type ChangePackageApproval = typeof changePackageApproval.$inferSelect;
+export type InsertChangePackageApproval = z.infer<typeof insertChangePackageApprovalSchema>;
+export type ChangePackagePropagation = typeof changePackagePropagation.$inferSelect;
+export type InsertChangePackagePropagation = z.infer<typeof insertChangePackagePropagationSchema>;
 
-// Category type for Failure Modes Library
+// ==========================================
+// Enum Types
+// ==========================================
+
 export type FailureModeCategory = 'dimensional' | 'visual' | 'functional' | 'assembly' | 'material' | 'process' | 'contamination' | 'environmental';
-
-// Control type enums
 export type ControlType = 'prevention' | 'detection';
 export type ControlEffectiveness = 'high' | 'medium' | 'low';
 export type MSAStatus = 'approved' | 'planned' | 'failed' | 'not_required';
 export type StepType = 'operation' | 'group' | 'subprocess_ref';
 export type ActionStatus = 'none' | 'open' | 'in_progress' | 'complete' | 'cancelled';
 export type ProcessSymbol = 'operation' | 'inspection' | 'storage' | 'transportation' | 'decision' | 'cqt';
+// NEW
+export type ControlCategory = 'error_proofing_prevent' | 'error_proofing_detect' | 'automated_100_percent' | 'spc_immediate' | 'manual_gage' | 'visual_standard' | 'visual_only' | 'none';
+export type EffectCategory = 'safety_no_warning' | 'safety_with_warning' | 'regulatory_noncompliance' | 'function_loss' | 'function_degraded' | 'comfort_loss' | 'comfort_reduced' | 'appearance_obvious' | 'appearance_subtle' | 'appearance_minor' | 'none';
+export type FindingLevel = 'error' | 'warning' | 'info';
+export type FindingCategory = 'coverage' | 'effectiveness' | 'document_control' | 'scoring' | 'csr';
+export type ChangeStatus = 'draft' | 'impact_analysis' | 'auto_review' | 'pending_signatures' | 'effective' | 'cancelled';
