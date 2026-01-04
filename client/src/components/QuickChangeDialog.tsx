@@ -1,0 +1,196 @@
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import { ArrowRight, FileCheck, Clock } from 'lucide-react';
+import { type FieldDiff, formatDisplayValue } from '@/lib/field-classification';
+
+interface QuickChangeDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entityType: string;
+  entityId: string;
+  entityName: string;
+  diffs: FieldDiff[];
+  onSuccess?: () => void;
+}
+
+const quickReasonCodes = [
+  { value: 'DOCUMENTATION_UPDATE', label: 'Documentation Update' },
+  { value: 'CLARIFICATION', label: 'Clarification' },
+  { value: 'CONTINUOUS_IMPROVEMENT', label: 'Continuous Improvement' },
+  { value: 'PROCESS_OPTIMIZATION', label: 'Process Optimization' },
+  { value: 'CUSTOMER_FEEDBACK', label: 'Customer Feedback' },
+];
+
+export default function QuickChangeDialog({
+  open,
+  onOpenChange,
+  entityType,
+  entityId,
+  entityName,
+  diffs,
+  onSuccess,
+}: QuickChangeDialogProps) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  
+  const [reasonCode, setReasonCode] = useState('CONTINUOUS_IMPROVEMENT');
+  const [comments, setComments] = useState('');
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/change-packages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Update ${entityName}`,
+          description: comments || undefined,
+          reasonCode,
+          priority: 'low',
+          targetEntityType: entityType,
+          targetEntityId: entityId,
+          initiatedBy: 'current-user',
+          changes: diffs.map(d => ({
+            fieldPath: d.fieldPath,
+            fieldLabel: d.fieldLabel,
+            oldValue: formatValue(d.oldValue),
+            newValue: formatValue(d.newValue),
+            changeType: d.oldValue == null ? 'add' : d.newValue == null ? 'delete' : 'modify',
+            impactLevel: d.impact,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create change package');
+      return res.json();
+    },
+    onSuccess: (pkg) => {
+      toast({ 
+        title: 'Changes saved', 
+        description: `Package ${pkg.packageNumber} created` 
+      });
+      onOpenChange(false);
+      onSuccess?.();
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to save changes',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileCheck className="h-5 w-5" />
+            Confirm Changes
+          </DialogTitle>
+          <DialogDescription>
+            Review and save your changes with a reason code for traceability.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="border rounded-lg overflow-hidden">
+            <div className="bg-muted px-3 py-2 text-sm font-medium">
+              {diffs.length} field{diffs.length !== 1 ? 's' : ''} modified
+            </div>
+            <div className="divide-y max-h-48 overflow-auto">
+              {diffs.map((diff, i) => (
+                <div key={i} className="px-3 py-2 text-sm">
+                  <div className="font-medium">{diff.fieldLabel}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-red-600 dark:text-red-400 font-mono text-xs bg-red-50 dark:bg-red-950/50 px-1.5 py-0.5 rounded">
+                      {formatDisplayValue(diff.oldValue)}
+                    </span>
+                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-green-600 dark:text-green-400 font-mono text-xs bg-green-50 dark:bg-green-950/50 px-1.5 py-0.5 rounded">
+                      {formatDisplayValue(diff.newValue)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label>Reason</Label>
+            <Select value={reasonCode} onValueChange={setReasonCode}>
+              <SelectTrigger data-testid="select-quick-reason">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {quickReasonCodes.map(rc => (
+                  <SelectItem key={rc.value} value={rc.value}>
+                    {rc.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Comments (optional)</Label>
+            <Textarea
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              placeholder="Any additional context..."
+              rows={2}
+              data-testid="textarea-quick-comments"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-quick-cancel">
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending}
+            data-testid="button-quick-save"
+          >
+            {createMutation.isPending ? (
+              <>
+                <Clock className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Changes'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function formatValue(value: any): string {
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}

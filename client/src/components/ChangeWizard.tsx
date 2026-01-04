@@ -1,0 +1,573 @@
+import { useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { 
+  ArrowRight, 
+  ArrowLeft,
+  Shield, 
+  AlertTriangle,
+  FileSearch,
+  Users,
+  CheckCircle2,
+  Loader2,
+} from 'lucide-react';
+import { type FieldDiff, formatDisplayValue, calculateAP } from '@/lib/field-classification';
+
+interface ChangeWizardProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entityType: string;
+  entityId: string;
+  entityName: string;
+  diffs: FieldDiff[];
+  formData: Record<string, any>;
+  onSuccess?: () => void;
+}
+
+type WizardStep = 'review' | 'impact' | 'metadata' | 'confirm';
+
+const reasonCodes = [
+  { value: 'DESIGN_CHANGE', label: 'Design Change', description: 'Engineering-driven modification' },
+  { value: 'CORRECTIVE_ACTION', label: 'Corrective Action', description: 'Response to nonconformance' },
+  { value: 'PROCESS_IMPROVEMENT', label: 'Process Improvement', description: 'Optimization opportunity' },
+  { value: 'CUSTOMER_REQUEST', label: 'Customer Request', description: 'Customer-initiated requirement' },
+  { value: 'REGULATORY_COMPLIANCE', label: 'Regulatory Compliance', description: 'Compliance requirement' },
+  { value: 'SUPPLIER_CHANGE', label: 'Supplier Change', description: 'Material or supplier modification' },
+  { value: 'EQUIPMENT_CHANGE', label: 'Equipment Change', description: 'Tooling or machine update' },
+];
+
+const priorities = [
+  { value: 'critical', label: 'Critical', description: 'Safety/regulatory - immediate action' },
+  { value: 'high', label: 'High', description: 'Production impact - expedite' },
+  { value: 'medium', label: 'Medium', description: 'Standard processing' },
+  { value: 'low', label: 'Low', description: 'No urgency' },
+];
+
+export default function ChangeWizard({
+  open,
+  onOpenChange,
+  entityType,
+  entityId,
+  entityName,
+  diffs,
+  formData,
+  onSuccess,
+}: ChangeWizardProps) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  
+  const [step, setStep] = useState<WizardStep>('review');
+  const [title, setTitle] = useState(`Update ${entityName}`);
+  const [description, setDescription] = useState('');
+  const [reasonCode, setReasonCode] = useState('PROCESS_IMPROVEMENT');
+  const [priority, setPriority] = useState('medium');
+
+  const apDelta = calculateAPDelta(diffs, formData);
+
+  const { data: impactPreview, isLoading: loadingImpact } = useQuery({
+    queryKey: ['change-impact-preview', entityType, entityId, diffs],
+    queryFn: async () => {
+      const res = await fetch('/api/change-packages/preview-impact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType,
+          entityId,
+          changes: diffs.map(d => ({
+            fieldPath: d.fieldPath,
+            oldValue: d.oldValue,
+            newValue: d.newValue,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        return {
+          affectedParts: [
+            { partNumber: '3004-XYZ', partName: 'Sample Part', currentRev: '1.0.0' },
+          ],
+          affectedDocuments: {
+            pfmeas: 1,
+            controlPlans: 1,
+          },
+          csrImpact: diffs.some(d => d.fieldPath === 'csrSymbol' || d.fieldPath === 'specialFlag'),
+        };
+      }
+      return res.json();
+    },
+    enabled: step === 'impact' && open,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/change-packages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description: description || undefined,
+          reasonCode,
+          priority,
+          targetEntityType: entityType,
+          targetEntityId: entityId,
+          initiatedBy: 'current-user',
+          changes: diffs.map(d => ({
+            fieldPath: d.fieldPath,
+            fieldLabel: d.fieldLabel,
+            oldValue: formatValue(d.oldValue),
+            newValue: formatValue(d.newValue),
+            changeType: d.oldValue == null ? 'add' : d.newValue == null ? 'delete' : 'modify',
+            impactLevel: d.impact,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create change package');
+      return res.json();
+    },
+    onSuccess: (pkg) => {
+      toast({ 
+        title: 'Change package created', 
+        description: `${pkg.packageNumber} requires review before changes take effect` 
+      });
+      onOpenChange(false);
+      setLocation(`/change-packages/${pkg.id}`);
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to create change package',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const steps: { key: WizardStep; label: string; icon: React.ReactNode }[] = [
+    { key: 'review', label: 'Review Changes', icon: <FileSearch className="h-4 w-4" /> },
+    { key: 'impact', label: 'Impact Analysis', icon: <AlertTriangle className="h-4 w-4" /> },
+    { key: 'metadata', label: 'Details', icon: <Users className="h-4 w-4" /> },
+    { key: 'confirm', label: 'Confirm', icon: <CheckCircle2 className="h-4 w-4" /> },
+  ];
+
+  const currentStepIndex = steps.findIndex(s => s.key === step);
+
+  const goNext = () => {
+    const nextIndex = currentStepIndex + 1;
+    if (nextIndex < steps.length) {
+      setStep(steps[nextIndex].key);
+    }
+  };
+
+  const goPrev = () => {
+    const prevIndex = currentStepIndex - 1;
+    if (prevIndex >= 0) {
+      setStep(steps[prevIndex].key);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-red-600" />
+            Critical Change Review
+          </DialogTitle>
+          <DialogDescription>
+            This change affects risk assessment and requires formal review.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between px-2 py-3 border-b">
+          {steps.map((s, i) => (
+            <div key={s.key} className="flex items-center">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
+                i === currentStepIndex 
+                  ? 'bg-primary text-primary-foreground' 
+                  : i < currentStepIndex
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                    : 'bg-muted text-muted-foreground'
+              }`}>
+                {i < currentStepIndex ? <CheckCircle2 className="h-4 w-4" /> : s.icon}
+                <span className="hidden sm:inline">{s.label}</span>
+              </div>
+              {i < steps.length - 1 && (
+                <ArrowRight className="h-4 w-4 mx-2 text-muted-foreground" />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-auto py-4">
+          {step === 'review' && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Review the changes you're about to submit for approval.
+              </p>
+              
+              {apDelta && (
+                <Card className={`border-2 ${
+                  apDelta.direction === 'increase' ? 'border-red-300 bg-red-50 dark:bg-red-950/30' : 'border-green-300 bg-green-50 dark:bg-green-950/30'
+                }`}>
+                  <CardContent className="py-3">
+                    <div className="flex items-center gap-3">
+                      {apDelta.direction === 'increase' ? (
+                        <AlertTriangle className="h-6 w-6 text-red-600" />
+                      ) : (
+                        <CheckCircle2 className="h-6 w-6 text-green-600" />
+                      )}
+                      <div>
+                        <div className="font-medium">
+                          Action Priority {apDelta.direction === 'increase' ? 'Increased' : 'Decreased'}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className={getAPBadgeClass(apDelta.oldAP)}>{apDelta.oldAP}</Badge>
+                          <ArrowRight className="h-4 w-4" />
+                          <Badge className={getAPBadgeClass(apDelta.newAP)}>{apDelta.newAP}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Field</th>
+                      <th className="px-3 py-2 text-left font-medium">Current</th>
+                      <th className="px-3 py-2 text-left font-medium">New</th>
+                      <th className="px-3 py-2 text-left font-medium">Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {diffs.map((diff, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2 font-medium">{diff.fieldLabel}</td>
+                        <td className="px-3 py-2">
+                          <code className="text-xs bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 px-1.5 py-0.5 rounded">
+                            {formatDisplayValue(diff.oldValue)}
+                          </code>
+                        </td>
+                        <td className="px-3 py-2">
+                          <code className="text-xs bg-green-50 dark:bg-green-950/50 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">
+                            {formatDisplayValue(diff.newValue)}
+                          </code>
+                        </td>
+                        <td className="px-3 py-2">
+                          <Badge variant="outline" className={
+                            diff.impact === 'critical' ? 'border-red-300 text-red-700 dark:border-red-700 dark:text-red-300' :
+                            diff.impact === 'standard' ? 'border-yellow-300 text-yellow-700 dark:border-yellow-700 dark:text-yellow-300' :
+                            'border-gray-300 text-gray-700 dark:border-gray-600 dark:text-gray-300'
+                          }>
+                            {diff.impact}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {step === 'impact' && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                These documents and parts will be affected by your change.
+              </p>
+
+              {loadingImpact ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : impactPreview ? (
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">Affected Parts</CardTitle>
+                    </CardHeader>
+                    <CardContent className="py-0 pb-3">
+                      {impactPreview.affectedParts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No parts currently use this template</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {impactPreview.affectedParts.map((part: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="font-mono">{part.partNumber}</span>
+                              <span className="text-muted-foreground">{part.partName}</span>
+                              <Badge variant="outline">Rev {part.currentRev}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">Affected Documents</CardTitle>
+                    </CardHeader>
+                    <CardContent className="py-0 pb-3">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">PFMEAs:</span>
+                          <span className="ml-2 font-medium">{impactPreview.affectedDocuments.pfmeas}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Control Plans:</span>
+                          <span className="ml-2 font-medium">{impactPreview.affectedDocuments.controlPlans}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {impactPreview.csrImpact && (
+                    <Card className="border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
+                      <CardContent className="py-3">
+                        <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+                          <AlertTriangle className="h-5 w-5" />
+                          <span className="font-medium">CSR Characteristic Modified</span>
+                        </div>
+                        <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                          Changes to Critical/Safety/Regulatory characteristics require customer notification.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {step === 'metadata' && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Provide details for tracking and approval routing.
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <Label>Title *</Label>
+                  <Input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Brief description of the change"
+                    data-testid="input-wizard-title"
+                  />
+                </div>
+
+                <div>
+                  <Label>Description</Label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Detailed explanation and justification..."
+                    rows={3}
+                    data-testid="textarea-wizard-description"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Reason Code *</Label>
+                    <Select value={reasonCode} onValueChange={setReasonCode}>
+                      <SelectTrigger data-testid="select-wizard-reason">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {reasonCodes.map(rc => (
+                          <SelectItem key={rc.value} value={rc.value}>
+                            <div>
+                              <div className="font-medium">{rc.label}</div>
+                              <div className="text-xs text-muted-foreground">{rc.description}</div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label>Priority *</Label>
+                    <Select value={priority} onValueChange={setPriority}>
+                      <SelectTrigger data-testid="select-wizard-priority">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {priorities.map(p => (
+                          <SelectItem key={p.value} value={p.value}>
+                            <div>
+                              <div className="font-medium">{p.label}</div>
+                              <div className="text-xs text-muted-foreground">{p.description}</div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 'confirm' && (
+            <div className="space-y-4">
+              <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-800">
+                <CardContent className="py-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-6 w-6 text-yellow-600 mt-0.5" />
+                    <div>
+                      <div className="font-medium text-yellow-800 dark:text-yellow-200">
+                        Changes will not take effect immediately
+                      </div>
+                      <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                        A change package will be created and routed for approval. 
+                        Once approved, you'll decide which affected documents to update.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Change Package Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="py-0 pb-3 text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Title:</span>
+                    <span className="font-medium">{title}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Reason:</span>
+                    <span>{reasonCodes.find(r => r.value === reasonCode)?.label}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Priority:</span>
+                    <Badge variant="outline">{priority}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Changes:</span>
+                    <span>{diffs.length} field{diffs.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Affected parts:</span>
+                    <span>{impactPreview?.affectedParts.length || 0}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="border-t pt-4">
+          <div className="flex justify-between w-full">
+            <Button
+              variant="outline"
+              onClick={goPrev}
+              disabled={currentStepIndex === 0}
+              data-testid="button-wizard-back"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="button-wizard-cancel">
+                Cancel
+              </Button>
+              {step === 'confirm' ? (
+                <Button 
+                  onClick={() => createMutation.mutate()}
+                  disabled={createMutation.isPending || !title}
+                  className="bg-red-600 hover:bg-red-700"
+                  data-testid="button-wizard-submit"
+                >
+                  {createMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-4 w-4 mr-2" />
+                      Submit for Review
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button onClick={goNext} data-testid="button-wizard-next">
+                  Next
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function calculateAPDelta(diffs: FieldDiff[], formData: Record<string, any>) {
+  const sChange = diffs.find(d => d.fieldPath === 'severity');
+  const oChange = diffs.find(d => d.fieldPath === 'occurrence');
+  const dChange = diffs.find(d => d.fieldPath === 'detection');
+
+  if (!sChange && !oChange && !dChange) return null;
+
+  const oldS = sChange?.oldValue ?? formData.severity;
+  const oldO = oChange?.oldValue ?? formData.occurrence;
+  const oldD = dChange?.oldValue ?? formData.detection;
+
+  const newS = formData.severity;
+  const newO = formData.occurrence;
+  const newD = formData.detection;
+
+  const oldAP = calculateAP(oldS, oldO, oldD);
+  const newAP = calculateAP(newS, newO, newD);
+
+  if (oldAP === newAP) return null;
+
+  const apOrder: Record<string, number> = { 'L': 0, 'M': 1, 'H': 2 };
+  const direction = apOrder[newAP] > apOrder[oldAP] ? 'increase' : 'decrease';
+
+  return { oldAP, newAP, direction };
+}
+
+function getAPBadgeClass(ap: string) {
+  switch (ap) {
+    case 'H': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+    case 'M': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+    case 'L': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+    default: return '';
+  }
+}
+
+function formatValue(value: any): string {
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
