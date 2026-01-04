@@ -1,4 +1,5 @@
 import { useState, useMemo, Fragment } from "react";
+import { useLocation } from "wouter";
 import {
   Plus,
   Search,
@@ -150,6 +151,7 @@ export default function FMEATemplateBuilder({
   steps,
 }: FMEATemplateBuilderProps) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStepFilter, setSelectedStepFilter] = useState<string>("all");
   const [selectedApFilter, setSelectedApFilter] = useState<string>("all");
@@ -561,12 +563,12 @@ export default function FMEATemplateBuilder({
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    onClick={() => setEditingRow(row)}
+                                    onClick={() => setLocation(`/processes/${processId}/fmea/${row.id}/edit`)}
                                   >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Edit</TooltipContent>
+                                <TooltipContent>Edit Template</TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
                             <TooltipProvider>

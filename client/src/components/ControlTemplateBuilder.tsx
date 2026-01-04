@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import {
   Plus,
   Search,
@@ -144,6 +145,7 @@ export default function ControlTemplateBuilder({
   fmeaRows,
 }: ControlTemplateBuilderProps) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [specialFilter, setSpecialFilter] = useState<string>("all");
@@ -599,12 +601,12 @@ export default function ControlTemplateBuilder({
                                       variant="ghost"
                                       size="sm"
                                       className="h-8 w-8 p-0"
-                                      onClick={() => handleEdit(row)}
+                                      onClick={() => setLocation(`/processes/${processId}/control/${row.id}/edit`)}
                                     >
                                       <Pencil className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Edit</TooltipContent>
+                                  <TooltipContent>Edit Template</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                               

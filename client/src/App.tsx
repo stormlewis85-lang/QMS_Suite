@@ -22,6 +22,8 @@ import Settings from "@/pages/Settings";
 import ChangePackagesPage from "@/pages/ChangePackages";
 import ChangePackageDetail from "@/pages/ChangePackageDetail";
 import NewChangePackage from "@/pages/NewChangePackage";
+import FMEATemplateRowEdit from "@/pages/FMEATemplateRowEdit";
+import ControlTemplateRowEdit from "@/pages/ControlTemplateRowEdit";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -31,6 +33,8 @@ function Router() {
       <Route path="/parts" component={Parts} />
       <Route path="/parts/:id" component={PartDetail} />
       <Route path="/processes" component={Processes} />
+      <Route path="/processes/:processId/fmea/:rowId/edit" component={FMEATemplateRowEdit} />
+      <Route path="/processes/:processId/control/:rowId/edit" component={ControlTemplateRowEdit} />
       <Route path="/processes/:id" component={ProcessDetail} />
       <Route path="/pfmea" component={PFMEA} />
       <Route path="/pfmea/:id" component={PFMEADetail} />
