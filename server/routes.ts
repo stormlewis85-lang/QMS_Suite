@@ -8,6 +8,18 @@ import {
   resolveFinding, 
   waiveFinding 
 } from "./autoReviewService";
+import {
+  createChangePackage as createChangePackageService,
+  runImpactAnalysis,
+  runChangePackageAutoReview,
+  requestApprovals,
+  processApproval,
+  propagateChanges,
+  getChangePackage as getChangePackageService,
+  listChangePackages as listChangePackagesService,
+  cancelChangePackage,
+  advanceWorkflow
+} from "./change-package-service";
 import { runAllSeeds } from "./seed";
 import {
   insertPartSchema,
@@ -1493,6 +1505,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating propagation:", error);
       res.status(500).json({ message: "Failed to update propagation" });
+    }
+  });
+
+  // ============================================
+  // CHANGE PACKAGE WORKFLOW ENDPOINTS (Phase 9)
+  // Full workflow: create → impact analysis → auto-review → approvals → propagation
+  // ============================================
+
+  /**
+   * Run auto-review on PFMEA and/or Control Plan
+   * POST /api/auto-review/run
+   */
+  app.post('/api/auto-review/run', async (req, res) => {
+    try {
+      const { pfmeaId, controlPlanId, runBy } = req.body;
+      
+      if (!pfmeaId && !controlPlanId) {
+        return res.status(400).json({ 
+          error: 'At least one of pfmeaId or controlPlanId is required' 
+        });
+      }
+      
+      const result = await runAutoReviewService(pfmeaId, controlPlanId, runBy);
+      res.json(result);
+    } catch (error) {
+      console.error('Auto-review error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to run auto-review' 
+      });
+    }
+  });
+
+  /**
+   * Get auto-review history
+   * GET /api/auto-review/history
+   */
+  app.get('/api/auto-review/history', async (req, res) => {
+    try {
+      const { pfmeaId, controlPlanId, limit } = req.query;
+      
+      const history = await getAutoReviewHistory(
+        pfmeaId as string | undefined,
+        controlPlanId as string | undefined,
+        limit ? parseInt(limit as string, 10) : undefined
+      );
+      
+      res.json(history);
+    } catch (error) {
+      console.error('Get history error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get history' 
+      });
+    }
+  });
+
+  /**
+   * Get single auto-review run with findings
+   * GET /api/auto-review/:runId
+   */
+  app.get('/api/auto-review/:runId', async (req, res) => {
+    try {
+      const run = await getAutoReviewRun(req.params.runId);
+      
+      if (!run) {
+        return res.status(404).json({ error: 'Auto-review run not found' });
+      }
+      
+      res.json(run);
+    } catch (error) {
+      console.error('Get run error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get run' 
+      });
+    }
+  });
+
+  /**
+   * Resolve a finding
+   * POST /api/auto-review/findings/:findingId/resolve
+   */
+  app.post('/api/auto-review/findings/:findingId/resolve', async (req, res) => {
+    try {
+      const { resolution, resolvedBy } = req.body;
+      
+      if (!resolution || !resolvedBy) {
+        return res.status(400).json({ 
+          error: 'resolution and resolvedBy are required' 
+        });
+      }
+      
+      await resolveFinding(req.params.findingId, resolution, resolvedBy);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Resolve finding error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to resolve finding' 
+      });
+    }
+  });
+
+  /**
+   * Waive a finding
+   * POST /api/auto-review/findings/:findingId/waive
+   */
+  app.post('/api/auto-review/findings/:findingId/waive', async (req, res) => {
+    try {
+      const { waiverReason } = req.body;
+      
+      if (!waiverReason) {
+        return res.status(400).json({ 
+          error: 'waiverReason is required' 
+        });
+      }
+      
+      await waiveFinding(req.params.findingId, waiverReason);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Waive finding error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to waive finding' 
+      });
+    }
+  });
+
+  /**
+   * Get workflow status for a change package
+   * GET /api/change-packages/:packageId/workflow
+   */
+  app.get('/api/change-packages/:packageId/workflow', async (req, res) => {
+    try {
+      const status = await advanceWorkflow(req.params.packageId);
+      res.json(status);
+    } catch (error) {
+      console.error('Get workflow error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get workflow status' 
+      });
+    }
+  });
+
+  /**
+   * Run impact analysis for a change package
+   * POST /api/change-packages/:packageId/impact-analysis
+   */
+  app.post('/api/change-packages/:packageId/impact-analysis', async (req, res) => {
+    try {
+      const result = await runImpactAnalysis(req.params.packageId);
+      res.json(result);
+    } catch (error) {
+      console.error('Impact analysis error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to run impact analysis' 
+      });
+    }
+  });
+
+  /**
+   * Run auto-review for change package
+   * POST /api/change-packages/:packageId/auto-review
+   */
+  app.post('/api/change-packages/:packageId/workflow/auto-review', async (req, res) => {
+    try {
+      const result = await runChangePackageAutoReview(req.params.packageId);
+      res.json(result);
+    } catch (error) {
+      console.error('Package auto-review error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to run auto-review' 
+      });
+    }
+  });
+
+  /**
+   * Request approvals for a change package
+   * POST /api/change-packages/:packageId/request-approvals
+   */
+  app.post('/api/change-packages/:packageId/request-approvals', async (req, res) => {
+    try {
+      const { approvers } = req.body;
+      
+      if (!approvers || !Array.isArray(approvers)) {
+        return res.status(400).json({ error: 'approvers array is required' });
+      }
+      
+      const approvals = await requestApprovals(req.params.packageId, approvers);
+      res.json(approvals);
+    } catch (error) {
+      console.error('Request approvals error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to request approvals' 
+      });
+    }
+  });
+
+  /**
+   * Process an approval decision
+   * POST /api/change-packages/approvals/:approvalId/decision
+   */
+  app.post('/api/change-packages/approvals/:approvalId/decision', async (req, res) => {
+    try {
+      const { decision, comments, signatureHash } = req.body;
+      
+      if (!decision || !['approved', 'rejected'].includes(decision)) {
+        return res.status(400).json({ 
+          error: 'decision must be "approved" or "rejected"' 
+        });
+      }
+      
+      const result = await processApproval(
+        req.params.approvalId,
+        decision,
+        comments,
+        signatureHash
+      );
+      
+      res.json(result);
+    } catch (error) {
+      console.error('Process approval error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to process approval' 
+      });
+    }
+  });
+
+  /**
+   * Propagate changes to affected documents
+   * POST /api/change-packages/:packageId/propagate
+   */
+  app.post('/api/change-packages/:packageId/propagate', async (req, res) => {
+    try {
+      const { decisions, decidedBy } = req.body;
+      
+      if (!decisions || !Array.isArray(decisions)) {
+        return res.status(400).json({ error: 'decisions array is required' });
+      }
+      
+      if (!decidedBy) {
+        return res.status(400).json({ error: 'decidedBy is required' });
+      }
+      
+      const result = await propagateChanges(req.params.packageId, decisions, decidedBy);
+      res.json(result);
+    } catch (error) {
+      console.error('Propagate changes error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to propagate changes' 
+      });
+    }
+  });
+
+  /**
+   * Cancel a change package
+   * POST /api/change-packages/:packageId/cancel
+   */
+  app.post('/api/change-packages/:packageId/cancel', async (req, res) => {
+    try {
+      const { reason } = req.body;
+      
+      if (!reason) {
+        return res.status(400).json({ error: 'reason is required' });
+      }
+      
+      await cancelChangePackage(req.params.packageId, reason);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Cancel package error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to cancel package' 
+      });
     }
   });
 
