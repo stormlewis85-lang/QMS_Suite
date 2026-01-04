@@ -1,0 +1,321 @@
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { ArrowRight, Package, AlertTriangle } from 'lucide-react';
+
+interface FieldDiff {
+  fieldPath: string;
+  fieldLabel: string;
+  oldValue: any;
+  newValue: any;
+}
+
+interface CreateChangeFromEditProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entityType: 'fmea_template_row' | 'control_template_row' | 'process_def';
+  entityId: string;
+  entityName: string;
+  diffs: FieldDiff[];
+  onSuccess?: (packageId: string) => void;
+  onCancel?: () => void;
+}
+
+const reasonCodes = [
+  { value: 'CORRECTIVE_ACTION', label: 'Corrective Action' },
+  { value: 'PREVENTIVE_ACTION', label: 'Preventive Action' },
+  { value: 'CONTINUOUS_IMPROVEMENT', label: 'Continuous Improvement' },
+  { value: 'CUSTOMER_REQUEST', label: 'Customer Request' },
+  { value: 'ENGINEERING_CHANGE', label: 'Engineering Change' },
+  { value: 'PROCESS_OPTIMIZATION', label: 'Process Optimization' },
+];
+
+export default function CreateChangeFromEdit({
+  open,
+  onOpenChange,
+  entityType,
+  entityId,
+  entityName,
+  diffs,
+  onSuccess,
+  onCancel,
+}: CreateChangeFromEditProps) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [reasonCode, setReasonCode] = useState('CONTINUOUS_IMPROVEMENT');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/change-packages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title || `Update ${entityName}`,
+          description,
+          reasonCode,
+          priority,
+          targetEntityType: entityType,
+          targetEntityId: entityId,
+          initiatedBy: 'current-user',
+          changes: diffs.map(d => ({
+            fieldPath: d.fieldPath,
+            fieldLabel: d.fieldLabel,
+            oldValue: formatValue(d.oldValue),
+            newValue: formatValue(d.newValue),
+            changeType: d.oldValue === undefined ? 'add' : d.newValue === undefined ? 'delete' : 'modify',
+            impactLevel: inferImpactLevel(d.fieldPath),
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create change package');
+      return res.json();
+    },
+    onSuccess: (pkg) => {
+      toast({ 
+        title: 'Change package created', 
+        description: `${pkg.packageNumber} - Ready for review` 
+      });
+      onOpenChange(false);
+      if (onSuccess) {
+        onSuccess(pkg.id);
+      } else {
+        setLocation(`/change-packages/${pkg.id}`);
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to create change package',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCancel = () => {
+    onOpenChange(false);
+    onCancel?.();
+  };
+
+  const handleSubmit = () => {
+    if (diffs.length === 0) {
+      toast({ title: 'No changes detected', variant: 'destructive' });
+      return;
+    }
+    createMutation.mutate();
+  };
+
+  const effectiveTitle = title || `Update ${entityName}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Create Change Package
+          </DialogTitle>
+          <DialogDescription>
+            Your changes require a controlled change package for traceability.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="p-3 bg-muted rounded-lg">
+            <div className="text-sm font-medium mb-2">
+              {diffs.length} field change{diffs.length !== 1 ? 's' : ''} detected:
+            </div>
+            <div className="space-y-2 max-h-40 overflow-auto">
+              {diffs.map((diff, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="font-medium min-w-[120px]">{diff.fieldLabel}:</span>
+                  <span className="text-red-600 dark:text-red-400 font-mono text-xs">
+                    {formatValue(diff.oldValue) || '(empty)'}
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-green-600 dark:text-green-400 font-mono text-xs">
+                    {formatValue(diff.newValue) || '(empty)'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {diffs.some(d => isHighImpactField(d.fieldPath)) && (
+            <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-yellow-800 dark:text-yellow-200">
+              <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium">High-impact changes detected</div>
+                <div>Changes to S/O/D ratings or CSR flags may affect Action Priority and require propagation to part documents.</div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={effectiveTitle}
+                data-testid="input-change-title"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="description">Description (optional)</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Additional context for this change..."
+                rows={2}
+                data-testid="input-change-description"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Reason Code</Label>
+                <Select value={reasonCode} onValueChange={setReasonCode}>
+                  <SelectTrigger data-testid="select-change-reason">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reasonCodes.map(rc => (
+                      <SelectItem key={rc.value} value={rc.value}>
+                        {rc.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Priority</Label>
+                <Select value={priority} onValueChange={(v) => setPriority(v as any)}>
+                  <SelectTrigger data-testid="select-change-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel} data-testid="button-cancel-change">
+            Cancel Changes
+          </Button>
+          <Button 
+            onClick={handleSubmit}
+            disabled={createMutation.isPending}
+            data-testid="button-create-change"
+          >
+            {createMutation.isPending ? 'Creating...' : 'Create & Continue'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function formatValue(value: any): string {
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function inferImpactLevel(fieldPath: string): 'low' | 'medium' | 'high' {
+  const highImpactFields = [
+    'severity', 'occurrence', 'detection', 'ap',
+    'specialFlag', 'csrSymbol', 
+    'preventionControls', 'detectionControls',
+    'reactionPlan', 'acceptanceCriteria'
+  ];
+  
+  const mediumImpactFields = [
+    'failureMode', 'effect', 'cause',
+    'controlMethod', 'measurementSystem',
+    'sampleSize', 'frequency'
+  ];
+
+  if (highImpactFields.includes(fieldPath)) return 'high';
+  if (mediumImpactFields.includes(fieldPath)) return 'medium';
+  return 'low';
+}
+
+function isHighImpactField(fieldPath: string): boolean {
+  return inferImpactLevel(fieldPath) === 'high';
+}
+
+export function detectChanges(
+  original: Record<string, any>,
+  updated: Record<string, any>,
+  fieldLabels: Record<string, string> = {}
+): FieldDiff[] {
+  const diffs: FieldDiff[] = [];
+  
+  const allKeys = Array.from(new Set([...Object.keys(original), ...Object.keys(updated)]));
+  
+  for (const key of allKeys) {
+    const oldVal = original[key];
+    const newVal = updated[key];
+    
+    if ((oldVal === undefined || oldVal === null) && (newVal === undefined || newVal === null)) {
+      continue;
+    }
+    
+    const oldStr = JSON.stringify(oldVal);
+    const newStr = JSON.stringify(newVal);
+    
+    if (oldStr !== newStr) {
+      diffs.push({
+        fieldPath: key,
+        fieldLabel: fieldLabels[key] || formatFieldLabel(key),
+        oldValue: oldVal,
+        newValue: newVal,
+      });
+    }
+  }
+  
+  return diffs;
+}
+
+function formatFieldLabel(fieldPath: string): string {
+  return fieldPath
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, s => s.toUpperCase())
+    .trim();
+}
