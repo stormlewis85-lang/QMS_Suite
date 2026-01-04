@@ -1,0 +1,743 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useParams, useLocation } from 'wouter';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import PageHeader from '@/components/PageHeader';
+import { 
+  ArrowLeft,
+  Play,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Clock,
+  FileEdit,
+  Users,
+  GitBranch,
+  ArrowRight,
+  Diff,
+  Shield,
+  RefreshCw,
+  Ban,
+  Check,
+  X
+} from 'lucide-react';
+
+interface ChangePackage {
+  id: string;
+  packageNumber: string;
+  title: string;
+  description?: string;
+  status: string;
+  reasonCode: string;
+  priority: string;
+  targetEntityType: string;
+  targetEntityId: string;
+  beforeSnapshot?: any;
+  afterSnapshot?: any;
+  impactAnalysis?: {
+    affectedParts: any[];
+    apDeltas: any[];
+    csrImpacts: any[];
+  };
+  autoReviewId?: string;
+  autoReviewPassed?: boolean;
+  initiatedBy: string;
+  initiatedAt: string;
+  effectiveFrom?: string;
+  completedAt?: string;
+  items: ChangeItem[];
+  approvals: Approval[];
+  propagations: Propagation[];
+}
+
+interface ChangeItem {
+  id: string;
+  fieldPath: string;
+  fieldLabel: string;
+  oldValue?: string;
+  newValue?: string;
+  changeType: string;
+  impactLevel?: string;
+}
+
+interface Approval {
+  id: string;
+  role: string;
+  approverId: string;
+  approverName?: string;
+  status: string;
+  requestedAt: string;
+  respondedAt?: string;
+  comments?: string;
+}
+
+interface Propagation {
+  id: string;
+  targetEntityType: string;
+  targetEntityId: string;
+  decision: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  appliedAt?: string;
+}
+
+interface WorkflowStatus {
+  currentStatus: string;
+  nextAction: string;
+  canProceed: boolean;
+  blockers: string[];
+}
+
+const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
+  draft: { label: 'Draft', icon: FileEdit, color: 'bg-gray-100 text-gray-800' },
+  impact_analysis: { label: 'Impact Analysis', icon: GitBranch, color: 'bg-blue-100 text-blue-800' },
+  auto_review: { label: 'Auto Review', icon: AlertTriangle, color: 'bg-yellow-100 text-yellow-800' },
+  pending_signatures: { label: 'Pending Signatures', icon: Users, color: 'bg-purple-100 text-purple-800' },
+  effective: { label: 'Effective', icon: CheckCircle2, color: 'bg-green-100 text-green-800' },
+  cancelled: { label: 'Cancelled', icon: XCircle, color: 'bg-red-100 text-red-800' },
+};
+
+export default function ChangePackageDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [selectedApproval, setSelectedApproval] = useState<Approval | null>(null);
+  const [approvalDecision, setApprovalDecision] = useState<'approved' | 'rejected'>('approved');
+  const [approvalComments, setApprovalComments] = useState('');
+
+  // Fetch package details
+  const { data: pkg, isLoading } = useQuery<ChangePackage>({
+    queryKey: ['change-package', id],
+    queryFn: async () => {
+      const res = await fetch(`/api/change-packages/${id}`);
+      if (!res.ok) throw new Error('Failed to fetch change package');
+      return res.json();
+    },
+  });
+
+  // Fetch workflow status
+  const { data: workflow } = useQuery<WorkflowStatus>({
+    queryKey: ['change-package-workflow', id],
+    queryFn: async () => {
+      const res = await fetch(`/api/change-packages/${id}/workflow`);
+      if (!res.ok) throw new Error('Failed to fetch workflow status');
+      return res.json();
+    },
+    enabled: !!pkg,
+  });
+
+  // Impact Analysis mutation
+  const impactMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/change-packages/${id}/impact-analysis`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to run impact analysis');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['change-package', id] });
+      queryClient.invalidateQueries({ queryKey: ['change-package-workflow', id] });
+      toast({ title: 'Impact analysis complete' });
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Impact analysis failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Auto-Review mutation
+  const autoReviewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/change-packages/${id}/auto-review`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to run auto-review');
+      return res.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['change-package', id] });
+      queryClient.invalidateQueries({ queryKey: ['change-package-workflow', id] });
+      toast({ 
+        title: result.passed ? 'Auto-review passed' : 'Auto-review complete',
+        description: `${result.errorCount} errors, ${result.warningCount} warnings`,
+        variant: result.passed ? 'default' : 'destructive',
+      });
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Auto-review failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Request Approvals mutation
+  const requestApprovalsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/change-packages/${id}/request-approvals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          approvers: [
+            { role: 'Quality Engineer', approverId: 'qe-user', approverName: 'QE User', required: true },
+            { role: 'Process Owner', approverId: 'po-user', approverName: 'Process Owner', required: true },
+          ],
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to request approvals');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['change-package', id] });
+      queryClient.invalidateQueries({ queryKey: ['change-package-workflow', id] });
+      toast({ title: 'Approval requests sent' });
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Failed to request approvals', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Process Approval mutation
+  const processApprovalMutation = useMutation({
+    mutationFn: async ({ approvalId, decision, comments }: { approvalId: string; decision: string; comments: string }) => {
+      const res = await fetch(`/api/change-packages/approvals/${approvalId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, comments }),
+      });
+      if (!res.ok) throw new Error('Failed to process approval');
+      return res.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['change-package', id] });
+      queryClient.invalidateQueries({ queryKey: ['change-package-workflow', id] });
+      setApprovalDialogOpen(false);
+      setSelectedApproval(null);
+      
+      if (result.packageStatus === 'effective') {
+        toast({ title: 'Package approved and now effective!' });
+      } else {
+        toast({ title: 'Approval recorded' });
+      }
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Failed to process approval', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Cancel mutation
+  const cancelMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      const res = await fetch(`/api/change-packages/${id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) throw new Error('Failed to cancel package');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['change-package', id] });
+      setCancelDialogOpen(false);
+      toast({ title: 'Package cancelled' });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Clock className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!pkg) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <XCircle className="h-12 w-12 text-muted-foreground" />
+        <p>Change package not found</p>
+        <Button onClick={() => setLocation('/change-packages')}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to List
+        </Button>
+      </div>
+    );
+  }
+
+  const statusInfo = statusConfig[pkg.status] || statusConfig.draft;
+  const StatusIcon = statusInfo.icon;
+
+  return (
+    <div className="flex flex-col h-full">
+      <PageHeader 
+        title={pkg.packageNumber}
+        description={pkg.title}
+      >
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setLocation('/change-packages')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          {pkg.status !== 'effective' && pkg.status !== 'cancelled' && (
+            <Button variant="outline" onClick={() => setCancelDialogOpen(true)}>
+              <Ban className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+          )}
+        </div>
+      </PageHeader>
+
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Status & Workflow */}
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Current Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4">
+                <Badge className={`${statusInfo.color} text-lg px-4 py-2`}>
+                  <StatusIcon className="h-5 w-5 mr-2" />
+                  {statusInfo.label}
+                </Badge>
+                <div className="text-sm text-muted-foreground">
+                  <div>Initiated: {new Date(pkg.initiatedAt).toLocaleDateString()}</div>
+                  {pkg.effectiveFrom && (
+                    <div>Effective: {new Date(pkg.effectiveFrom).toLocaleDateString()}</div>
+                  )}
+                </div>
+              </div>
+              
+              {workflow && (
+                <div className="mt-4 p-3 bg-muted rounded-lg">
+                  <div className="text-sm font-medium">Next Action: {workflow.nextAction}</div>
+                  {workflow.blockers.length > 0 && (
+                    <div className="mt-2 text-sm text-red-600">
+                      {workflow.blockers.map((b, i) => (
+                        <div key={i}>• {b}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Workflow Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Workflow Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pkg.status === 'draft' && (
+                <Button 
+                  className="w-full" 
+                  onClick={() => impactMutation.mutate()}
+                  disabled={impactMutation.isPending}
+                >
+                  <GitBranch className="h-4 w-4 mr-2" />
+                  {impactMutation.isPending ? 'Analyzing...' : 'Run Impact Analysis'}
+                </Button>
+              )}
+              
+              {pkg.status === 'impact_analysis' && (
+                <Button 
+                  className="w-full"
+                  onClick={() => autoReviewMutation.mutate()}
+                  disabled={autoReviewMutation.isPending}
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  {autoReviewMutation.isPending ? 'Reviewing...' : 'Run Auto-Review'}
+                </Button>
+              )}
+              
+              {pkg.status === 'auto_review' && pkg.autoReviewPassed && (
+                <Button 
+                  className="w-full"
+                  onClick={() => requestApprovalsMutation.mutate()}
+                  disabled={requestApprovalsMutation.isPending}
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  {requestApprovalsMutation.isPending ? 'Sending...' : 'Request Approvals'}
+                </Button>
+              )}
+              
+              {pkg.status === 'auto_review' && pkg.autoReviewPassed === false && (
+                <div className="p-3 bg-red-50 rounded-lg text-red-800 text-sm">
+                  <AlertTriangle className="h-4 w-4 inline mr-2" />
+                  Auto-review failed. Resolve errors before requesting approvals.
+                </div>
+              )}
+              
+              {pkg.status === 'effective' && (
+                <Button className="w-full" variant="outline">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Propagate to Affected Documents
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tabs for Details */}
+        <Tabs defaultValue="changes">
+          <TabsList>
+            <TabsTrigger value="changes">
+              <Diff className="h-4 w-4 mr-2" />
+              Changes ({pkg.items.length})
+            </TabsTrigger>
+            <TabsTrigger value="impact">
+              <GitBranch className="h-4 w-4 mr-2" />
+              Impact Analysis
+            </TabsTrigger>
+            <TabsTrigger value="approvals">
+              <Users className="h-4 w-4 mr-2" />
+              Approvals ({pkg.approvals.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="changes" className="mt-4">
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Field</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Old Value</TableHead>
+                      <TableHead></TableHead>
+                      <TableHead>New Value</TableHead>
+                      <TableHead>Impact</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pkg.items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.fieldLabel}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{item.changeType}</Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-red-600">
+                          {item.oldValue || '—'}
+                        </TableCell>
+                        <TableCell>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-green-600">
+                          {item.newValue || '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={
+                            item.impactLevel === 'high' ? 'bg-red-100 text-red-800' :
+                            item.impactLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }>
+                            {item.impactLevel || 'low'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {pkg.items.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          No changes recorded
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="impact" className="mt-4">
+            <div className="grid md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Affected Parts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pkg.impactAnalysis?.affectedParts?.length ? (
+                    <ul className="space-y-2">
+                      {pkg.impactAnalysis.affectedParts.map((part: any, i: number) => (
+                        <li key={i} className="text-sm">
+                          <span className="font-mono">{part.partNumber}</span>
+                          <div className="text-muted-foreground text-xs">
+                            {part.documents?.join(', ')}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Run impact analysis to see affected parts
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">AP Changes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pkg.impactAnalysis?.apDeltas?.length ? (
+                    <ul className="space-y-2">
+                      {pkg.impactAnalysis.apDeltas.map((delta: any, i: number) => (
+                        <li key={i} className="text-sm flex items-center gap-2">
+                          <Badge variant="outline">{delta.oldAP}</Badge>
+                          <ArrowRight className="h-3 w-3" />
+                          <Badge className={
+                            delta.newAP === 'H' ? 'bg-red-100 text-red-800' :
+                            delta.newAP === 'M' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }>
+                            {delta.newAP}
+                          </Badge>
+                          <span className={delta.change === 'degraded' ? 'text-red-600' : 'text-green-600'}>
+                            ({delta.change})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No AP changes detected
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">CSR Impacts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pkg.impactAnalysis?.csrImpacts?.length ? (
+                    <ul className="space-y-2">
+                      {pkg.impactAnalysis.csrImpacts.map((csr: any, i: number) => (
+                        <li key={i} className="text-sm">
+                          <div className="font-medium">{csr.characteristic}</div>
+                          <div className="text-muted-foreground text-xs">{csr.impact}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No CSR impacts detected
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="approvals" className="mt-4">
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Approver</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Requested</TableHead>
+                      <TableHead>Responded</TableHead>
+                      <TableHead>Comments</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pkg.approvals.map((approval) => (
+                      <TableRow key={approval.id}>
+                        <TableCell className="font-medium">{approval.role}</TableCell>
+                        <TableCell>{approval.approverName || approval.approverId}</TableCell>
+                        <TableCell>
+                          <Badge className={
+                            approval.status === 'approved' ? 'bg-green-100 text-green-800' :
+                            approval.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }>
+                            {approval.status === 'approved' && <Check className="h-3 w-3 mr-1" />}
+                            {approval.status === 'rejected' && <X className="h-3 w-3 mr-1" />}
+                            {approval.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(approval.requestedAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {approval.respondedAt 
+                            ? new Date(approval.respondedAt).toLocaleDateString()
+                            : '—'
+                          }
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                          {approval.comments || '—'}
+                        </TableCell>
+                        <TableCell>
+                          {approval.status === 'pending' && (
+                            <Button 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedApproval(approval);
+                                setApprovalDialogOpen(true);
+                              }}
+                            >
+                              Respond
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {pkg.approvals.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No approvals requested yet
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Cancel Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Change Package</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. Please provide a reason for cancellation.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label htmlFor="cancel-reason">Reason</Label>
+            <Textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Why is this change being cancelled?"
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+              Keep Open
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => cancelMutation.mutate(cancelReason)}
+              disabled={!cancelReason || cancelMutation.isPending}
+            >
+              Cancel Package
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approval Dialog */}
+      <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approval Decision</DialogTitle>
+            <DialogDescription>
+              Review the changes and provide your decision.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <Button
+                variant={approvalDecision === 'approved' ? 'default' : 'outline'}
+                className={approvalDecision === 'approved' ? 'bg-green-600 hover:bg-green-700' : ''}
+                onClick={() => setApprovalDecision('approved')}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Approve
+              </Button>
+              <Button
+                variant={approvalDecision === 'rejected' ? 'destructive' : 'outline'}
+                onClick={() => setApprovalDecision('rejected')}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Reject
+              </Button>
+            </div>
+            <div>
+              <Label htmlFor="approval-comments">Comments</Label>
+              <Textarea
+                id="approval-comments"
+                value={approvalComments}
+                onChange={(e) => setApprovalComments(e.target.value)}
+                placeholder="Optional comments..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovalDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => selectedApproval && processApprovalMutation.mutate({
+                approvalId: selectedApproval.id,
+                decision: approvalDecision,
+                comments: approvalComments,
+              })}
+              disabled={processApprovalMutation.isPending}
+              className={approvalDecision === 'approved' ? 'bg-green-600 hover:bg-green-700' : ''}
+              variant={approvalDecision === 'rejected' ? 'destructive' : 'default'}
+            >
+              Submit Decision
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

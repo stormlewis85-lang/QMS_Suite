@@ -1,0 +1,70 @@
+Hybrid Change Control - Integration Guide
+Quick Integration Steps
+1. Copy New Files to Project
+bash# From outputs directory, copy to your Replit project:
+
+# Core components
+cp field-classification.ts        client/src/lib/
+cp TemplateEditor.tsx             client/src/components/
+cp QuickChangeDialog.tsx          client/src/components/
+cp ChangeWizard.tsx               client/src/components/
+
+# Edit pages
+cp FMEATemplateRowEdit.tsx        client/src/pages/
+cp ControlTemplateRowEdit.tsx     client/src/pages/
+
+# Change package pages  
+cp ChangePackages.tsx             client/src/pages/
+cp ChangePackageDetail.tsx        client/src/pages/
+cp NewChangePackage.tsx           client/src/pages/
+
+# Updated sidebar
+cp AppSidebar-complete.tsx        client/src/components/AppSidebar.tsx
+
+# Updated App.tsx
+cp App-updated.tsx                client/src/App.tsx
+2. Modify FMEATemplateBuilder.tsx
+Add import at top:
+tsximport { useLocation } from "wouter";
+Add hook in component:
+tsxconst [, setLocation] = useLocation();
+Change edit button (~line 564):
+tsx// FROM:
+onClick={() => setEditingRow(row)}
+
+// TO:
+onClick={() => setLocation(`/processes/${processId}/fmea/${row.id}/edit`)}
+3. Modify ControlTemplateBuilder.tsx
+Same changes as above:
+tsximport { useLocation } from "wouter";
+
+// In component:
+const [, setLocation] = useLocation();
+
+// Change handleEdit function:
+const handleEdit = (row: ControlTemplateRow) => {
+  setLocation(`/processes/${processId}/control/${row.id}/edit`);
+};
+4. Verify Routes Work
+Test these URLs after changes:
+
+/change-packages - List page
+/change-packages/new - Manual creation
+/processes/[uuid]/fmea/[uuid]/edit - FMEA template edit
+/processes/[uuid]/control/[uuid]/edit - Control template edit
+
+Files Summary
+FilePurposeApp-updated.tsxRoutes for edit pages + change packagesAppSidebar-complete.tsxSidebar with Change Packages linkfield-classification.tsAIAG-VDA ratings, AP calculation, change flow logicTemplateEditor.tsxSmart editor with proper inputs, auto-AP, diff detectionQuickChangeDialog.tsxLightweight dialog for standard changesChangeWizard.tsx4-step wizard for critical changesFMEATemplateRowEdit.tsxFMEA template edit pageControlTemplateRowEdit.tsxControl template edit pageChangePackages.tsxChange packages list pageChangePackageDetail.tsxChange package detail with workflowNewChangePackage.tsxManual change package creation
+Workflow After Integration
+
+User clicks Edit on FMEA/Control template row
+Navigates to dedicated edit page with all fields
+User makes changes
+
+Minor (notes only) → Saves directly
+Standard (failure mode, cause, etc.) → QuickChangeDialog
+Critical (S/O/D, controls, CSR) → Full ChangeWizard
+
+
+Changes create a change package for tracking
+Critical changes require impact analysis + approval routing

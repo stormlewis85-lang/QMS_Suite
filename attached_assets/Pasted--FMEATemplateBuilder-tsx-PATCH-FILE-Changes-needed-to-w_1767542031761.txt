@@ -1,0 +1,199 @@
+/**
+ * FMEATemplateBuilder.tsx - PATCH FILE
+ * 
+ * Changes needed to wire up the Edit button to the new edit page.
+ * The edit button should navigate to /processes/:processId/fmea/:rowId/edit
+ * instead of opening the inline dialog.
+ */
+
+// =============================================================================
+// STEP 1: Add navigation import at the TOP of the file (line ~1)
+// =============================================================================
+// ADD this import alongside the existing imports:
+import { useLocation } from "wouter";
+
+// The imports section should look like:
+/*
+import { useState, useMemo } from "react";
+import { useLocation } from "wouter";  // <-- ADD THIS
+import {
+  Plus,
+  Search,
+  ...
+*/
+
+
+// =============================================================================
+// STEP 2: Add navigation hook inside the component (around line 125)
+// =============================================================================
+// FIND the component function and ADD this line after the existing useState declarations:
+
+const [, setLocation] = useLocation();
+
+// It should go near other state declarations like:
+/*
+export default function FMEATemplateBuilder({
+  processId,
+  processName,
+  steps,
+}: FMEATemplateBuilderProps) {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();  // <-- ADD THIS
+  const [searchTerm, setSearchTerm] = useState("");
+  ...
+*/
+
+
+// =============================================================================
+// STEP 3: Modify the Edit button (around line 560-570)
+// =============================================================================
+// FIND this code block:
+/*
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setEditingRow(row)}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>Edit</TooltipContent>
+  </Tooltip>
+</TooltipProvider>
+*/
+
+// REPLACE the onClick handler:
+// FROM: onClick={() => setEditingRow(row)}
+// TO:   onClick={() => setLocation(`/processes/${processId}/fmea/${row.id}/edit`)}
+
+// The updated code should look like:
+/*
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setLocation(`/processes/${processId}/fmea/${row.id}/edit`)}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>Edit Template</TooltipContent>
+  </Tooltip>
+</TooltipProvider>
+*/
+
+
+// =============================================================================
+// STEP 4 (OPTIONAL): Keep quick edit option with a secondary button
+// =============================================================================
+// If you want to keep BOTH the change-controlled edit AND quick edit:
+// Add Settings2 to imports and add a second button:
+
+/*
+import { Settings2 } from "lucide-react";
+
+// Then in the actions column:
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setLocation(`/processes/${processId}/fmea/${row.id}/edit`)}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>Edit (Change Controlled)</TooltipContent>
+  </Tooltip>
+</TooltipProvider>
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setEditingRow(row)}
+      >
+        <Settings2 className="h-4 w-4" />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>Quick Edit (No Change Control)</TooltipContent>
+  </Tooltip>
+</TooltipProvider>
+*/
+
+
+// =============================================================================
+// COMPLETE MODIFIED ACTIONS CELL
+// =============================================================================
+// Here's the complete replacement for the actions TableCell:
+
+/*
+<TableCell>
+  <div className="flex items-center gap-1">
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setViewingRow(row)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>View Details</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation(`/processes/${processId}/fmea/${row.id}/edit`)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Edit Template</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => duplicateMutation.mutate(row)}
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Duplicate</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-red-500 hover:text-red-700"
+            onClick={() => setDeletingRow(row)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Delete</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  </div>
+</TableCell>
+*/
