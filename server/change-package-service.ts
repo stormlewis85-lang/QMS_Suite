@@ -1,0 +1,904 @@
+/**
+ * Change Package Service
+ * Manages the full change workflow: create → impact analysis → auto-review → approval → propagation
+ */
+
+import { db } from './db';
+import { 
+  changePackage, changePackageItem, changePackageApproval, changePackagePropagation,
+  fmeaTemplateRow, controlTemplateRow, pfmeaRow, controlPlanRow,
+  pfmea, controlPlan, part, processDef,
+  type ChangePackage, type InsertChangePackage,
+  type ChangePackageItem, type InsertChangePackageItem,
+  type ChangePackageApproval, type InsertChangePackageApproval,
+  type ChangePackagePropagation
+} from '@shared/schema';
+import { eq, and, desc, inArray } from 'drizzle-orm';
+import { runAutoReview, calculateAP } from './autoReviewService';
+
+// ==========================================
+// Types
+// ==========================================
+
+export interface ChangePackageCreateInput {
+  title: string;
+  description?: string;
+  reasonCode: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  targetEntityType: 'fmea_template_row' | 'control_template_row' | 'process_def';
+  targetEntityId: string;
+  initiatedBy: string;
+  changes: FieldChange[];
+}
+
+export interface FieldChange {
+  fieldPath: string;
+  fieldLabel: string;
+  oldValue: any;
+  newValue: any;
+  changeType: 'add' | 'modify' | 'delete';
+  impactLevel?: 'low' | 'medium' | 'high';
+}
+
+export interface ImpactAnalysisResult {
+  affectedParts: {
+    partId: string;
+    partNumber: string;
+    partName: string;
+    documents: {
+      type: 'pfmea' | 'control_plan';
+      id: string;
+      rev: string;
+      rowCount: number;
+    }[];
+  }[];
+  apDeltas: {
+    rowId: string;
+    entityType: string;
+    oldAP: string;
+    newAP: string;
+    change: 'improved' | 'degraded' | 'unchanged';
+    description: string;
+  }[];
+  csrImpacts: {
+    charId: string;
+    characteristic: string;
+    partNumber: string;
+    impact: string;
+  }[];
+  totalAffectedRows: number;
+  riskSummary: {
+    highRiskChanges: number;
+    mediumRiskChanges: number;
+    lowRiskChanges: number;
+  };
+}
+
+export interface ApprovalRequest {
+  role: string;
+  approverId: string;
+  approverName?: string;
+  required: boolean;
+}
+
+// ==========================================
+// Package Number Generator
+// ==========================================
+
+async function generatePackageNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `CP-${year}-`;
+  
+  // Find the highest number for this year
+  const existing = await db.query.changePackage.findMany({
+    where: (cp, { like }) => like(cp.packageNumber, `${prefix}%`),
+    orderBy: [desc(changePackage.packageNumber)],
+    limit: 1,
+  });
+  
+  let nextNum = 1;
+  if (existing.length > 0) {
+    const lastNum = existing[0].packageNumber.replace(prefix, '');
+    nextNum = parseInt(lastNum, 10) + 1;
+  }
+  
+  return `${prefix}${nextNum.toString().padStart(4, '0')}`;
+}
+
+// ==========================================
+// Create Change Package
+// ==========================================
+
+export async function createChangePackage(input: ChangePackageCreateInput): Promise<ChangePackage> {
+  const packageNumber = await generatePackageNumber();
+  
+  // Capture before snapshot
+  const beforeSnapshot = await captureSnapshot(input.targetEntityType, input.targetEntityId);
+  
+  // Create the change package
+  const [pkg] = await db.insert(changePackage).values({
+    packageNumber,
+    title: input.title,
+    description: input.description,
+    status: 'draft',
+    reasonCode: input.reasonCode,
+    priority: input.priority || 'medium',
+    targetEntityType: input.targetEntityType,
+    targetEntityId: input.targetEntityId,
+    beforeSnapshot,
+    initiatedBy: input.initiatedBy,
+  }).returning();
+  
+  // Create change items
+  if (input.changes.length > 0) {
+    await db.insert(changePackageItem).values(
+      input.changes.map(change => ({
+        changePackageId: pkg.id,
+        fieldPath: change.fieldPath,
+        fieldLabel: change.fieldLabel,
+        oldValue: change.oldValue !== undefined ? String(change.oldValue) : null,
+        newValue: change.newValue !== undefined ? String(change.newValue) : null,
+        changeType: change.changeType,
+        impactLevel: change.impactLevel || 'medium',
+        requiresPropagation: true,
+      }))
+    );
+  }
+  
+  return pkg;
+}
+
+// ==========================================
+// Capture Snapshot
+// ==========================================
+
+async function captureSnapshot(entityType: string, entityId: string): Promise<any> {
+  switch (entityType) {
+    case 'fmea_template_row': {
+      const row = await db.query.fmeaTemplateRow.findFirst({
+        where: eq(fmeaTemplateRow.id, entityId),
+        with: {
+          step: true,
+          processDef: true,
+        },
+      });
+      return row;
+    }
+    case 'control_template_row': {
+      const row = await db.query.controlTemplateRow.findFirst({
+        where: eq(controlTemplateRow.id, entityId),
+        with: {
+          processDef: true,
+          sourceTemplateRow: true,
+        },
+      });
+      return row;
+    }
+    case 'process_def': {
+      const proc = await db.query.processDef.findFirst({
+        where: eq(processDef.id, entityId),
+        with: {
+          steps: true,
+          fmeaRows: true,
+          controlRows: true,
+        },
+      });
+      return proc;
+    }
+    default:
+      return null;
+  }
+}
+
+// ==========================================
+// Run Impact Analysis
+// ==========================================
+
+export async function runImpactAnalysis(packageId: string): Promise<ImpactAnalysisResult> {
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, packageId),
+    with: {
+      items: true,
+    },
+  });
+  
+  if (!pkg) {
+    throw new Error('Change package not found');
+  }
+  
+  const result: ImpactAnalysisResult = {
+    affectedParts: [],
+    apDeltas: [],
+    csrImpacts: [],
+    totalAffectedRows: 0,
+    riskSummary: {
+      highRiskChanges: 0,
+      mediumRiskChanges: 0,
+      lowRiskChanges: 0,
+    },
+  };
+  
+  // Find affected parts based on entity type
+  if (pkg.targetEntityType === 'fmea_template_row') {
+    // Find all PFMEA rows that reference this template
+    const affectedPfmeaRows = await db.query.pfmeaRow.findMany({
+      where: eq(pfmeaRow.parentTemplateRowId, pkg.targetEntityId),
+      with: {
+        pfmea: {
+          with: {
+            part: true,
+          },
+        },
+      },
+    });
+    
+    // Group by part
+    const partMap = new Map<string, typeof result.affectedParts[0]>();
+    
+    for (const row of affectedPfmeaRows) {
+      if (!row.pfmea?.part) continue;
+      
+      const partId = row.pfmea.part.id;
+      if (!partMap.has(partId)) {
+        partMap.set(partId, {
+          partId,
+          partNumber: row.pfmea.part.partNumber,
+          partName: row.pfmea.part.partName,
+          documents: [],
+        });
+      }
+      
+      const partEntry = partMap.get(partId)!;
+      const existingDoc = partEntry.documents.find(d => d.id === row.pfmea!.id);
+      if (existingDoc) {
+        existingDoc.rowCount++;
+      } else {
+        partEntry.documents.push({
+          type: 'pfmea',
+          id: row.pfmea.id,
+          rev: row.pfmea.rev,
+          rowCount: 1,
+        });
+      }
+      
+      result.totalAffectedRows++;
+      
+      // Check for AP changes
+      const apDelta = analyzeAPChange(row, pkg.items);
+      if (apDelta) {
+        result.apDeltas.push(apDelta);
+      }
+      
+      // Check for CSR impacts
+      if (row.csrSymbol) {
+        result.csrImpacts.push({
+          charId: row.id,
+          characteristic: row.failureMode,
+          partNumber: row.pfmea.part.partNumber,
+          impact: `CSR-flagged failure mode affected by template change`,
+        });
+      }
+    }
+    
+    result.affectedParts = Array.from(partMap.values());
+  }
+  
+  if (pkg.targetEntityType === 'control_template_row') {
+    // Find all Control Plan rows that reference this template
+    const affectedCPRows = await db.query.controlPlanRow.findMany({
+      where: eq(controlPlanRow.parentControlTemplateRowId, pkg.targetEntityId),
+      with: {
+        controlPlan: {
+          with: {
+            part: true,
+          },
+        },
+      },
+    });
+    
+    const partMap = new Map<string, typeof result.affectedParts[0]>();
+    
+    for (const row of affectedCPRows) {
+      if (!row.controlPlan?.part) continue;
+      
+      const partId = row.controlPlan.part.id;
+      if (!partMap.has(partId)) {
+        partMap.set(partId, {
+          partId,
+          partNumber: row.controlPlan.part.partNumber,
+          partName: row.controlPlan.part.partName,
+          documents: [],
+        });
+      }
+      
+      const partEntry = partMap.get(partId)!;
+      const existingDoc = partEntry.documents.find(d => d.id === row.controlPlan!.id);
+      if (existingDoc) {
+        existingDoc.rowCount++;
+      } else {
+        partEntry.documents.push({
+          type: 'control_plan',
+          id: row.controlPlan.id,
+          rev: row.controlPlan.rev,
+          rowCount: 1,
+        });
+      }
+      
+      result.totalAffectedRows++;
+      
+      // Check for CSR impacts
+      if (row.csrSymbol) {
+        result.csrImpacts.push({
+          charId: row.charId,
+          characteristic: row.characteristicName,
+          partNumber: row.controlPlan.part.partNumber,
+          impact: `CSR characteristic affected by template change`,
+        });
+      }
+    }
+    
+    result.affectedParts = Array.from(partMap.values());
+  }
+  
+  // Calculate risk summary
+  for (const item of pkg.items) {
+    if (item.impactLevel === 'high') result.riskSummary.highRiskChanges++;
+    else if (item.impactLevel === 'medium') result.riskSummary.mediumRiskChanges++;
+    else result.riskSummary.lowRiskChanges++;
+  }
+  
+  // Update package with impact analysis
+  await db.update(changePackage)
+    .set({
+      status: 'impact_analysis',
+      impactAnalysis: {
+        affectedParts: result.affectedParts.map(p => ({
+          partId: p.partId,
+          partNumber: p.partNumber,
+          documents: p.documents.map(d => d.type),
+        })),
+        apDeltas: result.apDeltas.map(d => ({
+          rowId: d.rowId,
+          oldAP: d.oldAP,
+          newAP: d.newAP,
+          change: d.change,
+        })),
+        csrImpacts: result.csrImpacts.map(c => ({
+          charId: c.charId,
+          characteristic: c.characteristic,
+          impact: c.impact,
+        })),
+      },
+    })
+    .where(eq(changePackage.id, packageId));
+  
+  return result;
+}
+
+function analyzeAPChange(row: any, changes: ChangePackageItem[]): ImpactAnalysisResult['apDeltas'][0] | null {
+  // Check if any changes affect S, O, or D
+  let newS = row.severity;
+  let newO = row.occurrence;
+  let newD = row.detection;
+  
+  for (const change of changes) {
+    if (change.fieldPath === 'severity' && change.newValue) {
+      newS = parseInt(change.newValue, 10);
+    }
+    if (change.fieldPath === 'occurrence' && change.newValue) {
+      newO = parseInt(change.newValue, 10);
+    }
+    if (change.fieldPath === 'detection' && change.newValue) {
+      newD = parseInt(change.newValue, 10);
+    }
+  }
+  
+  const oldAP = row.ap;
+  const newAP = calculateAP(newS, newO, newD);
+  
+  if (oldAP !== newAP) {
+    const apOrder = { 'L': 1, 'M': 2, 'H': 3 };
+    const change = apOrder[newAP as keyof typeof apOrder] > apOrder[oldAP as keyof typeof apOrder] 
+      ? 'degraded' 
+      : 'improved';
+    
+    return {
+      rowId: row.id,
+      entityType: 'pfmea_row',
+      oldAP,
+      newAP,
+      change,
+      description: `AP changed from ${oldAP} to ${newAP} (S:${row.severity}→${newS}, O:${row.occurrence}→${newO}, D:${row.detection}→${newD})`,
+    };
+  }
+  
+  return null;
+}
+
+// ==========================================
+// Run Auto-Review for Change Package
+// ==========================================
+
+export async function runChangePackageAutoReview(packageId: string): Promise<{
+  passed: boolean;
+  reviewId: string;
+  errorCount: number;
+  warningCount: number;
+}> {
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, packageId),
+  });
+  
+  if (!pkg) {
+    throw new Error('Change package not found');
+  }
+  
+  // Find related PFMEA and Control Plan to review
+  // For template changes, we review all affected documents
+  const impactAnalysis = pkg.impactAnalysis as ImpactAnalysisResult | null;
+  
+  if (!impactAnalysis?.affectedParts?.length) {
+    // No affected parts - auto-review passes
+    await db.update(changePackage)
+      .set({
+        status: 'auto_review',
+        autoReviewPassed: true,
+      })
+      .where(eq(changePackage.id, packageId));
+    
+    return {
+      passed: true,
+      reviewId: '',
+      errorCount: 0,
+      warningCount: 0,
+    };
+  }
+  
+  // Run auto-review on first affected PFMEA (for now)
+  const firstPfmea = impactAnalysis.affectedParts
+    .flatMap(p => p.documents)
+    .find(d => d.type === 'pfmea');
+  
+  const firstCP = impactAnalysis.affectedParts
+    .flatMap(p => p.documents)
+    .find(d => d.type === 'control_plan');
+  
+  const reviewResult = await runAutoReview(
+    firstPfmea?.id,
+    firstCP?.id,
+    pkg.initiatedBy
+  );
+  
+  const passed = reviewResult.errorCount === 0;
+  
+  await db.update(changePackage)
+    .set({
+      status: 'auto_review',
+      autoReviewId: reviewResult.runId,
+      autoReviewPassed: passed,
+    })
+    .where(eq(changePackage.id, packageId));
+  
+  return {
+    passed,
+    reviewId: reviewResult.runId,
+    errorCount: reviewResult.errorCount,
+    warningCount: reviewResult.warningCount,
+  };
+}
+
+// ==========================================
+// Request Approvals
+// ==========================================
+
+export async function requestApprovals(
+  packageId: string, 
+  approvers: ApprovalRequest[]
+): Promise<ChangePackageApproval[]> {
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, packageId),
+  });
+  
+  if (!pkg) {
+    throw new Error('Change package not found');
+  }
+  
+  // Verify auto-review passed (or has no errors)
+  if (pkg.autoReviewPassed === false) {
+    throw new Error('Cannot request approvals: Auto-review has errors that must be resolved');
+  }
+  
+  // Create approval records
+  const approvals = await db.insert(changePackageApproval).values(
+    approvers.map(a => ({
+      changePackageId: packageId,
+      role: a.role,
+      approverId: a.approverId,
+      approverName: a.approverName,
+      status: 'pending',
+    }))
+  ).returning();
+  
+  // Update package status
+  await db.update(changePackage)
+    .set({
+      status: 'pending_signatures',
+      approverMatrix: approvers.map(a => ({
+        role: a.role,
+        userId: a.approverId,
+        required: a.required,
+      })),
+    })
+    .where(eq(changePackage.id, packageId));
+  
+  return approvals;
+}
+
+// ==========================================
+// Process Approval
+// ==========================================
+
+export async function processApproval(
+  approvalId: string,
+  decision: 'approved' | 'rejected',
+  comments?: string,
+  signatureHash?: string
+): Promise<{ allApproved: boolean; packageStatus: string }> {
+  // Update the approval record
+  await db.update(changePackageApproval)
+    .set({
+      status: decision,
+      respondedAt: new Date(),
+      comments,
+      signatureHash,
+    })
+    .where(eq(changePackageApproval.id, approvalId));
+  
+  // Get the approval to find the package
+  const approval = await db.query.changePackageApproval.findFirst({
+    where: eq(changePackageApproval.id, approvalId),
+  });
+  
+  if (!approval) {
+    throw new Error('Approval not found');
+  }
+  
+  // Check if all required approvals are complete
+  const allApprovals = await db.query.changePackageApproval.findMany({
+    where: eq(changePackageApproval.changePackageId, approval.changePackageId),
+  });
+  
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, approval.changePackageId),
+  });
+  
+  if (!pkg) {
+    throw new Error('Package not found');
+  }
+  
+  // Check for any rejections
+  const hasRejection = allApprovals.some(a => a.status === 'rejected');
+  if (hasRejection) {
+    await db.update(changePackage)
+      .set({ status: 'cancelled' })
+      .where(eq(changePackage.id, approval.changePackageId));
+    
+    return { allApproved: false, packageStatus: 'cancelled' };
+  }
+  
+  // Check if all required approvals are done
+  const matrix = pkg.approverMatrix as ApprovalRequest[] | null;
+  const requiredRoles = matrix?.filter(m => m.required).map(m => m.role) || [];
+  
+  const allRequiredApproved = requiredRoles.every(role => {
+    const roleApproval = allApprovals.find(a => a.role === role);
+    return roleApproval?.status === 'approved';
+  });
+  
+  if (allRequiredApproved) {
+    await db.update(changePackage)
+      .set({ 
+        status: 'effective',
+        effectiveFrom: new Date(),
+        completedAt: new Date(),
+      })
+      .where(eq(changePackage.id, approval.changePackageId));
+    
+    return { allApproved: true, packageStatus: 'effective' };
+  }
+  
+  return { allApproved: false, packageStatus: 'pending_signatures' };
+}
+
+// ==========================================
+// Propagate Changes
+// ==========================================
+
+export async function propagateChanges(
+  packageId: string,
+  decisions: { targetRowId: string; decision: 'adopt' | 'keep'; reason?: string }[],
+  decidedBy: string
+): Promise<{ propagated: number; kept: number }> {
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, packageId),
+    with: {
+      items: true,
+    },
+  });
+  
+  if (!pkg) {
+    throw new Error('Change package not found');
+  }
+  
+  if (pkg.status !== 'effective') {
+    throw new Error('Change package must be effective before propagation');
+  }
+  
+  let propagated = 0;
+  let kept = 0;
+  
+  for (const decision of decisions) {
+    // Record the propagation decision
+    await db.insert(changePackagePropagation).values({
+      changePackageId: packageId,
+      targetEntityType: pkg.targetEntityType === 'fmea_template_row' ? 'pfmea_row' : 'control_plan_row',
+      targetEntityId: decision.targetRowId,
+      targetRowId: decision.targetRowId,
+      decision: decision.decision,
+      decidedBy,
+      decidedAt: new Date(),
+      reason: decision.reason,
+    });
+    
+    if (decision.decision === 'adopt') {
+      // Apply the changes to the target row
+      await applyChangesToRow(pkg.targetEntityType, decision.targetRowId, pkg.items);
+      propagated++;
+    } else {
+      // Mark the row as having an override
+      await markRowOverride(pkg.targetEntityType, decision.targetRowId, pkg.items);
+      kept++;
+    }
+  }
+  
+  return { propagated, kept };
+}
+
+async function applyChangesToRow(
+  templateType: string,
+  targetRowId: string,
+  changes: ChangePackageItem[]
+): Promise<void> {
+  const updateData: Record<string, any> = {};
+  
+  for (const change of changes) {
+    if (change.requiresPropagation && change.newValue !== null) {
+      // Map field paths to actual column names
+      updateData[change.fieldPath] = parseValue(change.newValue);
+    }
+  }
+  
+  if (Object.keys(updateData).length === 0) return;
+  
+  if (templateType === 'fmea_template_row') {
+    await db.update(pfmeaRow)
+      .set(updateData)
+      .where(eq(pfmeaRow.id, targetRowId));
+  } else if (templateType === 'control_template_row') {
+    await db.update(controlPlanRow)
+      .set(updateData)
+      .where(eq(controlPlanRow.id, targetRowId));
+  }
+}
+
+async function markRowOverride(
+  templateType: string,
+  targetRowId: string,
+  changes: ChangePackageItem[]
+): Promise<void> {
+  const overrideFlags: Record<string, boolean> = {};
+  
+  for (const change of changes) {
+    overrideFlags[change.fieldPath] = true;
+  }
+  
+  if (templateType === 'fmea_template_row') {
+    const existing = await db.query.pfmeaRow.findFirst({
+      where: eq(pfmeaRow.id, targetRowId),
+    });
+    
+    await db.update(pfmeaRow)
+      .set({
+        overrideFlags: { ...existing?.overrideFlags, ...overrideFlags },
+      })
+      .where(eq(pfmeaRow.id, targetRowId));
+  } else if (templateType === 'control_template_row') {
+    const existing = await db.query.controlPlanRow.findFirst({
+      where: eq(controlPlanRow.id, targetRowId),
+    });
+    
+    await db.update(controlPlanRow)
+      .set({
+        overrideFlags: { ...existing?.overrideFlags, ...overrideFlags },
+      })
+      .where(eq(controlPlanRow.id, targetRowId));
+  }
+}
+
+function parseValue(value: string): any {
+  // Try to parse as number
+  const num = parseFloat(value);
+  if (!isNaN(num) && value.trim() === num.toString()) {
+    return num;
+  }
+  
+  // Try to parse as boolean
+  if (value.toLowerCase() === 'true') return true;
+  if (value.toLowerCase() === 'false') return false;
+  
+  // Try to parse as JSON array
+  if (value.startsWith('[') && value.endsWith(']')) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  
+  return value;
+}
+
+// ==========================================
+// Query Functions
+// ==========================================
+
+export async function getChangePackage(packageId: string): Promise<ChangePackage & {
+  items: ChangePackageItem[];
+  approvals: ChangePackageApproval[];
+  propagations: ChangePackagePropagation[];
+} | null> {
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, packageId),
+    with: {
+      items: true,
+      approvals: true,
+      propagations: true,
+    },
+  });
+  
+  return pkg || null;
+}
+
+export async function listChangePackages(filters?: {
+  status?: string;
+  targetEntityType?: string;
+  initiatedBy?: string;
+  limit?: number;
+}): Promise<ChangePackage[]> {
+  const conditions = [];
+  
+  if (filters?.status) {
+    conditions.push(eq(changePackage.status, filters.status as any));
+  }
+  if (filters?.targetEntityType) {
+    conditions.push(eq(changePackage.targetEntityType, filters.targetEntityType));
+  }
+  if (filters?.initiatedBy) {
+    conditions.push(eq(changePackage.initiatedBy, filters.initiatedBy));
+  }
+  
+  const packages = await db.query.changePackage.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    orderBy: [desc(changePackage.initiatedAt)],
+    limit: filters?.limit || 50,
+    with: {
+      items: true,
+      approvals: true,
+    },
+  });
+  
+  return packages;
+}
+
+export async function cancelChangePackage(packageId: string, reason: string): Promise<void> {
+  await db.update(changePackage)
+    .set({
+      status: 'cancelled',
+      completedAt: new Date(),
+      description: reason,
+    })
+    .where(eq(changePackage.id, packageId));
+}
+
+// ==========================================
+// Workflow Helper
+// ==========================================
+
+export async function advanceWorkflow(packageId: string): Promise<{
+  currentStatus: string;
+  nextAction: string;
+  canProceed: boolean;
+  blockers: string[];
+}> {
+  const pkg = await db.query.changePackage.findFirst({
+    where: eq(changePackage.id, packageId),
+    with: {
+      items: true,
+      approvals: true,
+    },
+  });
+  
+  if (!pkg) {
+    throw new Error('Change package not found');
+  }
+  
+  const blockers: string[] = [];
+  
+  switch (pkg.status) {
+    case 'draft':
+      if (pkg.items.length === 0) {
+        blockers.push('No changes defined');
+      }
+      return {
+        currentStatus: 'draft',
+        nextAction: 'Run Impact Analysis',
+        canProceed: blockers.length === 0,
+        blockers,
+      };
+    
+    case 'impact_analysis':
+      return {
+        currentStatus: 'impact_analysis',
+        nextAction: 'Run Auto-Review',
+        canProceed: true,
+        blockers: [],
+      };
+    
+    case 'auto_review':
+      if (pkg.autoReviewPassed === false) {
+        blockers.push('Auto-review has errors that must be resolved');
+      }
+      return {
+        currentStatus: 'auto_review',
+        nextAction: 'Request Approvals',
+        canProceed: blockers.length === 0,
+        blockers,
+      };
+    
+    case 'pending_signatures':
+      const pendingApprovals = pkg.approvals.filter(a => a.status === 'pending');
+      if (pendingApprovals.length > 0) {
+        blockers.push(`${pendingApprovals.length} approval(s) pending`);
+      }
+      return {
+        currentStatus: 'pending_signatures',
+        nextAction: 'Await Approvals',
+        canProceed: false,
+        blockers,
+      };
+    
+    case 'effective':
+      return {
+        currentStatus: 'effective',
+        nextAction: 'Propagate Changes (optional)',
+        canProceed: true,
+        blockers: [],
+      };
+    
+    case 'cancelled':
+      return {
+        currentStatus: 'cancelled',
+        nextAction: 'None - Package cancelled',
+        canProceed: false,
+        blockers: ['Package has been cancelled'],
+      };
+    
+    default:
+      return {
+        currentStatus: pkg.status,
+        nextAction: 'Unknown',
+        canProceed: false,
+        blockers: ['Unknown status'],
+      };
+  }
+}
