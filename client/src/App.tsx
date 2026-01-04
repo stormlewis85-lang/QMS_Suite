@@ -20,6 +20,7 @@ import FailureModes from "@/pages/FailureModes";
 import ControlsLibrary from "@/pages/ControlsLibrary";
 import Settings from "@/pages/Settings";
 import ChangePackagesPage from "@/pages/ChangePackages";
+import ChangePackageDetail from "@/pages/ChangePackageDetail";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/controls-library" component={ControlsLibrary} />
       <Route path="/settings" component={Settings} />
       <Route path="/change-packages" component={ChangePackagesPage} />
+      <Route path="/change-packages/:id" component={ChangePackageDetail} />
       <Route component={NotFound} />
     </Switch>
   );
