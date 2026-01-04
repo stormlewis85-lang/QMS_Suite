@@ -1,0 +1,198 @@
+/**
+ * FMEA Template Row Editor Page
+ * 
+ * Demonstrates the hybrid change control approach:
+ * - Minor changes (notes) → audit log only
+ * - Standard changes (failure mode, effect) → quick confirmation dialog  
+ * - Critical changes (S/O/D, controls, CSR) → full wizard with impact analysis
+ */
+
+import { useQuery } from '@tanstack/react-query';
+import { useParams, useLocation, Link } from 'wouter';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ArrowLeft, Clock, User, GitBranch } from 'lucide-react';
+import TemplateEditor from '@/components/TemplateEditor';
+import PageHeader from '@/components/PageHeader';
+
+export default function FMEATemplateRowEdit() {
+  const { processId, rowId } = useParams<{ processId: string; rowId: string }>();
+  const [, setLocation] = useLocation();
+
+  // Fetch the template row
+  const { data: row, isLoading, error } = useQuery({
+    queryKey: ['fmea-template-row', rowId],
+    queryFn: async () => {
+      const res = await fetch(`/api/fmea-template-rows/${rowId}`);
+      if (!res.ok) throw new Error('Failed to fetch template row');
+      return res.json();
+    },
+  });
+
+  // Fetch process info for breadcrumb
+  const { data: process } = useQuery({
+    queryKey: ['process', processId],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes/${processId}`);
+      if (!res.ok) throw new Error('Failed to fetch process');
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-[600px]" />
+      </div>
+    );
+  }
+
+  if (error || !row) {
+    return (
+      <div className="container mx-auto py-6">
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-muted-foreground">Failed to load template row</p>
+            <Button variant="outline" className="mt-4" onClick={() => setLocation(`/builder/processes/${processId}`)}>
+              Back to Process
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Link href="/builder/processes">
+          <a className="hover:text-foreground">Process Library</a>
+        </Link>
+        <span>/</span>
+        <Link href={`/builder/processes/${processId}`}>
+          <a className="hover:text-foreground">{process?.name || 'Process'}</a>
+        </Link>
+        <span>/</span>
+        <span className="text-foreground">Edit FMEA Row</span>
+      </div>
+
+      {/* Header */}
+      <PageHeader
+        title="Edit FMEA Template Row"
+        description={`${row.failureMode} • Step: ${row.step?.name || 'N/A'}`}
+        actions={
+          <Button variant="outline" onClick={() => setLocation(`/builder/processes/${processId}`)}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Process
+          </Button>
+        }
+      />
+
+      {/* Metadata Card */}
+      <Card>
+        <CardContent className="py-3">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Owner:</span>
+                <span>{row.createdBy || 'System'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Modified:</span>
+                <span>{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : 'Never'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Used by:</span>
+                <span>{row.usageCount || 0} parts</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className={`${
+                row.ap === 'H' ? 'bg-red-100 text-red-800' :
+                row.ap === 'M' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-green-100 text-green-800'
+              }`}>
+                AP: {row.ap}
+              </Badge>
+              {row.csrSymbol && (
+                <Badge variant="outline" className="text-lg">
+                  {row.csrSymbol}
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Template Editor */}
+      <TemplateEditor
+        entityType="fmea_template_row"
+        entityId={rowId!}
+        initialData={{
+          function: row.function,
+          requirement: row.requirement,
+          failureMode: row.failureMode,
+          effect: row.effect,
+          severity: row.severity,
+          cause: row.cause,
+          occurrence: row.occurrence,
+          preventionControls: row.preventionControls || [],
+          detectionControls: row.detectionControls || [],
+          detection: row.detection,
+          ap: row.ap,
+          specialFlag: row.specialFlag,
+          csrSymbol: row.csrSymbol || '',
+          notes: row.notes || '',
+        }}
+        entityName={row.failureMode}
+        onSaveComplete={() => {
+          // Optionally refresh or navigate
+          setLocation(`/builder/processes/${processId}`);
+        }}
+      />
+    </div>
+  );
+}
+
+
+/**
+ * Usage in routes.ts:
+ * 
+ * <Route path="/builder/processes/:processId/fmea/:rowId/edit">
+ *   <FMEATemplateRowEdit />
+ * </Route>
+ * 
+ * 
+ * How the hybrid flow works:
+ * 
+ * 1. User opens this page to edit an FMEA template row
+ * 2. They modify fields using proper controls (dropdowns for S/O/D, multi-select for controls, etc.)
+ * 3. System auto-calculates AP in real-time
+ * 4. When user clicks "Save Changes":
+ *    
+ *    a) If only minor fields changed (notes):
+ *       → Direct save with audit log entry
+ *       → No dialog
+ *    
+ *    b) If standard fields changed (failure mode, effect, cause):
+ *       → QuickChangeDialog appears
+ *       → User picks reason code, optional comment
+ *       → Change package created and auto-approved
+ *    
+ *    c) If critical fields changed (S, O, D, controls, CSR):
+ *       → ChangeWizard opens
+ *       → Step 1: Review all changes with AP delta warning
+ *       → Step 2: Impact analysis shows affected parts/documents
+ *       → Step 3: Enter title, description, reason, priority
+ *       → Step 4: Confirm - creates change package for review
+ *       → User is redirected to change package detail page
+ *       → Approvers must sign off before changes take effect
+ *       → After approval, propagation step decides adopt/keep for each affected doc
+ */
