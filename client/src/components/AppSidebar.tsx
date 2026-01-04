@@ -54,6 +54,12 @@ const mainNavItems = [
     icon: ClipboardList,
     testId: "nav-control-plans",
   },
+  {
+    title: "Change Packages",
+    url: "/change-packages",
+    icon: GitBranch,
+    testId: "nav-change-packages",
+  },
 ];
 
 const libraryNavItems = [
