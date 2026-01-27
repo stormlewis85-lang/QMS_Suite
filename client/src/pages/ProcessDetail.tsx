@@ -283,10 +283,6 @@ function StepFormDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="operation">Operation</SelectItem>
-                        <SelectItem value="inspection">Inspection</SelectItem>
-                        <SelectItem value="transport">Transport</SelectItem>
-                        <SelectItem value="storage">Storage</SelectItem>
-                        <SelectItem value="decision">Decision</SelectItem>
                         <SelectItem value="group">Group</SelectItem>
                         <SelectItem value="subprocess_ref">Subprocess Reference</SelectItem>
                       </SelectContent>
