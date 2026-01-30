@@ -91,6 +91,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { Part, ControlPlan, ControlPlanRow, InsertControlPlanRow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
+import ExportDialog from "@/components/ExportDialog";
+import { FileSpreadsheet, Download } from "lucide-react";
 
 // Types
 interface ControlPlanWithDetails extends ControlPlan {
@@ -711,6 +713,37 @@ export default function ControlPlanDetail() {
         </div>
 
         <div className="flex items-center gap-2">
+          <ExportDialog
+            documentType="control_plan"
+            documentId={id!}
+            documentName={`${controlPlan.part.partNumber} Rev ${controlPlan.rev}`}
+            trigger={
+              <Button variant="outline" data-testid="button-export-control-plan">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            }
+          />
+          
+          <Button 
+            variant="ghost" 
+            size="icon"
+            title="Export as PDF"
+            onClick={() => window.open(`/api/control-plans/${id}/export?format=pdf`, '_blank')}
+            data-testid="button-quick-export-pdf"
+          >
+            <FileText className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon"
+            title="Export as Excel"
+            onClick={() => window.open(`/api/control-plans/${id}/export?format=xlsx`, '_blank')}
+            data-testid="button-quick-export-xlsx"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+          </Button>
+          
           <Button
             variant="outline"
             onClick={() => validateMutation.mutate()}

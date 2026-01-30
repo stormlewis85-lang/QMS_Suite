@@ -24,7 +24,10 @@ import {
   Loader2,
   PenTool,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -628,6 +631,37 @@ export function DocumentControlPanel({
             )}
           </TabsContent>
         </Tabs>
+        
+        <Separator className="my-4" />
+        
+        <div className="space-y-2">
+          <p className="text-sm font-medium flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            Export
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full justify-start"
+              onClick={() => window.open(`/api/${documentType === 'pfmea' ? 'pfmeas' : 'control-plans'}/${documentId}/export?format=pdf`, '_blank')}
+              data-testid="button-export-pdf"
+            >
+              <FileText className="h-4 w-4 mr-2 text-red-500" />
+              PDF
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full justify-start"
+              onClick={() => window.open(`/api/${documentType === 'pfmea' ? 'pfmeas' : 'control-plans'}/${documentId}/export?format=xlsx`, '_blank')}
+              data-testid="button-export-xlsx"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />
+              Excel
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

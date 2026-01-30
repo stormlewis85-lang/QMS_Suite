@@ -91,6 +91,8 @@ import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
 import { SignatureStatusBadge } from "@/components/SignaturePanel";
 import { OwnershipPanel } from "@/components/OwnershipPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
+import ExportDialog from "@/components/ExportDialog";
+import { FileSpreadsheet } from "lucide-react";
 
 const CURRENT_USER = {
   id: "user-001",
@@ -735,6 +737,37 @@ export default function PFMEADetail() {
         </div>
 
         <div className="flex items-center gap-2">
+          <ExportDialog
+            documentType="pfmea"
+            documentId={id!}
+            documentName={`${pfmea.part.partNumber} Rev ${pfmea.rev}`}
+            trigger={
+              <Button variant="outline" data-testid="button-export-pfmea">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            }
+          />
+          
+          <Button 
+            variant="ghost" 
+            size="icon"
+            title="Export as PDF"
+            onClick={() => window.open(`/api/pfmeas/${id}/export?format=pdf`, '_blank')}
+            data-testid="button-quick-export-pdf"
+          >
+            <FileText className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon"
+            title="Export as Excel"
+            onClick={() => window.open(`/api/pfmeas/${id}/export?format=xlsx`, '_blank')}
+            data-testid="button-quick-export-xlsx"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+          </Button>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">

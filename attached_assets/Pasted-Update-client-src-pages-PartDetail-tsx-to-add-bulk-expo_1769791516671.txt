@@ -1,0 +1,104 @@
+Update client/src/pages/PartDetail.tsx to add bulk export functionality:
+
+ADD to the header section near "Generate Documents" button:
+
+<div className="flex items-center gap-2">
+  <Button onClick={() => { setShowWizard(true); setWizardStep(1); }}>
+    <Sparkles className="h-4 w-4 mr-2" />
+    Generate Documents
+  </Button>
+  
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button variant="outline">
+        <Download className="h-4 w-4 mr-2" />
+        Export All
+        <ChevronDown className="h-4 w-4 ml-1" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuLabel>Export Format</DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={() => handleBulkExport('pdf')}>
+        <FileText className="h-4 w-4 mr-2 text-red-500" />
+        Export All as PDF
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => handleBulkExport('xlsx')}>
+        <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />
+        Export All as Excel
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+</div>
+
+ADD IMPORTS:
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown, FileText, FileSpreadsheet, Download } from 'lucide-react';
+
+ADD handler function:
+
+const handleBulkExport = async (format: 'pdf' | 'xlsx') => {
+  try {
+    toast({
+      title: "Preparing Export",
+      description: "Generating document files...",
+    });
+    
+    const response = await fetch(`/api/parts/${id}/export-all?format=${format}`);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Export failed');
+    }
+    
+    const data = await response.json();
+    
+    // Download each file
+    if (data.pfmea) {
+      downloadBase64File(data.pfmea.base64, data.pfmea.filename, data.pfmea.mimeType);
+    }
+    if (data.controlPlan) {
+      // Small delay between downloads
+      setTimeout(() => {
+        downloadBase64File(data.controlPlan.base64, data.controlPlan.filename, data.controlPlan.mimeType);
+      }, 500);
+    }
+    
+    toast({
+      title: "Export Complete",
+      description: "All documents have been downloaded.",
+    });
+  } catch (error: any) {
+    toast({
+      title: "Export Failed",
+      description: error.message,
+      variant: "destructive",
+    });
+  }
+};
+
+const downloadBase64File = (base64: string, filename: string, mimeType: string) => {
+  const byteCharacters = atob(base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: mimeType });
+  
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+};
