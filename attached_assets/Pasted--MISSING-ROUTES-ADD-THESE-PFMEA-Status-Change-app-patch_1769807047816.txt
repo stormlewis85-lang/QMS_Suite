@@ -1,0 +1,409 @@
+// ============ MISSING ROUTES - ADD THESE ============
+
+// PFMEA Status Change
+app.patch('/api/pfmeas/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  try {
+    const [updated] = await db.update(pfmea)
+      .set({ 
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(pfmea.id, parseInt(id)))
+      .returning();
+    
+    if (!updated) {
+      return res.status(404).json({ error: 'PFMEA not found' });
+    }
+    
+    // Log to audit
+    await db.insert(auditLog).values({
+      entityType: 'pfmea',
+      entityId: parseInt(id),
+      action: 'status_changed',
+      details: JSON.stringify({ newStatus: status }),
+      performedBy: 'system',
+    });
+    
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PFMEA Signatures - GET
+app.get('/api/pfmeas/:id/signatures', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const sigs = await db.select()
+      .from(signatures)
+      .where(eq(signatures.entityId, parseInt(id)))
+      .where(eq(signatures.entityType, 'pfmea'));
+    
+    res.json(sigs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PFMEA Signatures - POST
+app.post('/api/pfmeas/:id/signatures', async (req, res) => {
+  const { id } = req.params;
+  const { role, signedBy } = req.body;
+  
+  try {
+    const [sig] = await db.insert(signatures).values({
+      entityType: 'pfmea',
+      entityId: parseInt(id),
+      role,
+      signedBy,
+      signedAt: new Date(),
+    }).returning();
+    
+    // Log to audit
+    await db.insert(auditLog).values({
+      entityType: 'pfmea',
+      entityId: parseInt(id),
+      action: 'signature_added',
+      details: JSON.stringify({ role, signedBy }),
+      performedBy: signedBy,
+    });
+    
+    res.json(sig);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PFMEA Revisions - POST
+app.post('/api/pfmeas/:id/revisions', async (req, res) => {
+  const { id } = req.params;
+  const { changeDescription } = req.body;
+  
+  try {
+    // Get current PFMEA
+    const [current] = await db.select()
+      .from(pfmea)
+      .where(eq(pfmea.id, parseInt(id)));
+    
+    if (!current) {
+      return res.status(404).json({ error: 'PFMEA not found' });
+    }
+    
+    // Increment revision
+    const currentRev = current.rev || '1.0';
+    const [major, minor] = currentRev.split('.').map(Number);
+    const newRev = `${major}.${minor + 1}`;
+    
+    // Create new revision
+    const [newPfmea] = await db.insert(pfmea).values({
+      partId: current.partId,
+      rev: newRev,
+      status: 'draft',
+      previousRevisionId: current.id,
+    }).returning();
+    
+    // Copy rows to new revision
+    const rows = await db.select()
+      .from(pfmeaRows)
+      .where(eq(pfmeaRows.pfmeaId, parseInt(id)));
+    
+    for (const row of rows) {
+      const { id: _, pfmeaId: __, ...rowData } = row;
+      await db.insert(pfmeaRows).values({
+        ...rowData,
+        pfmeaId: newPfmea.id,
+      });
+    }
+    
+    // Log to audit
+    await db.insert(auditLog).values({
+      entityType: 'pfmea',
+      entityId: newPfmea.id,
+      action: 'revision_created',
+      details: JSON.stringify({ fromRev: currentRev, toRev: newRev, changeDescription }),
+      performedBy: 'system',
+    });
+    
+    res.json(newPfmea);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PFMEA History
+app.get('/api/pfmeas/:id/history', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const history = await db.select()
+      .from(auditLog)
+      .where(eq(auditLog.entityType, 'pfmea'))
+      .where(eq(auditLog.entityId, parseInt(id)))
+      .orderBy(desc(auditLog.createdAt));
+    
+    res.json(history);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Audit Log - GET
+app.get('/api/audit-log', async (req, res) => {
+  const { entityType, entityId, limit = '100' } = req.query;
+  
+  try {
+    let query = db.select().from(auditLog);
+    
+    if (entityType && entityId) {
+      query = query.where(
+        and(
+          eq(auditLog.entityType, entityType as string),
+          eq(auditLog.entityId, parseInt(entityId as string))
+        )
+      );
+    } else if (entityType) {
+      query = query.where(eq(auditLog.entityType, entityType as string));
+    }
+    
+    const logs = await query
+      .orderBy(desc(auditLog.createdAt))
+      .limit(parseInt(limit as string));
+    
+    res.json(logs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// AP Calculator endpoint
+app.post('/api/calculate-ap', async (req, res) => {
+  const { severity, occurrence, detection } = req.body;
+  
+  const S = parseInt(severity);
+  const O = parseInt(occurrence);
+  const D = parseInt(detection);
+  
+  let ap: 'H' | 'M' | 'L';
+  let reason: string;
+  
+  // AIAG-VDA 2019 AP Logic
+  if (S >= 9) {
+    ap = 'H';
+    reason = 'Severity >= 9 (safety/regulatory)';
+  } else if (S >= 8 && O >= 4 && D >= 4) {
+    ap = 'H';
+    reason = 'S>=8 with O>=4 and D>=4';
+  } else if (S >= 7 && O >= 5) {
+    ap = 'H';
+    reason = 'S>=7 with O>=5';
+  } else if (S >= 6 && O >= 4) {
+    ap = 'M';
+    reason = 'Moderate severity with moderate occurrence';
+  } else if (S >= 5 && O >= 5) {
+    ap = 'M';
+    reason = 'Medium severity and occurrence';
+  } else if (D >= 7 && S >= 5) {
+    ap = 'M';
+    reason = 'Poor detection with moderate severity';
+  } else {
+    ap = 'L';
+    reason = 'Low risk combination';
+  }
+  
+  res.json({ ap, reason, severity: S, occurrence: O, detection: D });
+});
+
+// Document Generation
+app.post('/api/parts/:id/generate', async (req, res) => {
+  const { id } = req.params;
+  const { processIds } = req.body;
+  
+  try {
+    // Get part
+    const [partData] = await db.select()
+      .from(parts)
+      .where(eq(parts.id, parseInt(id)));
+    
+    if (!partData) {
+      return res.status(404).json({ error: 'Part not found' });
+    }
+    
+    // Create PFMEA
+    const [newPfmea] = await db.insert(pfmea).values({
+      partId: parseInt(id),
+      rev: '1.0',
+      status: 'draft',
+    }).returning();
+    
+    // Create Control Plan
+    const [newCP] = await db.insert(controlPlans).values({
+      partId: parseInt(id),
+      rev: '1.0',
+      type: 'Production',
+      status: 'draft',
+    }).returning();
+    
+    // If process IDs provided, create rows from library
+    if (processIds && processIds.length > 0) {
+      // Get failure modes for these processes
+      const modes = await db.select()
+        .from(failureModes)
+        .where(inArray(failureModes.processId, processIds));
+      
+      for (const mode of modes) {
+        await db.insert(pfmeaRows).values({
+          pfmeaId: newPfmea.id,
+          stepNumber: '10',
+          processStep: mode.name,
+          function: mode.description || 'TBD',
+          requirement: 'Per specification',
+          failureMode: mode.name,
+          failureEffect: 'Customer dissatisfaction',
+          severity: mode.typicalSeverity || 5,
+          failureCause: 'TBD',
+          occurrence: mode.typicalOccurrence || 3,
+          currentPreventionControls: 'TBD',
+          currentDetectionControls: 'TBD',
+          detection: 5,
+          ap: 'M',
+        });
+      }
+    }
+    
+    res.json({
+      pfmea: newPfmea,
+      pfmeaId: newPfmea.id,
+      controlPlan: newCP,
+      controlPlanId: newCP.id,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Control Plans - Status change
+app.patch('/api/control-plans/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  try {
+    const [updated] = await db.update(controlPlans)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(controlPlans.id, parseInt(id)))
+      .returning();
+    
+    if (!updated) {
+      return res.status(404).json({ error: 'Control Plan not found' });
+    }
+    
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Auto-review endpoints
+app.post('/api/pfmeas/:id/auto-review', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const rows = await db.select()
+      .from(pfmeaRows)
+      .where(eq(pfmeaRows.pfmeaId, parseInt(id)));
+    
+    const findings: any[] = [];
+    
+    for (const row of rows) {
+      // Check for high AP without actions
+      if (row.ap === 'H') {
+        const actions = await db.select()
+          .from(actionItems)
+          .where(eq(actionItems.pfmeaRowId, row.id));
+        
+        if (actions.length === 0) {
+          findings.push({
+            type: 'error',
+            field: 'actions',
+            rowId: row.id,
+            message: `High AP failure mode "${row.failureMode}" has no action items`,
+          });
+        }
+      }
+      
+      // Check for missing controls
+      if (!row.currentPreventionControls || row.currentPreventionControls === 'TBD') {
+        findings.push({
+          type: 'warning',
+          field: 'preventionControls',
+          rowId: row.id,
+          message: `Missing prevention controls for "${row.failureMode}"`,
+        });
+      }
+      
+      if (!row.currentDetectionControls || row.currentDetectionControls === 'TBD') {
+        findings.push({
+          type: 'warning',
+          field: 'detectionControls',
+          rowId: row.id,
+          message: `Missing detection controls for "${row.failureMode}"`,
+        });
+      }
+    }
+    
+    res.json({
+      findings,
+      errors: findings.filter(f => f.type === 'error'),
+      warnings: findings.filter(f => f.type === 'warning'),
+      passed: findings.filter(f => f.type === 'error').length === 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/control-plans/:id/auto-review', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const rows = await db.select()
+      .from(controlPlanRows)
+      .where(eq(controlPlanRows.controlPlanId, parseInt(id)));
+    
+    const findings: any[] = [];
+    
+    for (const row of rows) {
+      // Check special characteristics have reaction plans
+      if (row.specialFlag && !row.reactionPlan) {
+        findings.push({
+          type: 'error',
+          field: 'reactionPlan',
+          rowId: row.id,
+          message: `Special characteristic "${row.characteristicName}" missing reaction plan`,
+        });
+      }
+      
+      // Check for sample frequency
+      if (!row.sampleFrequency) {
+        findings.push({
+          type: 'warning',
+          field: 'sampleFrequency',
+          rowId: row.id,
+          message: `Missing sample frequency for "${row.characteristicName}"`,
+        });
+      }
+    }
+    
+    res.json({
+      findings,
+      errors: findings.filter(f => f.type === 'error'),
+      warnings: findings.filter(f => f.type === 'warning'),
+      passed: findings.filter(f => f.type === 'error').length === 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
