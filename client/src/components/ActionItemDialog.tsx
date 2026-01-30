@@ -132,11 +132,7 @@ export function ActionItemDialog({
   
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest(`/api/pfmea-rows/${pfmeaRowId}/action-items`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiRequest('POST', `/api/pfmea-rows/${pfmeaRowId}/action-items`, data);
     },
     onSuccess: () => {
       toast({ title: 'Action Created', description: 'The action item has been created.' });
@@ -151,11 +147,7 @@ export function ActionItemDialog({
   
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest(`/api/action-items/${actionItem?.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiRequest('PATCH', `/api/action-items/${actionItem?.id}`, data);
     },
     onSuccess: () => {
       toast({ title: 'Action Updated', description: 'The action item has been updated.' });
@@ -170,11 +162,7 @@ export function ActionItemDialog({
   
   const completeMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest(`/api/action-items/${actionItem?.id}/complete`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiRequest('POST', `/api/action-items/${actionItem?.id}/complete`, data);
     },
     onSuccess: () => {
       toast({ title: 'Action Completed', description: 'The action item has been marked as completed.' });
@@ -189,11 +177,7 @@ export function ActionItemDialog({
   
   const verifyMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest(`/api/action-items/${actionItem?.id}/verify`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return apiRequest('POST', `/api/action-items/${actionItem?.id}/verify`, data);
     },
     onSuccess: () => {
       toast({ title: 'Action Verified', description: 'The action item has been verified and ratings updated.' });
