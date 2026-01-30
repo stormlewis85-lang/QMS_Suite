@@ -1,0 +1,80 @@
+Add export tracking to the audit log - Update server/services/export-service.ts:
+
+ADD at the end of each export method (exportPFMEAToPDF, exportPFMEAToExcel, etc.):
+
+// Log the export action
+import { documentControlService } from './document-control';
+
+// In exportPFMEAToPDF, before the return:
+await documentControlService.logAuditEntry({
+  entityType: 'pfmea',
+  entityId: documentId,
+  action: 'exported',
+  actor: 'system', // In real app, pass userId
+  payloadJson: { 
+    format: 'pdf',
+    filename: `PFMEA_${part.partNumber}_Rev${document.rev}.pdf`,
+    rowCount: rows.length,
+  },
+});
+
+// Similarly for other export methods
+
+---
+
+Create client/src/components/ExportHistoryCard.tsx - show recent exports:
+
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { FileText, FileSpreadsheet, Download, Clock } from 'lucide-react';
+
+interface ExportHistoryCardProps {
+  documentType: 'pfmea' | 'control_plan';
+  documentId: string;
+}
+
+export function ExportHistoryCard({ documentType, documentId }: ExportHistoryCardProps) {
+  const { data: auditLog } = useQuery({
+    queryKey: [`/api/documents/${documentType}/${documentId}/audit-log`],
+  });
+  
+  const exports = auditLog?.filter((entry: any) => entry.action === 'exported') || [];
+  
+  if (exports.length === 0) return null;
+  
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Download className="h-4 w-4" />
+          Export History
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {exports.slice(0, 5).map((entry: any) => (
+            <div key={entry.id} className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                {entry.payloadJson?.format === 'pdf' ? (
+                  <FileText className="h-4 w-4 text-red-500" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                )}
+                <span className="text-muted-foreground">
+                  {entry.payloadJson?.format?.toUpperCase()}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {new Date(entry.at).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default ExportHistoryCard;

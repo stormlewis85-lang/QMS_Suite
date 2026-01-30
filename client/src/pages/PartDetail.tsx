@@ -63,13 +63,23 @@ import {
   CheckCircle2,
   Clock,
   ChevronRight,
+  ChevronDown,
   GripVertical,
   Trash2,
   Plus,
   Eye,
   Download,
   Play,
+  FileSpreadsheet,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Part, ProcessDef, PFMEA, ControlPlan, PFD } from "@shared/schema";
 
 // Types
@@ -688,6 +698,63 @@ export default function PartDetail() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
 
+  const downloadBase64File = (base64: string, filename: string, mimeType: string) => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+    
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  const handleBulkExport = async (format: 'pdf' | 'xlsx') => {
+    try {
+      toast({
+        title: "Preparing Export",
+        description: "Generating document files...",
+      });
+      
+      const response = await fetch(`/api/parts/${id}/export-all?format=${format}`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Export failed');
+      }
+      
+      const data = await response.json();
+      
+      if (data.pfmea) {
+        downloadBase64File(data.pfmea.base64, data.pfmea.filename, data.pfmea.mimeType);
+      }
+      if (data.controlPlan) {
+        setTimeout(() => {
+          downloadBase64File(data.controlPlan.base64, data.controlPlan.filename, data.controlPlan.mimeType);
+        }, 500);
+      }
+      
+      toast({
+        title: "Export Complete",
+        description: "All documents have been downloaded.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Export Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   // Fetch part details
   const { data: part, isLoading: partLoading } = useQuery<Part>({
     queryKey: ["/api/parts", id],
@@ -868,10 +935,34 @@ export default function PartDetail() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setWizardOpen(true)} data-testid="button-generate-documents">
-          <Wand2 className="h-4 w-4 mr-2" />
-          Generate Documents
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setWizardOpen(true)} data-testid="button-generate-documents">
+            <Wand2 className="h-4 w-4 mr-2" />
+            Generate Documents
+          </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" data-testid="button-export-all">
+                <Download className="h-4 w-4 mr-2" />
+                Export All
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Export Format</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleBulkExport('pdf')} data-testid="menu-item-export-pdf">
+                <FileText className="h-4 w-4 mr-2 text-red-500" />
+                Export All as PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleBulkExport('xlsx')} data-testid="menu-item-export-xlsx">
+                <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />
+                Export All as Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Part Info & CSR Notes */}
