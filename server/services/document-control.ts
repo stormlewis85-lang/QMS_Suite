@@ -1,0 +1,579 @@
+import { db } from '../db';
+import { 
+  pfmea, 
+  pfmeaRow,
+  controlPlan, 
+  controlPlanRow,
+  signature,
+  auditLog,
+  ownership
+} from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
+import crypto from 'crypto';
+
+export type DocumentType = 'pfmea' | 'control_plan';
+export type DocumentStatus = 'draft' | 'review' | 'effective' | 'superseded' | 'obsolete';
+
+export interface DocumentInfo {
+  id: string;
+  type: DocumentType;
+  partId: string;
+  rev: string;
+  status: DocumentStatus;
+  docNo: string | null;
+  createdAt: string;
+  effectiveFrom: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+}
+
+export interface SignatureRequest {
+  documentType: DocumentType;
+  documentId: string;
+  role: string;
+  signerUserId: string;
+  signerName: string;
+  signerEmail: string;
+}
+
+export interface SignatureRecord {
+  id: string;
+  entityType: string;
+  entityId: string;
+  role: string;
+  signerUserId: string;
+  signedAt: string;
+  contentHash: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actor: string;
+  actorName?: string;
+  at: string;
+  payloadJson: any;
+}
+
+export interface RevisionInput {
+  documentType: DocumentType;
+  documentId: string;
+  reason: string;
+  userId: string;
+}
+
+export interface StatusTransitionInput {
+  documentType: DocumentType;
+  documentId: string;
+  newStatus: DocumentStatus;
+  userId: string;
+  comment?: string;
+}
+
+export interface ApprovalMatrixRole {
+  role: string;
+  required: boolean;
+  userId?: string;
+  signedAt?: string;
+}
+
+function generateDocNumber(type: DocumentType, partNumber: string, sequence: number): string {
+  const prefix = type === 'pfmea' ? 'PFMEA' : 'CP';
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `${prefix}-${partNumber}-${year}${month}-${sequence.toString().padStart(3, '0')}`;
+}
+
+function generateContentHash(content: any): string {
+  const normalized = JSON.stringify(content, Object.keys(content).sort());
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+function calculateNextRev(currentRev: string): string {
+  if (currentRev.includes('.')) {
+    const parts = currentRev.split('.').map(Number);
+    parts[2] = (parts[2] || 0) + 1;
+    return parts.join('.');
+  } else if (/^[A-Z]$/.test(currentRev)) {
+    return String.fromCharCode(currentRev.charCodeAt(0) + 1);
+  } else {
+    return (parseInt(currentRev) + 1).toString();
+  }
+}
+
+function isValidTransition(from: DocumentStatus, to: DocumentStatus): boolean {
+  const validTransitions: Record<DocumentStatus, DocumentStatus[]> = {
+    'draft': ['review', 'obsolete'],
+    'review': ['draft', 'effective', 'obsolete'],
+    'effective': ['superseded', 'obsolete'],
+    'superseded': ['obsolete'],
+    'obsolete': [],
+  };
+  return validTransitions[from]?.includes(to) || false;
+}
+
+export class DocumentControlService {
+  
+  async assignDocNumber(type: DocumentType, documentId: string): Promise<string> {
+    const doc = type === 'pfmea' 
+      ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, documentId), with: { part: true } })
+      : await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, documentId), with: { part: true } });
+    
+    if (!doc) throw new Error('Document not found');
+    if (doc.docNo) return doc.docNo;
+    
+    const existingCount = type === 'pfmea'
+      ? (await db.select().from(pfmea).where(eq(pfmea.partId, doc.partId))).length
+      : (await db.select().from(controlPlan).where(eq(controlPlan.partId, doc.partId))).length;
+    
+    const docNo = generateDocNumber(type, doc.part?.partNumber || 'UNK', existingCount);
+    
+    if (type === 'pfmea') {
+      await db.update(pfmea).set({ docNo }).where(eq(pfmea.id, documentId));
+    } else {
+      await db.update(controlPlan).set({ docNo }).where(eq(controlPlan.id, documentId));
+    }
+    
+    await this.logAuditEntry({
+      entityType: type,
+      entityId: documentId,
+      action: 'doc_number_assigned',
+      actor: 'system',
+      payloadJson: { docNo },
+    });
+    
+    return docNo;
+  }
+  
+  async transitionStatus(input: StatusTransitionInput): Promise<DocumentInfo> {
+    const { documentType, documentId, newStatus, userId, comment } = input;
+    
+    const doc = documentType === 'pfmea'
+      ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, documentId) })
+      : await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, documentId) });
+    
+    if (!doc) throw new Error('Document not found');
+    
+    const currentStatus = doc.status as DocumentStatus;
+    
+    if (!isValidTransition(currentStatus, newStatus)) {
+      throw new Error(`Invalid status transition from "${currentStatus}" to "${newStatus}"`);
+    }
+    
+    if (newStatus === 'effective') {
+      if (!doc.docNo) {
+        await this.assignDocNumber(documentType, documentId);
+      }
+      
+      const signatures = await this.getSignatures(documentType, documentId);
+      const requiredRoles = ['process_owner', 'quality_engineer'];
+      const signedRoles = signatures.map(s => s.role);
+      const missingRoles = requiredRoles.filter(r => !signedRoles.includes(r));
+      
+      if (missingRoles.length > 0) {
+        throw new Error(`Missing required signatures: ${missingRoles.join(', ')}`);
+      }
+    }
+    
+    const updateData: any = { status: newStatus };
+    
+    if (newStatus === 'effective') {
+      updateData.effectiveFrom = new Date();
+      updateData.approvedBy = userId;
+      updateData.approvedAt = new Date();
+    }
+    
+    if (documentType === 'pfmea') {
+      await db.update(pfmea).set(updateData).where(eq(pfmea.id, documentId));
+    } else {
+      await db.update(controlPlan).set(updateData).where(eq(controlPlan.id, documentId));
+    }
+    
+    await this.logAuditEntry({
+      entityType: documentType,
+      entityId: documentId,
+      action: 'status_changed',
+      actor: userId,
+      payloadJson: { 
+        from: currentStatus, 
+        to: newStatus,
+        comment,
+      },
+    });
+    
+    const updated = documentType === 'pfmea'
+      ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, documentId) })
+      : await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, documentId) });
+    
+    return this.mapToDocumentInfo(documentType, updated);
+  }
+  
+  async createRevision(input: RevisionInput): Promise<DocumentInfo> {
+    const { documentType, documentId, reason, userId } = input;
+    
+    let newDocId: string;
+    let previousRev: string;
+    
+    if (documentType === 'pfmea') {
+      const currentDoc = await db.query.pfmea.findFirst({ 
+        where: eq(pfmea.id, documentId),
+        with: { rows: true, part: true },
+      });
+      
+      if (!currentDoc) throw new Error('Document not found');
+      
+      if (currentDoc.status !== 'effective') {
+        throw new Error('Only effective documents can be revised. Current status: ' + currentDoc.status);
+      }
+      
+      previousRev = currentDoc.rev;
+      const newRev = calculateNextRev(currentDoc.rev);
+      
+      const [newPfmea] = await db.insert(pfmea).values({
+        partId: currentDoc.partId,
+        rev: newRev,
+        status: 'draft',
+        basis: currentDoc.basis,
+        supersedesId: currentDoc.id,
+      }).returning();
+      
+      newDocId = newPfmea.id;
+      
+      if (currentDoc.rows && currentDoc.rows.length > 0) {
+        for (const row of currentDoc.rows) {
+          await db.insert(pfmeaRow).values({
+            pfmeaId: newDocId,
+            parentTemplateRowId: row.parentTemplateRowId,
+            stepRef: row.stepRef,
+            function: row.function,
+            requirement: row.requirement,
+            failureMode: row.failureMode,
+            effect: row.effect,
+            severity: row.severity,
+            cause: row.cause,
+            occurrence: row.occurrence,
+            preventionControls: row.preventionControls,
+            detectionControls: row.detectionControls,
+            detection: row.detection,
+            ap: row.ap,
+            specialFlag: row.specialFlag,
+            csrSymbol: row.csrSymbol,
+            overrideFlags: row.overrideFlags,
+            notes: row.notes,
+          });
+        }
+      }
+      
+      await this.logAuditEntry({
+        entityType: documentType,
+        entityId: newDocId,
+        action: 'revision_created',
+        actor: userId,
+        payloadJson: { 
+          previousId: documentId,
+          previousRev,
+          newRev,
+          reason,
+        },
+      });
+      
+      const newDoc = await db.query.pfmea.findFirst({ where: eq(pfmea.id, newDocId) });
+      return this.mapToDocumentInfo(documentType, newDoc);
+    } else {
+      const currentDoc = await db.query.controlPlan.findFirst({ 
+        where: eq(controlPlan.id, documentId),
+        with: { rows: true, part: true },
+      });
+      
+      if (!currentDoc) throw new Error('Document not found');
+      
+      if (currentDoc.status !== 'effective') {
+        throw new Error('Only effective documents can be revised. Current status: ' + currentDoc.status);
+      }
+      
+      previousRev = currentDoc.rev;
+      const newRev = calculateNextRev(currentDoc.rev);
+      
+      const [newCP] = await db.insert(controlPlan).values({
+        partId: currentDoc.partId,
+        rev: newRev,
+        type: currentDoc.type,
+        status: 'draft',
+        supersedesId: currentDoc.id,
+      }).returning();
+      
+      newDocId = newCP.id;
+      
+      if (currentDoc.rows && currentDoc.rows.length > 0) {
+        for (const row of currentDoc.rows) {
+          await db.insert(controlPlanRow).values({
+            controlPlanId: newDocId,
+            sourcePfmeaRowId: row.sourcePfmeaRowId,
+            parentControlTemplateRowId: row.parentControlTemplateRowId,
+            charId: row.charId,
+            characteristicName: row.characteristicName,
+            type: row.type,
+            target: row.target,
+            tolerance: row.tolerance,
+            specialFlag: row.specialFlag,
+            csrSymbol: row.csrSymbol,
+            measurementSystem: row.measurementSystem,
+            gageDetails: row.gageDetails,
+            sampleSize: row.sampleSize,
+            frequency: row.frequency,
+            controlMethod: row.controlMethod,
+            acceptanceCriteria: row.acceptanceCriteria,
+            reactionPlan: row.reactionPlan,
+            overrideFlags: row.overrideFlags,
+          });
+        }
+      }
+      
+      await this.logAuditEntry({
+        entityType: documentType,
+        entityId: newDocId,
+        action: 'revision_created',
+        actor: userId,
+        payloadJson: { 
+          previousId: documentId,
+          previousRev,
+          newRev,
+          reason,
+        },
+      });
+      
+      const newDoc = await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, newDocId) });
+      return this.mapToDocumentInfo(documentType, newDoc);
+    }
+  }
+  
+  async addSignature(request: SignatureRequest): Promise<SignatureRecord> {
+    const { documentType, documentId, role, signerUserId, signerName, signerEmail } = request;
+    
+    const doc = documentType === 'pfmea'
+      ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, documentId), with: { rows: true } })
+      : await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, documentId), with: { rows: true } });
+    
+    if (!doc) throw new Error('Document not found');
+    
+    if (doc.status !== 'review') {
+      throw new Error('Document must be in review status to sign');
+    }
+    
+    const existing = await db.select()
+      .from(signature)
+      .where(and(
+        eq(signature.entityType, documentType),
+        eq(signature.entityId, documentId),
+        eq(signature.role, role)
+      ));
+    
+    if (existing.length > 0) {
+      throw new Error(`Document already has a signature for role: ${role}`);
+    }
+    
+    const contentHash = generateContentHash({
+      id: doc.id,
+      rev: doc.rev,
+      rows: doc.rows,
+    });
+    
+    const [sig] = await db.insert(signature).values({
+      entityType: documentType,
+      entityId: documentId,
+      role,
+      signerUserId,
+      signedAt: new Date(),
+      contentHash,
+    }).returning();
+    
+    await this.logAuditEntry({
+      entityType: documentType,
+      entityId: documentId,
+      action: 'signature_added',
+      actor: signerUserId,
+      payloadJson: { 
+        role,
+        signerName,
+        signerEmail,
+        contentHash,
+      },
+    });
+    
+    return {
+      id: sig.id,
+      entityType: sig.entityType,
+      entityId: sig.entityId,
+      role: sig.role,
+      signerUserId: sig.signerUserId,
+      signedAt: sig.signedAt.toISOString(),
+      contentHash: sig.contentHash,
+    };
+  }
+  
+  async getSignatures(documentType: DocumentType, documentId: string): Promise<SignatureRecord[]> {
+    const sigs = await db.select()
+      .from(signature)
+      .where(and(
+        eq(signature.entityType, documentType),
+        eq(signature.entityId, documentId)
+      ));
+    
+    return sigs.map(s => ({
+      id: s.id,
+      entityType: s.entityType,
+      entityId: s.entityId,
+      role: s.role,
+      signerUserId: s.signerUserId,
+      signedAt: s.signedAt.toISOString(),
+      contentHash: s.contentHash,
+    }));
+  }
+  
+  async verifySignature(signatureId: string): Promise<{ valid: boolean; reason?: string }> {
+    const sig = await db.query.signature.findFirst({
+      where: eq(signature.id, signatureId),
+    });
+    
+    if (!sig) return { valid: false, reason: 'Signature not found' };
+    
+    const doc = sig.entityType === 'pfmea'
+      ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, sig.entityId), with: { rows: true } })
+      : await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, sig.entityId), with: { rows: true } });
+    
+    if (!doc) return { valid: false, reason: 'Document not found' };
+    
+    const currentHash = generateContentHash({
+      id: doc.id,
+      rev: doc.rev,
+      rows: doc.rows,
+    });
+    
+    if (currentHash !== sig.contentHash) {
+      return { valid: false, reason: 'Document content has been modified since signature' };
+    }
+    
+    return { valid: true };
+  }
+  
+  async logAuditEntry(entry: Omit<AuditLogEntry, 'id' | 'at'>): Promise<void> {
+    await db.insert(auditLog).values({
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      action: entry.action,
+      actor: entry.actor,
+      at: new Date(),
+      payloadJson: entry.payloadJson,
+    });
+  }
+  
+  async getAuditLog(
+    entityType: DocumentType, 
+    entityId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<AuditLogEntry[]> {
+    const entries = await db.select()
+      .from(auditLog)
+      .where(and(
+        eq(auditLog.entityType, entityType),
+        eq(auditLog.entityId, entityId)
+      ))
+      .orderBy(desc(auditLog.at))
+      .limit(options?.limit || 50)
+      .offset(options?.offset || 0);
+    
+    return entries.map(e => ({
+      id: e.id,
+      entityType: e.entityType,
+      entityId: e.entityId,
+      action: e.action,
+      actor: e.actor,
+      at: e.at.toISOString(),
+      payloadJson: e.payloadJson,
+    }));
+  }
+  
+  async setOwner(entityType: DocumentType, entityId: string, ownerUserId: string): Promise<void> {
+    const existing = await db.select()
+      .from(ownership)
+      .where(and(
+        eq(ownership.entityType, entityType),
+        eq(ownership.entityId, entityId)
+      ));
+    
+    if (existing.length > 0) {
+      await db.update(ownership)
+        .set({ ownerUserId })
+        .where(eq(ownership.id, existing[0].id));
+    } else {
+      await db.insert(ownership).values({
+        entityType,
+        entityId,
+        ownerUserId,
+        watchers: [],
+      });
+    }
+    
+    await this.logAuditEntry({
+      entityType,
+      entityId,
+      action: 'owner_changed',
+      actor: ownerUserId,
+      payloadJson: { newOwner: ownerUserId },
+    });
+  }
+  
+  async addWatcher(entityType: DocumentType, entityId: string, watcherUserId: string): Promise<void> {
+    const existing = await db.select()
+      .from(ownership)
+      .where(and(
+        eq(ownership.entityType, entityType),
+        eq(ownership.entityId, entityId)
+      ));
+    
+    if (existing.length === 0) {
+      throw new Error('Document has no ownership record');
+    }
+    
+    const currentWatchers = (existing[0].watchers as string[]) || [];
+    if (!currentWatchers.includes(watcherUserId)) {
+      await db.update(ownership)
+        .set({ watchers: [...currentWatchers, watcherUserId] })
+        .where(eq(ownership.id, existing[0].id));
+    }
+  }
+  
+  async getRevisionHistory(documentType: DocumentType, documentId: string): Promise<DocumentInfo[]> {
+    const doc = documentType === 'pfmea'
+      ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, documentId) })
+      : await db.query.controlPlan.findFirst({ where: eq(controlPlan.id, documentId) });
+    
+    if (!doc) throw new Error('Document not found');
+    
+    const allDocs = documentType === 'pfmea'
+      ? await db.select().from(pfmea).where(eq(pfmea.partId, doc.partId)).orderBy(desc(pfmea.createdAt))
+      : await db.select().from(controlPlan).where(eq(controlPlan.partId, doc.partId)).orderBy(desc(controlPlan.createdAt));
+    
+    return allDocs.map(d => this.mapToDocumentInfo(documentType, d));
+  }
+  
+  private mapToDocumentInfo(type: DocumentType, doc: any): DocumentInfo {
+    return {
+      id: doc.id,
+      type,
+      partId: doc.partId,
+      rev: doc.rev,
+      status: doc.status,
+      docNo: doc.docNo,
+      createdAt: doc.createdAt?.toISOString?.() || doc.createdAt,
+      effectiveFrom: doc.effectiveFrom?.toISOString?.() || doc.effectiveFrom,
+      approvedBy: doc.approvedBy,
+      approvedAt: doc.approvedAt?.toISOString?.() || doc.approvedAt,
+    };
+  }
+}
+
+export const documentControlService = new DocumentControlService();

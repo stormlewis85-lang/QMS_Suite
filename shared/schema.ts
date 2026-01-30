@@ -685,6 +685,46 @@ export const changePackagePropagation = pgTable('change_package_propagation', {
 }));
 
 // ==========================================
+// Document Control Tables
+// ==========================================
+
+export const signature = pgTable('signature', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  role: text('role').notNull(),
+  signerUserId: text('signer_user_id').notNull(),
+  signedAt: timestamp('signed_at').notNull().defaultNow(),
+  contentHash: text('content_hash').notNull(),
+}, (table) => ({
+  entityIdx: index('signature_entity_idx').on(table.entityType, table.entityId),
+  roleIdx: index('signature_role_idx').on(table.role),
+}));
+
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  action: text('action').notNull(),
+  actor: text('actor').notNull(),
+  at: timestamp('at').notNull().defaultNow(),
+  payloadJson: jsonb('payload_json'),
+}, (table) => ({
+  entityIdx: index('audit_log_entity_idx').on(table.entityType, table.entityId),
+  atIdx: index('audit_log_at_idx').on(table.at),
+}));
+
+export const ownership = pgTable('ownership', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull(),
+  watchers: jsonb('watchers').$type<string[]>().default([]),
+}, (table) => ({
+  entityIdx: uniqueIndex('ownership_entity_idx').on(table.entityType, table.entityId),
+}));
+
+// ==========================================
 // Relations
 // ==========================================
 
