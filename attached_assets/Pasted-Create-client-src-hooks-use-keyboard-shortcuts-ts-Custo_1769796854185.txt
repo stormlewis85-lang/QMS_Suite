@@ -1,0 +1,184 @@
+Create client/src/hooks/use-keyboard-shortcuts.ts - Custom hook for keyboard shortcuts:
+
+import { useEffect, useCallback } from 'react';
+
+interface ShortcutConfig {
+  key: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  action: () => void;
+  description: string;
+}
+
+export function useKeyboardShortcuts(shortcuts: ShortcutConfig[], enabled = true) {
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!enabled) return;
+    
+    // Don't trigger shortcuts when typing in inputs
+    const target = event.target as HTMLElement;
+    if (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.isContentEditable
+    ) {
+      // Allow Escape in inputs
+      if (event.key !== 'Escape') return;
+    }
+    
+    for (const shortcut of shortcuts) {
+      const ctrlMatch = shortcut.ctrl ? (event.ctrlKey || event.metaKey) : !event.ctrlKey && !event.metaKey;
+      const shiftMatch = shortcut.shift ? event.shiftKey : !event.shiftKey;
+      const altMatch = shortcut.alt ? event.altKey : !event.altKey;
+      const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase();
+      
+      if (ctrlMatch && shiftMatch && altMatch && keyMatch) {
+        event.preventDefault();
+        shortcut.action();
+        return;
+      }
+    }
+  }, [shortcuts, enabled]);
+  
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+}
+
+// Shortcut help display
+export const GLOBAL_SHORTCUTS: ShortcutConfig[] = [
+  { key: 'k', ctrl: true, action: () => {}, description: 'Open search' },
+  { key: 'Escape', action: () => {}, description: 'Close dialog / Cancel' },
+];
+
+export function getShortcutDisplay(shortcut: ShortcutConfig): string {
+  const parts = [];
+  if (shortcut.ctrl) parts.push('⌘/Ctrl');
+  if (shortcut.shift) parts.push('Shift');
+  if (shortcut.alt) parts.push('Alt');
+  parts.push(shortcut.key.toUpperCase());
+  return parts.join(' + ');
+}
+
+---
+
+Create client/src/components/KeyboardShortcutsHelp.tsx - Help dialog:
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Keyboard } from 'lucide-react';
+
+interface Shortcut {
+  keys: string;
+  description: string;
+}
+
+const shortcuts: Shortcut[] = [
+  { keys: '⌘/Ctrl + K', description: 'Open quick search' },
+  { keys: '⌘/Ctrl + S', description: 'Save current changes' },
+  { keys: '⌘/Ctrl + E', description: 'Toggle edit mode' },
+  { keys: '⌘/Ctrl + P', description: 'Export as PDF' },
+  { keys: '⌘/Ctrl + Shift + P', description: 'Export as Excel' },
+  { keys: 'Escape', description: 'Close dialog / Cancel edit' },
+  { keys: '↑ / ↓', description: 'Navigate table rows' },
+  { keys: 'Enter', description: 'Open selected item' },
+  { keys: '?', description: 'Show keyboard shortcuts' },
+];
+
+export function KeyboardShortcutsHelp() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="gap-2">
+          <Keyboard className="h-4 w-4" />
+          <span className="hidden md:inline">Shortcuts</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Keyboard className="h-5 w-5" />
+            Keyboard Shortcuts
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 py-4">
+          {shortcuts.map((shortcut, idx) => (
+            <div key={idx} className="flex justify-between items-center py-2 border-b last:border-0">
+              <span className="text-sm text-muted-foreground">{shortcut.description}</span>
+              <kbd className="px-2 py-1 text-xs font-mono bg-muted rounded border">
+                {shortcut.keys}
+              </kbd>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default KeyboardShortcutsHelp;
+
+---
+
+Update client/src/pages/PFMEADetail.tsx - Add shortcuts:
+
+ADD IMPORT:
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+
+ADD near top of component:
+// Keyboard shortcuts
+useKeyboardShortcuts([
+  {
+    key: 's',
+    ctrl: true,
+    description: 'Save changes',
+    action: () => {
+      if (editingRow) {
+        handleSaveEdit();
+      }
+    },
+  },
+  {
+    key: 'Escape',
+    description: 'Cancel edit',
+    action: () => {
+      if (editingRow) {
+        setEditingRow(null);
+      }
+    },
+  },
+  {
+    key: 'p',
+    ctrl: true,
+    description: 'Export PDF',
+    action: () => {
+      window.open(`/api/pfmeas/${id}/export?format=pdf`, '_blank');
+    },
+  },
+  {
+    key: 'p',
+    ctrl: true,
+    shift: true,
+    description: 'Export Excel',
+    action: () => {
+      window.open(`/api/pfmeas/${id}/export?format=xlsx`, '_blank');
+    },
+  },
+]);
+
+---
+
+Add KeyboardShortcutsHelp to AppSidebar footer:
+
+In client/src/components/AppSidebar.tsx, add to the footer section:
+
+import KeyboardShortcutsHelp from './KeyboardShortcutsHelp';
+
+// In the SidebarFooter:
+<SidebarFooter className="border-t p-4">
+  <div className="flex items-center justify-between">
+    <KeyboardShortcutsHelp />
+    <ThemeToggle />
+  </div>
+</SidebarFooter>

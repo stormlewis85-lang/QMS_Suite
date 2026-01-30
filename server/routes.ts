@@ -28,8 +28,8 @@ import { calculateAP } from "./services/ap-calculator";
 import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog } from "@shared/schema";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -57,6 +57,78 @@ import { fromError } from "zod-validation-error";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Run seeds on startup
   runAllSeeds().catch(console.error);
+
+  // Dashboard metrics
+  app.get('/api/dashboard/metrics', async (req, res) => {
+    try {
+      const allParts = await db.select().from(part);
+      const allPfmeas = await db.select().from(pfmea);
+      const allControlPlans = await db.select().from(controlPlan);
+      const allPfmeaRows = await db.select().from(pfmeaRow);
+      
+      const pfmeaByStatus = {
+        draft: allPfmeas.filter(p => p.status === 'draft').length,
+        review: allPfmeas.filter(p => p.status === 'review').length,
+        effective: allPfmeas.filter(p => p.status === 'effective').length,
+        superseded: allPfmeas.filter(p => p.status === 'superseded').length,
+      };
+      
+      const cpByStatus = {
+        draft: allControlPlans.filter(c => c.status === 'draft').length,
+        review: allControlPlans.filter(c => c.status === 'review').length,
+        effective: allControlPlans.filter(c => c.status === 'effective').length,
+        superseded: allControlPlans.filter(c => c.status === 'superseded').length,
+      };
+      
+      const apDistribution = {
+        high: allPfmeaRows.filter(r => r.ap === 'H').length,
+        medium: allPfmeaRows.filter(r => r.ap === 'M').length,
+        low: allPfmeaRows.filter(r => r.ap === 'L').length,
+      };
+      
+      const pendingReview = allPfmeas.filter(p => p.status === 'review').length +
+                            allControlPlans.filter(c => c.status === 'review').length;
+      
+      const draftPfmeaIds = allPfmeas.filter(p => p.status === 'draft').map(p => p.id);
+      const highAPInDraft = allPfmeaRows.filter(
+        r => r.ap === 'H' && draftPfmeaIds.includes(r.pfmeaId)
+      ).length;
+      
+      const recentActivity = await db.select()
+        .from(auditLog)
+        .orderBy(desc(auditLog.at))
+        .limit(10);
+      
+      const partsWithPfmea = new Set(allPfmeas.map(p => p.partId));
+      const partsWithoutPfmea = allParts.filter(p => !partsWithPfmea.has(p.id)).length;
+      
+      res.json({
+        summary: {
+          totalParts: allParts.length,
+          totalPfmeas: allPfmeas.length,
+          totalControlPlans: allControlPlans.length,
+          totalFailureModes: allPfmeaRows.length,
+          pendingReview,
+          highAPItems: apDistribution.high,
+          highAPInDraft,
+          partsWithoutPfmea,
+        },
+        pfmeaByStatus,
+        cpByStatus,
+        apDistribution,
+        recentActivity: recentActivity.map(a => ({
+          id: a.id,
+          action: a.action,
+          entityType: a.entityType,
+          entityId: a.entityId,
+          actor: a.actor,
+          at: a.at,
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Parts API
   app.get("/api/parts", async (req, res) => {
