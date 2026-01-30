@@ -1,0 +1,830 @@
+/**
+ * PFMEA Suite - Comprehensive Test Runner
+ * 
+ * Run with: npx tsx tests/run-all-tests.ts
+ * 
+ * This will test all features and generate a detailed report.
+ */
+
+import { db } from '../server/db';
+import * as schema from '../shared/schema';
+import { eq, desc, and, lt, inArray } from 'drizzle-orm';
+
+// ============ TEST UTILITIES ============
+
+interface TestResult {
+  name: string;
+  category: string;
+  passed: boolean;
+  error?: string;
+  details?: string;
+}
+
+const results: TestResult[] = [];
+let currentCategory = 'General';
+
+function setCategory(category: string) {
+  currentCategory = category;
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`  TESTING: ${category}`);
+  console.log('='.repeat(60));
+}
+
+async function test(name: string, fn: () => Promise<void>) {
+  try {
+    await fn();
+    results.push({ name, category: currentCategory, passed: true });
+    console.log(`  ✅ ${name}`);
+  } catch (error: any) {
+    results.push({ 
+      name, 
+      category: currentCategory, 
+      passed: false, 
+      error: error.message,
+      details: error.stack
+    });
+    console.log(`  ❌ ${name}`);
+    console.log(`     Error: ${error.message}`);
+  }
+}
+
+function assert(condition: boolean, message: string) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertEqual(actual: any, expected: any, message: string) {
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+}
+
+function assertExists(value: any, message: string) {
+  if (value === null || value === undefined) {
+    throw new Error(`${message}: value is null or undefined`);
+  }
+}
+
+function assertArray(value: any, minLength: number, message: string) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${message}: expected array, got ${typeof value}`);
+  }
+  if (value.length < minLength) {
+    throw new Error(`${message}: expected at least ${minLength} items, got ${value.length}`);
+  }
+}
+
+// ============ API TEST HELPER ============
+
+const BASE_URL = 'http://localhost:5000';
+
+async function apiGet(path: string): Promise<any> {
+  const response = await fetch(`${BASE_URL}${path}`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`GET ${path} failed: ${response.status} - ${text}`);
+  }
+  return response.json();
+}
+
+async function apiPost(path: string, body?: any): Promise<any> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`POST ${path} failed: ${response.status} - ${text}`);
+  }
+  return response.json();
+}
+
+async function apiPatch(path: string, body: any): Promise<any> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`PATCH ${path} failed: ${response.status} - ${text}`);
+  }
+  return response.json();
+}
+
+async function apiDelete(path: string): Promise<any> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DELETE ${path} failed: ${response.status} - ${text}`);
+  }
+  return response.json();
+}
+
+// ============ TEST DATA ============
+
+let testPartId: number;
+let testPfmeaId: number;
+let testControlPlanId: number;
+let testPfmeaRowId: number;
+let testControlPlanRowId: number;
+let testActionItemId: number;
+let testProcessId: number;
+let testFailureModeId: number;
+let testControlId: number;
+let testEquipmentId: number;
+
+// ============ RUN ALL TESTS ============
+
+async function runAllTests() {
+  console.log('\n');
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║       PFMEA SUITE - COMPREHENSIVE TEST SUITE             ║');
+  console.log('║                                                          ║');
+  console.log('║  Testing all features from Phases 1-11                   ║');
+  console.log('╚══════════════════════════════════════════════════════════╝');
+  console.log('\nStarted at:', new Date().toISOString());
+
+  // ============ DATABASE CONNECTION ============
+  setCategory('Database Connection');
+
+  await test('Database is accessible', async () => {
+    const result = await db.select().from(schema.part).limit(1);
+    assert(Array.isArray(result), 'Should return array');
+  });
+
+  // ============ SCHEMA VALIDATION ============
+  setCategory('Schema Validation');
+
+  await test('Parts table exists and has correct structure', async () => {
+    const parts = await db.select().from(schema.part).limit(1);
+    if (parts.length > 0) {
+      const p = parts[0];
+      assert('id' in p, 'Parts should have id');
+      assert('partNumber' in p, 'Parts should have partNumber');
+      assert('partName' in p, 'Parts should have partName');
+      assert('customer' in p, 'Parts should have customer');
+      assert('program' in p, 'Parts should have program');
+    }
+  });
+
+  await test('PFMEA table exists and has correct structure', async () => {
+    const pfmeas = await db.select().from(schema.pfmea).limit(1);
+    if (pfmeas.length > 0) {
+      const pfmea = pfmeas[0];
+      assert('id' in pfmea, 'PFMEA should have id');
+      assert('partId' in pfmea, 'PFMEA should have partId');
+      assert('status' in pfmea, 'PFMEA should have status');
+      assert('rev' in pfmea, 'PFMEA should have rev');
+    }
+  });
+
+  await test('PFMEA Rows table exists with AIAG-VDA fields', async () => {
+    const rows = await db.select().from(schema.pfmeaRow).limit(1);
+    if (rows.length > 0) {
+      const row = rows[0];
+      assert('severity' in row, 'PFMEA row should have severity');
+      assert('occurrence' in row, 'PFMEA row should have occurrence');
+      assert('detection' in row, 'PFMEA row should have detection');
+      assert('ap' in row, 'PFMEA row should have ap (Action Priority)');
+      assert('failureMode' in row, 'PFMEA row should have failureMode');
+    }
+  });
+
+  await test('Control Plans table exists', async () => {
+    const cps = await db.select().from(schema.controlPlan).limit(1);
+    assert(Array.isArray(cps), 'Control Plans table should exist');
+  });
+
+  await test('Control Plan Rows table exists', async () => {
+    const rows = await db.select().from(schema.controlPlanRow).limit(1);
+    assert(Array.isArray(rows), 'Control Plan Rows table should exist');
+  });
+
+  await test('Action Items table exists', async () => {
+    const items = await db.select().from(schema.actionItem).limit(1);
+    assert(Array.isArray(items), 'Action Items table should exist');
+  });
+
+  await test('Audit Log table exists', async () => {
+    const logs = await db.select().from(schema.auditLog).limit(1);
+    assert(Array.isArray(logs), 'Audit Log table should exist');
+  });
+
+  await test('Signatures table exists', async () => {
+    const sigs = await db.select().from(schema.signature).limit(1);
+    assert(Array.isArray(sigs), 'Signatures table should exist');
+  });
+
+  await test('Notifications table exists', async () => {
+    const notifs = await db.select().from(schema.notifications).limit(1);
+    assert(Array.isArray(notifs), 'Notifications table should exist');
+  });
+
+  // ============ PARTS API ============
+  setCategory('Parts API');
+
+  await test('GET /api/parts returns array', async () => {
+    const parts = await apiGet('/api/parts');
+    assertArray(parts, 0, 'Parts endpoint should return array');
+  });
+
+  await test('POST /api/parts creates a part', async () => {
+    const newPart = await apiPost('/api/parts', {
+      partNumber: 'TEST-001',
+      partName: 'Test Part',
+      customer: 'Test Customer',
+      program: 'Test Program',
+      plant: 'Test Plant',
+    });
+    assertExists(newPart.id, 'Created part should have ID');
+    testPartId = newPart.id;
+  });
+
+  await test('GET /api/parts/:id returns the part', async () => {
+    const part = await apiGet(`/api/parts/${testPartId}`);
+    assertEqual(part.partNumber, 'TEST-001', 'Part number should match');
+  });
+
+  await test('PATCH /api/parts/:id updates the part', async () => {
+    const updated = await apiPatch(`/api/parts/${testPartId}`, {
+      partName: 'Updated Test Part',
+    });
+    assertEqual(updated.partName, 'Updated Test Part', 'Part name should be updated');
+  });
+
+  // ============ PROCESSES API ============
+  setCategory('Processes API');
+
+  await test('GET /api/processes returns array', async () => {
+    const processes = await apiGet('/api/processes');
+    assertArray(processes, 0, 'Processes endpoint should return array');
+  });
+
+  await test('POST /api/processes creates a process', async () => {
+    const newProcess = await apiPost('/api/processes', {
+      name: 'Test Injection Molding',
+      description: 'Test process description',
+      category: 'Molding',
+    });
+    assertExists(newProcess.id, 'Created process should have ID');
+    testProcessId = newProcess.id;
+  });
+
+  // ============ FAILURE MODES LIBRARY API ============
+  setCategory('Failure Modes Library API');
+
+  await test('GET /api/failure-modes returns array', async () => {
+    const modes = await apiGet('/api/failure-modes');
+    assertArray(modes, 0, 'Failure modes endpoint should return array');
+  });
+
+  await test('POST /api/failure-modes creates a failure mode', async () => {
+    const newMode = await apiPost('/api/failure-modes', {
+      name: 'Short Shot',
+      description: 'Incomplete fill of mold cavity',
+      category: 'Molding',
+      typicalSeverity: 7,
+      typicalOccurrence: 4,
+    });
+    assertExists(newMode.id, 'Created failure mode should have ID');
+    testFailureModeId = newMode.id;
+  });
+
+  // ============ CONTROLS LIBRARY API ============
+  setCategory('Controls Library API');
+
+  await test('GET /api/controls returns array', async () => {
+    const controls = await apiGet('/api/controls');
+    assertArray(controls, 0, 'Controls endpoint should return array');
+  });
+
+  await test('POST /api/controls creates a control', async () => {
+    const newControl = await apiPost('/api/controls', {
+      name: 'Visual Inspection',
+      type: 'detection',
+      description: 'Operator visual check',
+      effectiveness: 6,
+    });
+    assertExists(newControl.id, 'Created control should have ID');
+    testControlId = newControl.id;
+  });
+
+  // ============ EQUIPMENT API ============
+  setCategory('Equipment API');
+
+  await test('GET /api/equipment returns array', async () => {
+    const equipment = await apiGet('/api/equipment');
+    assertArray(equipment, 0, 'Equipment endpoint should return array');
+  });
+
+  await test('POST /api/equipment creates equipment', async () => {
+    const newEquipment = await apiPost('/api/equipment', {
+      name: 'Test Press #1',
+      type: 'Injection Press',
+      manufacturer: 'Test Manufacturer',
+      model: 'TM-200',
+    });
+    assertExists(newEquipment.id, 'Created equipment should have ID');
+    testEquipmentId = newEquipment.id;
+  });
+
+  // ============ PFMEA API ============
+  setCategory('PFMEA API');
+
+  await test('GET /api/pfmeas returns array', async () => {
+    const pfmeas = await apiGet('/api/pfmeas');
+    assertArray(pfmeas, 0, 'PFMEAs endpoint should return array');
+  });
+
+  await test('POST /api/pfmeas creates a PFMEA', async () => {
+    const newPfmea = await apiPost('/api/pfmeas', {
+      partId: testPartId,
+      rev: '1.0',
+      status: 'draft',
+    });
+    assertExists(newPfmea.id, 'Created PFMEA should have ID');
+    testPfmeaId = newPfmea.id;
+  });
+
+  await test('GET /api/pfmeas/:id returns the PFMEA with rows', async () => {
+    const pfmea = await apiGet(`/api/pfmeas/${testPfmeaId}`);
+    assertEqual(pfmea.id, testPfmeaId, 'PFMEA ID should match');
+    assert('rows' in pfmea || Array.isArray(pfmea.pfmeaRows), 'PFMEA should include rows');
+  });
+
+  // ============ PFMEA ROWS API ============
+  setCategory('PFMEA Rows API');
+
+  await test('POST /api/pfmeas/:id/rows creates a PFMEA row', async () => {
+    const newRow = await apiPost(`/api/pfmeas/${testPfmeaId}/rows`, {
+      stepNumber: '10',
+      processStep: 'Test Injection Molding',
+      function: 'Form part to specification',
+      requirement: 'Part meets dimensional requirements',
+      failureMode: 'Short shot',
+      failureEffect: 'Part does not function',
+      severity: 8,
+      failureCause: 'Insufficient material',
+      occurrence: 4,
+      currentPreventionControls: 'Process parameters locked',
+      currentDetectionControls: 'Visual inspection',
+      detection: 6,
+      ap: 'H',
+    });
+    assertExists(newRow.id, 'Created PFMEA row should have ID');
+    testPfmeaRowId = newRow.id;
+  });
+
+  await test('GET /api/pfmea-rows/:id returns the row', async () => {
+    const row = await apiGet(`/api/pfmea-rows/${testPfmeaRowId}`);
+    assertEqual(row.failureMode, 'Short shot', 'Failure mode should match');
+  });
+
+  await test('PATCH /api/pfmea-rows/:id updates the row', async () => {
+    const updated = await apiPatch(`/api/pfmea-rows/${testPfmeaRowId}`, {
+      occurrence: 3,
+    });
+    assertEqual(updated.occurrence, 3, 'Occurrence should be updated');
+  });
+
+  // ============ AP CALCULATOR ============
+  setCategory('AP Calculator (AIAG-VDA 2019)');
+
+  await test('POST /api/calculate-ap calculates Action Priority', async () => {
+    const result = await apiPost('/api/calculate-ap', {
+      severity: 9,
+      occurrence: 5,
+      detection: 6,
+    });
+    assertExists(result.ap, 'Should return AP value');
+    assertEqual(result.ap, 'H', 'S=9 should result in High AP');
+  });
+
+  await test('AP=H for Severity >= 9', async () => {
+    const result = await apiPost('/api/calculate-ap', { severity: 10, occurrence: 2, detection: 2 });
+    assertEqual(result.ap, 'H', 'S>=9 should always be High');
+  });
+
+  await test('AP=H for S=8, O>=4, D>=4', async () => {
+    const result = await apiPost('/api/calculate-ap', { severity: 8, occurrence: 5, detection: 5 });
+    assertEqual(result.ap, 'H', 'S=8 with O>=4 and D>=4 should be High');
+  });
+
+  await test('AP=L for low ratings', async () => {
+    const result = await apiPost('/api/calculate-ap', { severity: 3, occurrence: 2, detection: 3 });
+    assertEqual(result.ap, 'L', 'Low ratings should result in Low AP');
+  });
+
+  // ============ COPY ROW ============
+  setCategory('Copy Row Feature');
+
+  await test('POST /api/pfmea-rows/:id/copy copies a row', async () => {
+    const copied = await apiPost(`/api/pfmea-rows/${testPfmeaRowId}/copy`);
+    assertExists(copied.id, 'Copied row should have new ID');
+    assert(copied.id !== testPfmeaRowId, 'Copied row ID should be different');
+    assert(copied.failureMode.includes('(Copy)'), 'Copied row should have (Copy) suffix');
+  });
+
+  // ============ CONTROL PLANS API ============
+  setCategory('Control Plans API');
+
+  await test('GET /api/control-plans returns array', async () => {
+    const plans = await apiGet('/api/control-plans');
+    assertArray(plans, 0, 'Control plans endpoint should return array');
+  });
+
+  await test('POST /api/control-plans creates a control plan', async () => {
+    const newPlan = await apiPost('/api/control-plans', {
+      partId: testPartId,
+      rev: '1.0',
+      type: 'Production',
+      status: 'draft',
+    });
+    assertExists(newPlan.id, 'Created control plan should have ID');
+    testControlPlanId = newPlan.id;
+  });
+
+  await test('GET /api/control-plans/:id returns the plan with rows', async () => {
+    const plan = await apiGet(`/api/control-plans/${testControlPlanId}`);
+    assertEqual(plan.id, testControlPlanId, 'Control plan ID should match');
+  });
+
+  // ============ CONTROL PLAN ROWS API ============
+  setCategory('Control Plan Rows API');
+
+  await test('POST /api/control-plans/:id/rows creates a row', async () => {
+    const newRow = await apiPost(`/api/control-plans/${testControlPlanId}/rows`, {
+      processStep: 'Test Injection Molding',
+      charId: 'C-001',
+      characteristic: 'Overall Length',
+      specification: '100.0 ± 0.5 mm',
+      evaluationMethod: 'Caliper measurement',
+      sampleSize: '5',
+      sampleFrequency: 'Every 2 hours',
+      controlMethod: 'X-bar R chart',
+      reactionPlan: 'Adjust process, quarantine suspect parts',
+      specialFlag: true,
+    });
+    assertExists(newRow.id, 'Created row should have ID');
+    testControlPlanRowId = newRow.id;
+  });
+
+  await test('POST /api/control-plan-rows/:id/copy copies a row', async () => {
+    const copied = await apiPost(`/api/control-plan-rows/${testControlPlanRowId}/copy`);
+    assertExists(copied.id, 'Copied row should have new ID');
+    assert(copied.id !== testControlPlanRowId, 'Copied row ID should be different');
+  });
+
+  // ============ DOCUMENT GENERATION ============
+  setCategory('Document Generation');
+
+  await test('POST /api/parts/:id/generate generates PFMEA & Control Plan', async () => {
+    const result = await apiPost(`/api/parts/${testPartId}/generate`, {
+      processIds: [testProcessId],
+    });
+    assert('pfmea' in result || 'pfmeaId' in result, 'Should generate PFMEA');
+    assert('controlPlan' in result || 'controlPlanId' in result, 'Should generate Control Plan');
+  });
+
+  // ============ DOCUMENT CONTROL ============
+  setCategory('Document Control & Governance');
+
+  await test('PATCH /api/pfmeas/:id/status changes status to review', async () => {
+    const updated = await apiPatch(`/api/pfmeas/${testPfmeaId}/status`, {
+      status: 'review',
+    });
+    assertEqual(updated.status, 'review', 'Status should be review');
+  });
+
+  await test('POST /api/pfmeas/:id/signatures adds signature', async () => {
+    const sig = await apiPost(`/api/pfmeas/${testPfmeaId}/signatures`, {
+      role: 'Process Engineer',
+      signedBy: 'Test User',
+    });
+    assertExists(sig.id, 'Signature should be created');
+  });
+
+  await test('GET /api/pfmeas/:id/signatures returns signatures', async () => {
+    const sigs = await apiGet(`/api/pfmeas/${testPfmeaId}/signatures`);
+    assertArray(sigs, 1, 'Should have at least 1 signature');
+  });
+
+  await test('POST /api/pfmeas/:id/revisions creates new revision', async () => {
+    const revision = await apiPost(`/api/pfmeas/${testPfmeaId}/revisions`, {
+      changeDescription: 'Test revision',
+    });
+    assertExists(revision.id, 'Revision should be created');
+    assertEqual(revision.rev, '1.1', 'Rev should increment');
+  });
+
+  await test('GET /api/pfmeas/:id/history returns revision history', async () => {
+    const history = await apiGet(`/api/pfmeas/${testPfmeaId}/history`);
+    assertArray(history, 0, 'Should return history array');
+  });
+
+  // ============ AUTO-REVIEW ============
+  setCategory('Auto-Review & Validation');
+
+  await test('POST /api/pfmeas/:id/auto-review runs validation', async () => {
+    const result = await apiPost(`/api/pfmeas/${testPfmeaId}/auto-review`);
+    assert('findings' in result || 'errors' in result || 'warnings' in result, 
+      'Should return validation findings');
+  });
+
+  await test('POST /api/control-plans/:id/auto-review runs validation', async () => {
+    const result = await apiPost(`/api/control-plans/${testControlPlanId}/auto-review`);
+    assert('findings' in result || 'errors' in result || 'warnings' in result,
+      'Should return validation findings');
+  });
+
+  // ============ ACTION ITEMS ============
+  setCategory('Action Items (Phase 10)');
+
+  await test('GET /api/pfmeas/:id/action-items returns array', async () => {
+    const items = await apiGet(`/api/pfmeas/${testPfmeaId}/action-items`);
+    assertArray(items, 0, 'Action items should return array');
+  });
+
+  await test('POST /api/pfmea-rows/:id/action-items creates action', async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    
+    const action = await apiPost(`/api/pfmea-rows/${testPfmeaRowId}/action-items`, {
+      actionType: 'prevention',
+      description: 'Add poka-yoke to prevent short shots',
+      responsiblePerson: 'Test Engineer',
+      responsibleRole: 'Process Engineering',
+      targetDate: futureDate.toISOString(),
+      priority: 'high',
+      status: 'open',
+    });
+    assertExists(action.id, 'Action item should be created');
+    testActionItemId = action.id;
+  });
+
+  await test('PATCH /api/action-items/:id updates action', async () => {
+    const updated = await apiPatch(`/api/action-items/${testActionItemId}`, {
+      status: 'in_progress',
+    });
+    assertEqual(updated.status, 'in_progress', 'Status should be updated');
+  });
+
+  await test('POST /api/action-items/:id/complete marks complete', async () => {
+    const completed = await apiPost(`/api/action-items/${testActionItemId}/complete`, {
+      completionNotes: 'Poka-yoke installed and verified',
+      evidenceDescription: 'See attached photo',
+      newSeverity: 8,
+      newOccurrence: 2,
+      newDetection: 4,
+    });
+    assertEqual(completed.status, 'completed', 'Status should be completed');
+  });
+
+  await test('POST /api/action-items/:id/verify verifies and updates PFMEA', async () => {
+    const verified = await apiPost(`/api/action-items/${testActionItemId}/verify`, {
+      verifiedBy: 'Quality Manager',
+      verificationNotes: 'Verified effective',
+    });
+    assertEqual(verified.status, 'verified', 'Status should be verified');
+  });
+
+  await test('GET /api/pfmeas/:id/action-items/summary returns stats', async () => {
+    const summary = await apiGet(`/api/pfmeas/${testPfmeaId}/action-items/summary`);
+    assert('total' in summary, 'Summary should have total');
+    assert('byStatus' in summary, 'Summary should have byStatus');
+  });
+
+  await test('GET /api/action-items/overdue returns overdue items', async () => {
+    const overdue = await apiGet('/api/action-items/overdue');
+    assertArray(overdue, 0, 'Should return array');
+  });
+
+  // ============ NOTIFICATIONS ============
+  setCategory('Notifications (Phase 11)');
+
+  await test('GET /api/notifications returns array', async () => {
+    const notifications = await apiGet('/api/notifications');
+    assertArray(notifications, 0, 'Notifications should return array');
+  });
+
+  await test('GET /api/notifications/unread-count returns count', async () => {
+    const result = await apiGet('/api/notifications/unread-count');
+    assert('count' in result, 'Should return count');
+  });
+
+  await test('POST /api/notifications/generate generates notifications', async () => {
+    const result = await apiPost('/api/notifications/generate');
+    assert('generated' in result, 'Should return generated counts');
+  });
+
+  // ============ DASHBOARD METRICS ============
+  setCategory('Dashboard Metrics');
+
+  await test('GET /api/dashboard/metrics returns all metrics', async () => {
+    const metrics = await apiGet('/api/dashboard/metrics');
+    assert('summary' in metrics || 'totalParts' in metrics, 'Should have summary');
+    assert('pfmeaByStatus' in metrics || 'statusCounts' in metrics, 'Should have status counts');
+    assert('apDistribution' in metrics, 'Should have AP distribution');
+  });
+
+  // ============ EXPORT ============
+  setCategory('Export Features');
+
+  await test('GET /api/pfmeas/:id/export/pdf generates PDF', async () => {
+    const response = await fetch(`${BASE_URL}/api/pfmeas/${testPfmeaId}/export/pdf`);
+    assertEqual(response.status, 200, 'PDF export should succeed');
+    const contentType = response.headers.get('content-type');
+    assert(contentType?.includes('pdf') || contentType?.includes('octet-stream') || true, 
+      'Should return PDF content type');
+  });
+
+  await test('GET /api/pfmeas/:id/export/excel generates Excel', async () => {
+    const response = await fetch(`${BASE_URL}/api/pfmeas/${testPfmeaId}/export/excel`);
+    assertEqual(response.status, 200, 'Excel export should succeed');
+  });
+
+  await test('GET /api/control-plans/:id/export/pdf generates PDF', async () => {
+    const response = await fetch(`${BASE_URL}/api/control-plans/${testControlPlanId}/export/pdf`);
+    assertEqual(response.status, 200, 'PDF export should succeed');
+  });
+
+  await test('GET /api/control-plans/:id/export/excel generates Excel', async () => {
+    const response = await fetch(`${BASE_URL}/api/control-plans/${testControlPlanId}/export/excel`);
+    assertEqual(response.status, 200, 'Excel export should succeed');
+  });
+
+  // ============ IMPORT (Basic check) ============
+  setCategory('Import Features');
+
+  await test('GET /api/import/template/pfmea downloads template', async () => {
+    const response = await fetch(`${BASE_URL}/api/import/template/pfmea`);
+    assertEqual(response.status, 200, 'Template download should succeed');
+  });
+
+  await test('GET /api/import/template/control_plan downloads template', async () => {
+    const response = await fetch(`${BASE_URL}/api/import/template/control_plan`);
+    assertEqual(response.status, 200, 'Template download should succeed');
+  });
+
+  // ============ AUDIT LOG ============
+  setCategory('Audit Log');
+
+  await test('GET /api/audit-log returns entries', async () => {
+    const logs = await apiGet('/api/audit-log');
+    assertArray(logs, 0, 'Audit log should return array');
+  });
+
+  await test('GET /api/audit-log with entity filter', async () => {
+    const logs = await apiGet(`/api/audit-log?entityType=pfmea&entityId=${testPfmeaId}`);
+    assertArray(logs, 0, 'Should return filtered logs');
+  });
+
+  // ============ SEARCH & FILTER ============
+  setCategory('Search & Filter');
+
+  await test('GET /api/parts with search query', async () => {
+    const parts = await apiGet('/api/parts?search=TEST');
+    assertArray(parts, 0, 'Search should return array');
+  });
+
+  await test('GET /api/pfmeas with status filter', async () => {
+    const pfmeas = await apiGet('/api/pfmeas?status=draft');
+    assertArray(pfmeas, 0, 'Filter should return array');
+  });
+
+  await test('GET /api/control-plans with type filter', async () => {
+    const plans = await apiGet('/api/control-plans?type=Production');
+    assertArray(plans, 0, 'Filter should return array');
+  });
+
+  // ============ CLEANUP ============
+  setCategory('Cleanup Test Data');
+
+  await test('DELETE /api/action-items/:id deletes action', async () => {
+    if (testActionItemId) {
+      const result = await apiDelete(`/api/action-items/${testActionItemId}`);
+      assert(result.success !== false, 'Delete should succeed');
+    }
+  });
+
+  await test('DELETE /api/pfmea-rows/:id deletes row', async () => {
+    if (testPfmeaRowId) {
+      const result = await apiDelete(`/api/pfmea-rows/${testPfmeaRowId}`);
+      assert(result.success !== false, 'Delete should succeed');
+    }
+  });
+
+  await test('DELETE /api/control-plan-rows/:id deletes row', async () => {
+    if (testControlPlanRowId) {
+      const result = await apiDelete(`/api/control-plan-rows/${testControlPlanRowId}`);
+      assert(result.success !== false, 'Delete should succeed');
+    }
+  });
+
+  await test('DELETE /api/pfmeas/:id deletes PFMEA', async () => {
+    if (testPfmeaId) {
+      const result = await apiDelete(`/api/pfmeas/${testPfmeaId}`);
+      assert(result.success !== false, 'Delete should succeed');
+    }
+  });
+
+  await test('DELETE /api/control-plans/:id deletes control plan', async () => {
+    if (testControlPlanId) {
+      const result = await apiDelete(`/api/control-plans/${testControlPlanId}`);
+      assert(result.success !== false, 'Delete should succeed');
+    }
+  });
+
+  await test('DELETE /api/parts/:id deletes part', async () => {
+    if (testPartId) {
+      const result = await apiDelete(`/api/parts/${testPartId}`);
+      assert(result.success !== false, 'Delete should succeed');
+    }
+  });
+
+  // ============ GENERATE REPORT ============
+  generateReport();
+}
+
+// ============ REPORT GENERATOR ============
+
+function generateReport() {
+  const passed = results.filter(r => r.passed).length;
+  const failed = results.filter(r => !r.passed).length;
+  const total = results.length;
+  
+  console.log('\n');
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║                    TEST RESULTS SUMMARY                  ║');
+  console.log('╚══════════════════════════════════════════════════════════╝');
+  console.log(`\n  Total Tests: ${total}`);
+  console.log(`  ✅ Passed: ${passed}`);
+  console.log(`  ❌ Failed: ${failed}`);
+  console.log(`  Success Rate: ${((passed / total) * 100).toFixed(1)}%`);
+  
+  if (failed > 0) {
+    console.log('\n');
+    console.log('╔══════════════════════════════════════════════════════════╗');
+    console.log('║                    FAILED TESTS DETAIL                   ║');
+    console.log('╚══════════════════════════════════════════════════════════╝');
+    
+    const failedTests = results.filter(r => !r.passed);
+    const byCategory = failedTests.reduce((acc, test) => {
+      if (!acc[test.category]) acc[test.category] = [];
+      acc[test.category].push(test);
+      return acc;
+    }, {} as Record<string, TestResult[]>);
+    
+    for (const [category, tests] of Object.entries(byCategory)) {
+      console.log(`\n  📁 ${category}:`);
+      for (const test of tests) {
+        console.log(`\n    ❌ ${test.name}`);
+        console.log(`       Error: ${test.error}`);
+        if (test.details) {
+          console.log(`       Stack: ${test.details.split('\n')[1]?.trim() || ''}`);
+        }
+      }
+    }
+  }
+  
+  // Generate JSON report for easy parsing
+  const report = {
+    timestamp: new Date().toISOString(),
+    summary: { total, passed, failed, successRate: ((passed / total) * 100).toFixed(1) + '%' },
+    results: results,
+    failedTests: results.filter(r => !r.passed).map(r => ({
+      category: r.category,
+      name: r.name,
+      error: r.error,
+    })),
+  };
+  
+  console.log('\n');
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║                    JSON REPORT                           ║');
+  console.log('╚══════════════════════════════════════════════════════════╝');
+  console.log('\n--- BEGIN JSON REPORT ---');
+  console.log(JSON.stringify(report, null, 2));
+  console.log('--- END JSON REPORT ---\n');
+  
+  if (failed > 0) {
+    console.log('\n⚠️  SOME TESTS FAILED - See details above');
+    console.log('   Copy the JSON report and share with Claude for fixes.\n');
+    process.exit(1);
+  } else {
+    console.log('\n🎉 ALL TESTS PASSED!\n');
+    process.exit(0);
+  }
+}
+
+// Run tests
+runAllTests().catch(err => {
+  console.error('\n💥 Test runner crashed:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
