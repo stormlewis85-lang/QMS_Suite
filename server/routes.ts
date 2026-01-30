@@ -2354,6 +2354,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export document to PDF or Excel
+  app.get('/api/documents/:type/:id/export', async (req, res) => {
+    const { type, id } = req.params;
+    const format = (req.query.format as string) || 'pdf';
+    const paperSize = (req.query.paperSize as string) || 'letter';
+    const orientation = (req.query.orientation as string) || 'landscape';
+    const includeSignatures = req.query.includeSignatures !== 'false';
+    
+    if (!['pdf', 'xlsx'].includes(format)) {
+      return res.status(400).json({ error: 'Format must be pdf or xlsx' });
+    }
+    
+    if (!['pfmea', 'control_plan'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be pfmea or control_plan' });
+    }
+    
+    try {
+      const { exportService } = await import('./services/export-service');
+      
+      const result = await exportService.export({
+        format: format as 'pdf' | 'xlsx',
+        documentType: type as 'pfmea' | 'control_plan',
+        documentId: id,
+        includeSignatures,
+        paperSize: paperSize as 'letter' | 'legal' | 'a4',
+        orientation: orientation as 'portrait' | 'landscape',
+      });
+      
+      res.setHeader('Content-Type', result.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.send(result.buffer);
+    } catch (error: any) {
+      console.error('Export error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
