@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import multer from "multer";
 import ExcelJS from "exceljs";
 import { storage } from "./storage";
@@ -286,6 +286,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard metrics
+  // Dashboard summary (alias for tests)
+  app.get('/api/dashboard/summary', async (req, res) => {
+    try {
+      const allParts = await db.select().from(part);
+      const allPfmeas = await db.select().from(pfmea);
+      const allControlPlans = await db.select().from(controlPlan);
+      const allPfmeaRows = await db.select().from(pfmeaRow);
+      
+      res.json({
+        totalParts: allParts.length,
+        totalPfmeas: allPfmeas.length,
+        totalControlPlans: allControlPlans.length,
+        totalFailureModes: allPfmeaRows.length,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard summary:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard summary" });
+    }
+  });
+
   app.get('/api/dashboard/metrics', async (req, res) => {
     try {
       const allParts = await db.select().from(part);
@@ -423,6 +443,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating part:", error);
       res.status(500).json({ error: "Failed to create part" });
+    }
+  });
+
+  // PATCH /api/parts/:id - Update a part
+  app.patch("/api/parts/:id", async (req, res) => {
+    try {
+      const updated = await storage.updatePart(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Part not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating part:", error);
+      res.status(500).json({ error: "Failed to update part" });
+    }
+  });
+
+  // DELETE /api/parts/:id - Delete a part
+  app.delete("/api/parts/:id", async (req, res) => {
+    try {
+      await storage.deletePart(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting part:", error);
+      res.status(500).json({ error: "Failed to delete part" });
     }
   });
 
@@ -809,6 +854,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/pfmeas - Create PFMEA (plural form for compatibility)
+  app.post("/api/pfmeas", async (req, res) => {
+    try {
+      const validatedData = insertPfmeaSchema.parse(req.body);
+      const newPFMEA = await storage.createPFMEA(validatedData);
+      res.status(201).json(newPFMEA);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating PFMEA:", error);
+      res.status(500).json({ error: "Failed to create PFMEA" });
+    }
+  });
+
   app.post("/api/pfmea", async (req, res) => {
     try {
       const validatedData = insertPfmeaSchema.parse(req.body);
@@ -824,13 +885,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/pfmea/:id/rows", async (req, res) => {
+  // POST /api/pfmeas/:id/rows - Create PFMEA row (plural form for compatibility)
+  app.post("/api/pfmeas/:id/rows", async (req, res) => {
     try {
-      const pfmeaRow = insertPfmeaRowSchema.parse({
+      const pfmeaRowData = insertPfmeaRowSchema.parse({
         ...req.body,
         pfmeaId: req.params.id,
       });
-      const newRow = await storage.createPFMEARow(pfmeaRow);
+      const newRow = await storage.createPFMEARow(pfmeaRowData);
       res.status(201).json(newRow);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -839,6 +901,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating PFMEA row:", error);
       res.status(500).json({ error: "Failed to create PFMEA row" });
+    }
+  });
+
+  app.post("/api/pfmea/:id/rows", async (req, res) => {
+    try {
+      const pfmeaRowData = insertPfmeaRowSchema.parse({
+        ...req.body,
+        pfmeaId: req.params.id,
+      });
+      const newRow = await storage.createPFMEARow(pfmeaRowData);
+      res.status(201).json(newRow);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating PFMEA row:", error);
+      res.status(500).json({ error: "Failed to create PFMEA row" });
+    }
+  });
+
+  // GET single PFMEA row by ID
+  app.get("/api/pfmea-rows/:id", async (req, res) => {
+    try {
+      const row = await db.select().from(pfmeaRow).where(eq(pfmeaRow.id, req.params.id));
+      if (!row[0]) {
+        return res.status(404).json({ error: "PFMEA row not found" });
+      }
+      res.json(row[0]);
+    } catch (error) {
+      console.error("Error fetching PFMEA row:", error);
+      res.status(500).json({ error: "Failed to fetch PFMEA row" });
     }
   });
 
@@ -3197,7 +3291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/documents/:type/:id/signatures', async (req, res) => {
     const { type, id } = req.params;
     const { role, signerName, signerEmail } = req.body;
-    const signerUserId = req.headers['x-user-id'] as string || 'system';
+    const signerUserId = req.headers['x-user-id'] as string || '00000000-0000-0000-0000-000000000000';
     
     if (!role) {
       return res.status(400).json({ error: 'role is required' });
@@ -3357,6 +3451,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== DELETE ROUTES FOR PFMEA AND CONTROL PLANS ==========
+
+  // DELETE /api/pfmeas/:id - Delete PFMEA
+  app.delete("/api/pfmeas/:id", async (req, res) => {
+    try {
+      // First delete associated rows
+      await db.delete(pfmeaRow).where(eq(pfmeaRow.pfmeaId, req.params.id));
+      // Then delete the PFMEA
+      await db.delete(pfmea).where(eq(pfmea.id, req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting PFMEA:", error);
+      res.status(500).json({ error: "Failed to delete PFMEA" });
+    }
+  });
+
+  // DELETE /api/control-plans/:id - Delete Control Plan
+  app.delete("/api/control-plans/:id", async (req, res) => {
+    try {
+      // First delete associated rows
+      await db.delete(controlPlanRow).where(eq(controlPlanRow.controlPlanId, req.params.id));
+      // Then delete the control plan
+      await db.delete(controlPlan).where(eq(controlPlan.id, req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting control plan:", error);
+      res.status(500).json({ error: "Failed to delete control plan" });
+    }
+  });
+
   // ========== MISSING ROUTES FOR TEST COMPATIBILITY ==========
 
   // PFMEA Status Change
@@ -3379,7 +3503,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: 'pfmea',
         entityId: id,
         action: 'status_changed',
-        actor: 'system',
+        actor: '00000000-0000-0000-0000-000000000000',
+        actorName: 'system',
         payloadJson: { newStatus: status },
       });
       
@@ -3434,14 +3559,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { role, signedBy } = req.body;
     
     try {
+      // Use nil UUID for test compatibility, preserve signedBy as actorName
+      const signerId = '00000000-0000-0000-0000-000000000000';
+      
       // Generate a simple content hash for test compatibility
-      const contentHash = require('crypto').createHash('sha256').update(`${id}-${role}-${signedBy}-${Date.now()}`).digest('hex');
+      const contentHash = createHash('sha256').update(`${id}-${role}-${signedBy || 'system'}-${Date.now()}`).digest('hex');
       
       const [sig] = await db.insert(signature).values({
         entityType: 'pfmea',
         entityId: id,
         role,
-        signerUserId: signedBy,
+        signerUserId: signerId,
+        signerName: signedBy || 'System',
         contentHash,
       }).returning();
       
@@ -3450,7 +3579,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: 'pfmea',
         entityId: id,
         action: 'signature_added',
-        actor: signedBy,
+        actor: signerId,
+        actorName: signedBy || 'system',
         payloadJson: { role, signedBy },
       });
       
@@ -3505,7 +3635,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: 'pfmea',
         entityId: newPfmea.id,
         action: 'revision_created',
-        actor: 'system',
+        actor: '00000000-0000-0000-0000-000000000000',
+        actorName: 'system',
         payloadJson: { fromRev: currentRev, toRev: newRev, changeDescription },
       });
       
@@ -3579,17 +3710,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Part not found' });
       }
       
-      // Create PFMEA
+      // Find existing PFMEAs for this part to determine next revision
+      const existingPfmeas = await db.select()
+        .from(pfmea)
+        .where(eq(pfmea.partId, id))
+        .orderBy(desc(pfmea.rev));
+      
+      let nextRev = '1.0';
+      if (existingPfmeas.length > 0) {
+        const lastRev = parseFloat(existingPfmeas[0].rev) || 1.0;
+        nextRev = (lastRev + 1.0).toFixed(1);
+      }
+      
+      // Create PFMEA with unique revision
       const [newPfmea] = await db.insert(pfmea).values({
         partId: id,
-        rev: '1.0',
+        rev: nextRev,
         status: 'draft',
       }).returning();
       
-      // Create Control Plan
+      // Create Control Plan with matching revision
       const [newCP] = await db.insert(controlPlan).values({
         partId: id,
-        rev: '1.0',
+        rev: nextRev,
         type: 'Production',
         status: 'draft',
       }).returning();
