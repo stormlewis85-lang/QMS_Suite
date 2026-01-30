@@ -1,0 +1,107 @@
+Update client/src/pages/PFMEADetail.tsx to include the DocumentControlPanel:
+
+ADD IMPORT at top:
+import DocumentControlPanel from '@/components/DocumentControlPanel';
+
+ADD QUERY for PFMEA metadata (if not already fetching full object):
+const { data: pfmeaData, refetch: refetchPfmea } = useQuery({
+  queryKey: [`/api/pfmeas/${id}`],
+});
+
+FIND the main layout and ADD the DocumentControlPanel in a sidebar or as a section.
+
+Replace or wrap existing layout with a 2-column grid:
+
+CHANGE FROM (example):
+<div className="container mx-auto p-6 space-y-6">
+  {/* existing content */}
+</div>
+
+CHANGE TO:
+<div className="container mx-auto p-6">
+  <div className="grid grid-cols-4 gap-6">
+    {/* Main Content - 3 columns */}
+    <div className="col-span-3 space-y-6">
+      {/* All existing content goes here */}
+      {/* Header, summary cards, filters, table, etc. */}
+    </div>
+    
+    {/* Sidebar - 1 column */}
+    <div className="col-span-1 space-y-4">
+      {pfmeaData && (
+        <DocumentControlPanel
+          documentType="pfmea"
+          documentId={id!}
+          currentStatus={pfmeaData.status}
+          currentRev={pfmeaData.rev}
+          docNo={pfmeaData.docNo}
+          onStatusChange={() => refetchPfmea()}
+        />
+      )}
+      
+      {/* Additional sidebar content */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Button variant="outline" size="sm" className="w-full justify-start">
+            <FileText className="h-4 w-4 mr-2" />
+            Export to PDF
+          </Button>
+          <Button variant="outline" size="sm" className="w-full justify-start">
+            <ShieldCheck className="h-4 w-4 mr-2" />
+            Run Auto-Review
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  </div>
+</div>
+
+Also make status-dependent UI adjustments:
+
+ADD conditional read-only mode:
+const isReadOnly = pfmeaData?.status === 'effective' || pfmeaData?.status === 'superseded';
+
+UPDATE edit button to be disabled when read-only:
+<Button 
+  variant="ghost" 
+  size="sm" 
+  onClick={() => handleEdit(row)}
+  disabled={isReadOnly}
+  title={isReadOnly ? 'Document is locked' : 'Edit row'}
+>
+  <Edit className="h-4 w-4" />
+</Button>
+
+ADD banner for locked documents:
+{isReadOnly && (
+  <Alert className="mb-4">
+    <Lock className="h-4 w-4" />
+    <AlertTitle>Document Locked</AlertTitle>
+    <AlertDescription>
+      This {pfmeaData.status} document cannot be edited. 
+      {pfmeaData.status === 'effective' && 'Create a new revision to make changes.'}
+    </AlertDescription>
+  </Alert>
+)}
+
+---
+
+Similarly update client/src/pages/ControlPlanDetail.tsx:
+
+ADD IMPORT:
+import DocumentControlPanel from '@/components/DocumentControlPanel';
+
+ADD the same sidebar pattern with DocumentControlPanel:
+<DocumentControlPanel
+  documentType="control_plan"
+  documentId={id!}
+  currentStatus={controlPlanData.status}
+  currentRev={controlPlanData.rev}
+  docNo={controlPlanData.docNo}
+  onStatusChange={() => refetchControlPlan()}
+/>
+
+ADD read-only logic for effective/superseded documents.

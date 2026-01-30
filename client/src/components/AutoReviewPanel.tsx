@@ -42,7 +42,9 @@ interface AutoReviewPanelProps {
   controlPlanId?: string;
   documentType?: "pfmea" | "control-plan" | "part";
   documentId?: string;
+  documentTitle?: string;
   onReviewComplete?: (result: any) => void;
+  onFindingClick?: (finding: any) => void;
 }
 
 interface Finding {

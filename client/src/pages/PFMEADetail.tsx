@@ -87,6 +87,7 @@ import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
 import { SignatureStatusBadge } from "@/components/SignaturePanel";
 import { OwnershipPanel } from "@/components/OwnershipPanel";
+import { DocumentControlPanel } from "@/components/DocumentControlPanel";
 
 const CURRENT_USER = {
   id: "user-001",
@@ -1006,7 +1007,7 @@ export default function PFMEADetail() {
           documentType="pfmea"
           documentId={id}
           documentTitle={pfmea?.docNo || `PFMEA Rev ${pfmea?.rev}`}
-          onFindingClick={(finding) => {
+          onFindingClick={(finding: any) => {
             if (finding.rowId) {
               const element = document.getElementById(`row-${finding.rowId}`);
               element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1015,24 +1016,38 @@ export default function PFMEADetail() {
         />
       </div>
 
-      {/* Governance Section */}
+      {/* Document Control Section */}
       <Separator className="my-8" />
       
-      <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
-        <h2 className="text-xl font-semibold">Document Governance</h2>
-        <div className="flex items-center gap-4">
-          <OwnershipPanel
-            entityType="pfmea"
-            entityId={pfmea.id}
-            currentUserId={CURRENT_USER.id}
-            currentUserName={CURRENT_USER.name}
-            currentUserEmail={CURRENT_USER.email}
-            compact
-          />
-          <SignatureStatusBadge
-            entityType="pfmea"
-            entityId={pfmea.id}
-          />
+      <div className="grid gap-6 md:grid-cols-2">
+        <DocumentControlPanel
+          documentType="pfmea"
+          documentId={pfmea.id}
+          currentStatus={pfmea.status}
+          currentRev={pfmea.rev}
+          docNo={pfmea.docNo}
+          onStatusChange={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/pfmeas", id] });
+          }}
+        />
+        
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <h2 className="text-xl font-semibold">Document Governance</h2>
+            <div className="flex items-center gap-4">
+              <OwnershipPanel
+                entityType="pfmea"
+                entityId={pfmea.id}
+                currentUserId={CURRENT_USER.id}
+                currentUserName={CURRENT_USER.name}
+                currentUserEmail={CURRENT_USER.email}
+                compact
+              />
+              <SignatureStatusBadge
+                status={pfmea.status}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

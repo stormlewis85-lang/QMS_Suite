@@ -87,6 +87,7 @@ import {
 } from "lucide-react";
 import type { Part, ControlPlan, ControlPlanRow, InsertControlPlanRow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
+import { DocumentControlPanel } from "@/components/DocumentControlPanel";
 
 // Types
 interface ControlPlanWithDetails extends ControlPlan {
@@ -1042,13 +1043,36 @@ export default function ControlPlanDetail() {
           documentType="control-plan"
           documentId={id}
           documentTitle={controlPlan?.docNo || `Control Plan Rev ${controlPlan?.rev}`}
-          onFindingClick={(finding) => {
+          onFindingClick={(finding: any) => {
             if (finding.rowId) {
               const element = document.getElementById(`row-${finding.rowId}`);
               element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
           }}
         />
+      </div>
+
+      {/* Document Control Section */}
+      <Separator className="my-8" />
+      
+      <div className="grid gap-6 md:grid-cols-2">
+        <DocumentControlPanel
+          documentType="control_plan"
+          documentId={controlPlan.id}
+          currentStatus={controlPlan.status}
+          currentRev={controlPlan.rev}
+          docNo={controlPlan.docNo}
+          onStatusChange={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/control-plans", id] });
+          }}
+        />
+        
+        <div className="space-y-6">
+          <h2 className="text-xl font-semibold">Document Governance</h2>
+          <p className="text-sm text-muted-foreground">
+            Control Plan governance and approval workflows.
+          </p>
+        </div>
       </div>
 
       {/* Row Editor Dialog */}
