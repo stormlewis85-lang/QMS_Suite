@@ -76,6 +76,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/parts/:id/pfmeas", async (req, res) => {
+    try {
+      const pfmeas = await storage.getPFMEAsByPartId(req.params.id);
+      res.json(pfmeas);
+    } catch (error) {
+      console.error("Error fetching part PFMEAs:", error);
+      res.status(500).json({ error: "Failed to fetch part PFMEAs" });
+    }
+  });
+
+  app.get("/api/parts/:id/control-plans", async (req, res) => {
+    try {
+      const controlPlans = await storage.getControlPlansByPartId(req.params.id);
+      res.json(controlPlans);
+    } catch (error) {
+      console.error("Error fetching part control plans:", error);
+      res.status(500).json({ error: "Failed to fetch part control plans" });
+    }
+  });
+
+  app.get("/api/parts/:id/processes", async (req, res) => {
+    try {
+      const mappings = await storage.getPartProcessMappings(req.params.id);
+      res.json(mappings);
+    } catch (error) {
+      console.error("Error fetching part processes:", error);
+      res.status(500).json({ error: "Failed to fetch part processes" });
+    }
+  });
+
   app.post("/api/parts", async (req, res) => {
     try {
       const validatedData = insertPartSchema.parse(req.body);

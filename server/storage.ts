@@ -78,7 +78,7 @@ import {
   type InsertChangePackagePropagation,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql, inArray } from "drizzle-orm";
 import crypto from "crypto";
 
 export interface IStorage {
@@ -140,6 +140,9 @@ export interface IStorage {
   updatePFMEARow(id: string, updates: Partial<InsertPFMEARow>): Promise<PFMEARow | undefined>;
   deletePFMEARow(id: string): Promise<boolean>;
   
+  // Part Process Mappings
+  getPartProcessMappings(partId: string): Promise<{ id: string; processDefId: string; processName: string; processRev: string; sequence: number }[]>;
+
   // Control Plans
   getControlPlansByPartId(partId: string): Promise<ControlPlan[]>;
   getControlPlanById(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[] }) | undefined>;
@@ -510,6 +513,53 @@ class DatabaseStorage implements IStorage {
   async deletePFMEARow(id: string): Promise<boolean> {
     const result = await db.delete(pfmeaRow).where(eq(pfmeaRow.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Part Process Mappings - derived from PFMEAs and their template rows
+  async getPartProcessMappings(partId: string): Promise<{ id: string; processDefId: string; processName: string; processRev: string; sequence: number }[]> {
+    // Get all PFMEAs for the part
+    const partPfmeas = await db.select().from(pfmea).where(eq(pfmea.partId, partId));
+    
+    if (partPfmeas.length === 0) {
+      return [];
+    }
+    
+    // Get unique process definitions used in PFMEAs via template rows
+    const pfmeaIds = partPfmeas.map(p => p.id);
+    const rows = await db.select().from(pfmeaRow)
+      .where(inArray(pfmeaRow.pfmeaId, pfmeaIds));
+    
+    // Get unique template row IDs that have parent templates
+    const templateRowIds = [...new Set(rows.filter(r => r.parentTemplateRowId).map(r => r.parentTemplateRowId as string))];
+    
+    if (templateRowIds.length === 0) {
+      return [];
+    }
+    
+    // Get the template rows to find process definitions
+    const templateRows = await db.select().from(fmeaTemplateRow)
+      .where(inArray(fmeaTemplateRow.id, templateRowIds));
+    
+    // Get unique process definition IDs
+    const processDefIds = [...new Set(templateRows.map(r => r.processDefId))];
+    
+    if (processDefIds.length === 0) {
+      return [];
+    }
+    
+    // Get the process definitions
+    const processes = await db.select().from(processDef)
+      .where(inArray(processDef.id, processDefIds))
+      .orderBy(processDef.name);
+    
+    // Return the mappings with sequence based on order
+    return processes.map((p, index) => ({
+      id: `${partId}-${p.id}`,
+      processDefId: p.id,
+      processName: p.name,
+      processRev: p.rev,
+      sequence: index + 1
+    }));
   }
 
   // Control Plans
