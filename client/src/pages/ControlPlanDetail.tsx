@@ -86,8 +86,11 @@ import {
   Activity,
   ClipboardCheck,
   Lock,
+  Printer,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import PrintHeader from "@/components/PrintHeader";
+import QRCode from "@/components/QRCode";
 import type { Part, ControlPlan, ControlPlanRow, InsertControlPlanRow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
@@ -690,6 +693,15 @@ export default function ControlPlanDetail() {
 
   return (
     <div className="p-6">
+      <PrintHeader
+        title="CONTROL PLAN"
+        docNo={controlPlan.docNo || undefined}
+        rev={controlPlan.rev}
+        status={controlPlan.status}
+        partNumber={controlPlan.part?.partNumber}
+        partName={controlPlan.part?.partName}
+      />
+      
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Main Content - 3 columns */}
         <div className="lg:col-span-3 space-y-6">
@@ -772,6 +784,15 @@ export default function ControlPlanDetail() {
             data-testid="button-quick-export-xlsx"
           >
             <FileSpreadsheet className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => window.print()}
+            className="no-print"
+            data-testid="button-print-control-plan"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print
           </Button>
           
           <Button
@@ -1226,6 +1247,11 @@ export default function ControlPlanDetail() {
           setImportWizardOpen(false);
           toast({ title: "Import Complete", description: "Characteristics have been added." });
         }}
+      />
+
+      <QRCode 
+        value={`${window.location.origin}/control-plans/${id}`}
+        title={`Control Plan ${controlPlan.docNo || id}`}
       />
     </div>
   );

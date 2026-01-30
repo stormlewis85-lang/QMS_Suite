@@ -84,8 +84,11 @@ import {
   FileText,
   Download,
   Lock,
+  Printer,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import PrintHeader from "@/components/PrintHeader";
+import QRCode from "@/components/QRCode";
 import type { Part, PFMEA, PFMEARow, InsertPFMEARow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
@@ -800,6 +803,15 @@ export default function PFMEADetail() {
 
   return (
     <div className="p-6">
+      <PrintHeader
+        title="PROCESS FAILURE MODE AND EFFECTS ANALYSIS (PFMEA)"
+        docNo={pfmea.docNo || undefined}
+        rev={pfmea.rev}
+        status={pfmea.status}
+        partNumber={pfmea.part?.partNumber}
+        partName={pfmea.part?.partName}
+      />
+      
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Main Content - 3 columns */}
         <div className="lg:col-span-3 space-y-6">
@@ -880,6 +892,15 @@ export default function PFMEADetail() {
             data-testid="button-quick-export-xlsx"
           >
             <FileSpreadsheet className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => window.print()}
+            className="no-print"
+            data-testid="button-print-pfmea"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print
           </Button>
           
           <DropdownMenu>
@@ -1353,6 +1374,11 @@ export default function PFMEADetail() {
           }}
         />
       )}
+
+      <QRCode 
+        value={`${window.location.origin}/pfmea/${id}`}
+        title={`PFMEA ${pfmea.docNo || id}`}
+      />
     </div>
   );
 }
