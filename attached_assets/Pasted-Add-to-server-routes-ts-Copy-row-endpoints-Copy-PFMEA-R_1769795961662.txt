@@ -1,0 +1,162 @@
+Add to server/routes.ts - Copy row endpoints:
+
+// Copy PFMEA Row
+app.post('/api/pfmea-rows/:id/copy', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Get original row
+    const original = await db.query.pfmeaRows.findFirst({
+      where: eq(pfmeaRows.id, id),
+    });
+    
+    if (!original) {
+      return res.status(404).json({ error: 'Row not found' });
+    }
+    
+    // Create copy with "(Copy)" suffix
+    const [newRow] = await db.insert(pfmeaRows).values({
+      pfmeaId: original.pfmeaId,
+      parentTemplateRowId: original.parentTemplateRowId,
+      stepRef: original.stepRef,
+      function: original.function,
+      requirement: original.requirement,
+      failureMode: `${original.failureMode} (Copy)`,
+      effect: original.effect,
+      severity: original.severity,
+      cause: original.cause,
+      occurrence: original.occurrence,
+      preventionControls: original.preventionControls,
+      detectionControls: original.detectionControls,
+      detection: original.detection,
+      ap: original.ap,
+      specialFlag: original.specialFlag,
+      csrSymbol: original.csrSymbol,
+      overrideFlags: {},
+      notes: original.notes,
+    }).returning();
+    
+    res.json(newRow);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Copy Control Plan Row
+app.post('/api/control-plan-rows/:id/copy', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const original = await db.query.controlPlanRows.findFirst({
+      where: eq(controlPlanRows.id, id),
+    });
+    
+    if (!original) {
+      return res.status(404).json({ error: 'Row not found' });
+    }
+    
+    // Generate new char ID
+    const existingRows = await db.query.controlPlanRows.findMany({
+      where: eq(controlPlanRows.controlPlanId, original.controlPlanId),
+    });
+    const maxCharNum = Math.max(...existingRows.map(r => {
+      const match = r.charId.match(/\d+/);
+      return match ? parseInt(match[0]) : 0;
+    }), 0);
+    const newCharId = `C-${(maxCharNum + 1).toString().padStart(3, '0')}`;
+    
+    const [newRow] = await db.insert(controlPlanRows).values({
+      controlPlanId: original.controlPlanId,
+      sourcePfmeaRowId: original.sourcePfmeaRowId,
+      parentControlTemplateRowId: original.parentControlTemplateRowId,
+      charId: newCharId,
+      characteristicName: `${original.characteristicName} (Copy)`,
+      type: original.type,
+      target: original.target,
+      tolerance: original.tolerance,
+      specialFlag: original.specialFlag,
+      csrSymbol: original.csrSymbol,
+      measurementSystem: original.measurementSystem,
+      gageDetails: original.gageDetails,
+      sampleSize: original.sampleSize,
+      frequency: original.frequency,
+      controlMethod: original.controlMethod,
+      acceptanceCriteria: original.acceptanceCriteria,
+      reactionPlan: original.reactionPlan,
+      overrideFlags: {},
+    }).returning();
+    
+    res.json(newRow);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+---
+
+Update client/src/pages/PFMEADetail.tsx - Add copy button to each row:
+
+ADD MUTATION:
+const copyRowMutation = useMutation({
+  mutationFn: async (rowId: string) => {
+    const response = await fetch(`/api/pfmea-rows/${rowId}/copy`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to copy row');
+    return response.json();
+  },
+  onSuccess: () => {
+    toast({ title: "Row Copied", description: "A copy has been created below." });
+    refetch(); // Refresh the data
+  },
+  onError: () => {
+    toast({ title: "Error", description: "Failed to copy row", variant: "destructive" });
+  },
+});
+
+ADD BUTTON in the actions column of each row (next to Edit button):
+<Button
+  variant="ghost"
+  size="sm"
+  onClick={() => copyRowMutation.mutate(row.id)}
+  disabled={isReadOnly || copyRowMutation.isPending}
+  title="Duplicate row"
+>
+  <Copy className="h-4 w-4" />
+</Button>
+
+ADD IMPORT:
+import { Copy } from 'lucide-react';
+
+---
+
+Similarly update client/src/pages/ControlPlanDetail.tsx:
+
+ADD MUTATION:
+const copyRowMutation = useMutation({
+  mutationFn: async (rowId: string) => {
+    const response = await fetch(`/api/control-plan-rows/${rowId}/copy`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to copy row');
+    return response.json();
+  },
+  onSuccess: () => {
+    toast({ title: "Characteristic Copied", description: "A copy has been created." });
+    refetch();
+  },
+  onError: () => {
+    toast({ title: "Error", description: "Failed to copy", variant: "destructive" });
+  },
+});
+
+ADD BUTTON in actions column:
+<Button
+  variant="ghost"
+  size="sm"
+  onClick={() => copyRowMutation.mutate(row.id)}
+  disabled={isReadOnly}
+  title="Duplicate characteristic"
+>
+  <Copy className="h-4 w-4" />
+</Button>

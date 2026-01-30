@@ -1,0 +1,320 @@
+Create client/src/components/DataTableToolbar.tsx - reusable search/filter toolbar:
+
+IMPORTS:
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Search, X, Filter, CalendarIcon, SlidersHorizontal } from 'lucide-react';
+import { format } from 'date-fns';
+
+INTERFACES:
+export interface FilterConfig {
+  key: string;
+  label: string;
+  type: 'select' | 'multiselect' | 'date' | 'daterange';
+  options?: { value: string; label: string }[];
+}
+
+export interface ActiveFilters {
+  search: string;
+  [key: string]: any;
+}
+
+interface DataTableToolbarProps {
+  searchPlaceholder?: string;
+  filters?: FilterConfig[];
+  activeFilters: ActiveFilters;
+  onFiltersChange: (filters: ActiveFilters) => void;
+  resultCount?: number;
+}
+
+COMPONENT:
+export function DataTableToolbar({
+  searchPlaceholder = 'Search...',
+  filters = [],
+  activeFilters,
+  onFiltersChange,
+  resultCount,
+}: DataTableToolbarProps) {
+  const [localSearch, setLocalSearch] = useState(activeFilters.search || '');
+  
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearch !== activeFilters.search) {
+        onFiltersChange({ ...activeFilters, search: localSearch });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [localSearch]);
+  
+  const handleFilterChange = (key: string, value: any) => {
+    onFiltersChange({ ...activeFilters, [key]: value });
+  };
+  
+  const clearFilter = (key: string) => {
+    const newFilters = { ...activeFilters };
+    delete newFilters[key];
+    onFiltersChange(newFilters);
+  };
+  
+  const clearAllFilters = () => {
+    onFiltersChange({ search: '' });
+  };
+  
+  const activeFilterCount = Object.keys(activeFilters).filter(
+    k => k !== 'search' && activeFilters[k] && activeFilters[k] !== 'all'
+  ).length;
+  
+  const hasActiveFilters = activeFilters.search || activeFilterCount > 0;
+  
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        {/* Search Input */}
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={searchPlaceholder}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {localSearch && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+              onClick={() => {
+                setLocalSearch('');
+                onFiltersChange({ ...activeFilters, search: '' });
+              }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+        
+        {/* Filter Dropdowns */}
+        {filters.map((filter) => (
+          <div key={filter.key}>
+            {filter.type === 'select' && (
+              <Select
+                value={activeFilters[filter.key] || 'all'}
+                onValueChange={(value) => handleFilterChange(filter.key, value === 'all' ? undefined : value)}
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder={filter.label} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All {filter.label}</SelectItem>
+                  {filter.options?.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            
+            {filter.type === 'date' && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[150px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {activeFilters[filter.key] 
+                      ? format(new Date(activeFilters[filter.key]), 'MMM d, yyyy')
+                      : filter.label
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={activeFilters[filter.key] ? new Date(activeFilters[filter.key]) : undefined}
+                    onSelect={(date) => handleFilterChange(filter.key, date?.toISOString())}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        ))}
+        
+        {/* Clear All */}
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+            <X className="h-4 w-4 mr-1" />
+            Clear
+          </Button>
+        )}
+      </div>
+      
+      {/* Active Filters Display */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-muted-foreground">
+            {resultCount !== undefined && `${resultCount} results`}
+          </span>
+          
+          {activeFilters.search && (
+            <Badge variant="secondary" className="gap-1">
+              Search: "{activeFilters.search}"
+              <X 
+                className="h-3 w-3 cursor-pointer" 
+                onClick={() => {
+                  setLocalSearch('');
+                  onFiltersChange({ ...activeFilters, search: '' });
+                }}
+              />
+            </Badge>
+          )}
+          
+          {filters.map((filter) => {
+            const value = activeFilters[filter.key];
+            if (!value || value === 'all') return null;
+            
+            const label = filter.options?.find(o => o.value === value)?.label || value;
+            
+            return (
+              <Badge key={filter.key} variant="secondary" className="gap-1">
+                {filter.label}: {label}
+                <X 
+                  className="h-3 w-3 cursor-pointer" 
+                  onClick={() => clearFilter(filter.key)}
+                />
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default DataTableToolbar;
+
+---
+
+Now update client/src/pages/Parts.tsx to use the toolbar:
+
+ADD IMPORTS:
+import DataTableToolbar, { ActiveFilters, FilterConfig } from '@/components/DataTableToolbar';
+import { useMemo, useState } from 'react';
+
+ADD STATE:
+const [filters, setFilters] = useState<ActiveFilters>({ search: '' });
+
+ADD FILTER CONFIG:
+const filterConfig: FilterConfig[] = [
+  {
+    key: 'customer',
+    label: 'Customer',
+    type: 'select',
+    options: [...new Set(parts?.map(p => p.customer) || [])].map(c => ({ value: c, label: c })),
+  },
+  {
+    key: 'program',
+    label: 'Program',
+    type: 'select',
+    options: [...new Set(parts?.map(p => p.program) || [])].map(p => ({ value: p, label: p })),
+  },
+];
+
+ADD FILTERED DATA:
+const filteredParts = useMemo(() => {
+  if (!parts) return [];
+  
+  return parts.filter(part => {
+    // Search filter
+    if (filters.search) {
+      const search = filters.search.toLowerCase();
+      const matches = 
+        part.partNumber.toLowerCase().includes(search) ||
+        part.partName.toLowerCase().includes(search) ||
+        part.customer.toLowerCase().includes(search) ||
+        part.program.toLowerCase().includes(search);
+      if (!matches) return false;
+    }
+    
+    // Customer filter
+    if (filters.customer && part.customer !== filters.customer) return false;
+    
+    // Program filter
+    if (filters.program && part.program !== filters.program) return false;
+    
+    return true;
+  });
+}, [parts, filters]);
+
+ADD TOOLBAR to JSX (before the table):
+<DataTableToolbar
+  searchPlaceholder="Search parts..."
+  filters={filterConfig}
+  activeFilters={filters}
+  onFiltersChange={setFilters}
+  resultCount={filteredParts.length}
+/>
+
+CHANGE table to use filteredParts instead of parts:
+{filteredParts.map((part) => (
+  // ... existing row code
+))}
+
+---
+
+Similarly update PFMEA.tsx with AP filter:
+
+const filterConfig: FilterConfig[] = [
+  {
+    key: 'status',
+    label: 'Status',
+    type: 'select',
+    options: [
+      { value: 'draft', label: 'Draft' },
+      { value: 'review', label: 'In Review' },
+      { value: 'effective', label: 'Effective' },
+      { value: 'superseded', label: 'Superseded' },
+    ],
+  },
+  {
+    key: 'hasHighAP',
+    label: 'AP Level',
+    type: 'select',
+    options: [
+      { value: 'high', label: 'Has High AP' },
+      { value: 'medium', label: 'Has Medium AP' },
+      { value: 'low', label: 'Low AP Only' },
+    ],
+  },
+];
+
+---
+
+Similarly update ControlPlans.tsx with type filter:
+
+const filterConfig: FilterConfig[] = [
+  {
+    key: 'status',
+    label: 'Status',
+    type: 'select',
+    options: [
+      { value: 'draft', label: 'Draft' },
+      { value: 'review', label: 'In Review' },
+      { value: 'effective', label: 'Effective' },
+    ],
+  },
+  {
+    key: 'type',
+    label: 'Type',
+    type: 'select',
+    options: [
+      { value: 'Pre-Launch', label: 'Pre-Launch' },
+      { value: 'Production', label: 'Production' },
+    ],
+  },
+];

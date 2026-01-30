@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
+import DataTableToolbar, { ActiveFilters, FilterConfig } from "@/components/DataTableToolbar";
 import {
   Card,
   CardContent,
@@ -187,10 +188,7 @@ export default function ControlPlansPage() {
   const queryClient = useQueryClient();
 
   // State
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [partFilter, setPartFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [filters, setFilters] = useState<ActiveFilters>({ search: '' });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCP, setSelectedCP] = useState<ControlPlanWithDetails | null>(null);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
@@ -325,30 +323,53 @@ export default function ControlPlansPage() {
     },
   });
 
+  // Filter configuration
+  const filterConfig: FilterConfig[] = useMemo(() => [
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: 'draft', label: 'Draft' },
+        { value: 'review', label: 'In Review' },
+        { value: 'effective', label: 'Effective' },
+      ],
+    },
+    {
+      key: 'type',
+      label: 'Type',
+      type: 'select',
+      options: [
+        { value: 'Prototype', label: 'Prototype' },
+        { value: 'Pre-Launch', label: 'Pre-Launch' },
+        { value: 'Production', label: 'Production' },
+      ],
+    },
+  ], []);
+
   // Filter Control Plans
-  const filteredCPs = controlPlans.filter((cp) => {
-    // Search filter
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      const matchesPart =
-        cp.part?.partNumber?.toLowerCase().includes(search) ||
-        cp.part?.partName?.toLowerCase().includes(search);
-      const matchesDoc = cp.docNo?.toLowerCase().includes(search);
-      const matchesRev = cp.rev.toLowerCase().includes(search);
-      if (!matchesPart && !matchesDoc && !matchesRev) return false;
-    }
+  const filteredCPs = useMemo(() => {
+    return controlPlans.filter((cp) => {
+      // Search filter
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        const matchesPart =
+          cp.part?.partNumber?.toLowerCase().includes(search) ||
+          cp.part?.partName?.toLowerCase().includes(search);
+        const matchesDoc = cp.docNo?.toLowerCase().includes(search);
+        const matchesRev = cp.rev.toLowerCase().includes(search);
+        if (!matchesPart && !matchesDoc && !matchesRev) return false;
+      }
 
-    // Status filter
-    if (statusFilter !== "all" && cp.status !== statusFilter) return false;
+      // Status filter
+      if (filters.status && cp.status !== filters.status) return false;
 
-    // Part filter
-    if (partFilter !== "all" && cp.partId !== partFilter) return false;
+      // Type filter
+      if (filters.type && cp.type !== filters.type) return false;
 
-    // Type filter
-    if (typeFilter !== "all" && cp.type !== typeFilter) return false;
-
-    return true;
-  });
+      return true;
+    });
+  }, [controlPlans, filters]);
 
   // Summary stats
   const summaryStats = {
@@ -421,59 +442,13 @@ export default function ControlPlansPage() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by part number, name, or doc number..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            <Select value={partFilter} onValueChange={setPartFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter by part" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Parts</SelectItem>
-                {parts.map((part) => (
-                  <SelectItem key={part.id} value={part.id}>
-                    {part.partNumber} - {part.partName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="Prototype">Prototype</SelectItem>
-                <SelectItem value="Pre-Launch">Pre-Launch</SelectItem>
-                <SelectItem value="Production">Production</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="review">Review</SelectItem>
-                <SelectItem value="effective">Effective</SelectItem>
-                <SelectItem value="superseded">Superseded</SelectItem>
-                <SelectItem value="obsolete">Obsolete</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <DataTableToolbar
+            searchPlaceholder="Search by part number, name, or doc number..."
+            filters={filterConfig}
+            activeFilters={filters}
+            onFiltersChange={setFilters}
+            resultCount={filteredCPs.length}
+          />
         </CardContent>
       </Card>
 
@@ -489,11 +464,11 @@ export default function ControlPlansPage() {
               <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold">No Control Plans Found</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm || statusFilter !== "all" || partFilter !== "all"
+                {filters.search || filters.status || filters.type
                   ? "Try adjusting your filters"
                   : "Generate your first Control Plan from a PFMEA"}
               </p>
-              {!searchTerm && statusFilter === "all" && partFilter === "all" && (
+              {!filters.search && !filters.status && !filters.type && (
                 <Button onClick={() => setGenerateDialogOpen(true)}>
                   <Wand2 className="h-4 w-4 mr-2" />
                   Generate Control Plan

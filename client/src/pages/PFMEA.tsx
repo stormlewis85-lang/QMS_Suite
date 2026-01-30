@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
+import DataTableToolbar, { ActiveFilters, FilterConfig } from "@/components/DataTableToolbar";
 import {
   Card,
   CardContent,
@@ -169,10 +170,7 @@ export default function PFMEAPage() {
   const queryClient = useQueryClient();
 
   // State
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [partFilter, setPartFilter] = useState<string>("all");
-  const [apFilter, setAPFilter] = useState<string>("all");
+  const [filters, setFilters] = useState<ActiveFilters>({ search: '' });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPFMEA, setSelectedPFMEA] = useState<PFMEAWithPart | null>(null);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
@@ -298,34 +296,59 @@ export default function PFMEAPage() {
     },
   });
 
+  // Filter configuration
+  const filterConfig: FilterConfig[] = useMemo(() => [
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: 'draft', label: 'Draft' },
+        { value: 'review', label: 'In Review' },
+        { value: 'effective', label: 'Effective' },
+        { value: 'superseded', label: 'Superseded' },
+      ],
+    },
+    {
+      key: 'hasHighAP',
+      label: 'AP Level',
+      type: 'select',
+      options: [
+        { value: 'high', label: 'Has High AP' },
+        { value: 'medium', label: 'Has Medium AP' },
+        { value: 'low', label: 'Low AP Only' },
+      ],
+    },
+  ], []);
+
   // Filter PFMEAs
-  const filteredPFMEAs = pfmeas.filter((pfmea) => {
-    // Search filter
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      const matchesPart =
-        pfmea.part?.partNumber?.toLowerCase().includes(search) ||
-        pfmea.part?.partName?.toLowerCase().includes(search);
-      const matchesDoc = pfmea.docNo?.toLowerCase().includes(search);
-      const matchesRev = pfmea.rev.toLowerCase().includes(search);
-      if (!matchesPart && !matchesDoc && !matchesRev) return false;
-    }
+  const filteredPFMEAs = useMemo(() => {
+    return pfmeas.filter((pfmea) => {
+      // Search filter
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        const matchesPart =
+          pfmea.part?.partNumber?.toLowerCase().includes(search) ||
+          pfmea.part?.partName?.toLowerCase().includes(search);
+        const matchesDoc = pfmea.docNo?.toLowerCase().includes(search);
+        const matchesRev = pfmea.rev.toLowerCase().includes(search);
+        if (!matchesPart && !matchesDoc && !matchesRev) return false;
+      }
 
-    // Status filter
-    if (statusFilter !== "all" && pfmea.status !== statusFilter) return false;
+      // Status filter
+      if (filters.status && pfmea.status !== filters.status) return false;
 
-    // Part filter
-    if (partFilter !== "all" && pfmea.partId !== partFilter) return false;
+      // AP filter
+      if (filters.hasHighAP) {
+        const stats = calculateAPStats(pfmea.rows);
+        if (filters.hasHighAP === "high" && stats.high === 0) return false;
+        if (filters.hasHighAP === "medium" && stats.medium === 0) return false;
+        if (filters.hasHighAP === "low" && (stats.high > 0 || stats.medium > 0)) return false;
+      }
 
-    // AP filter
-    if (apFilter !== "all") {
-      const stats = calculateAPStats(pfmea.rows);
-      if (apFilter === "hasHigh" && stats.high === 0) return false;
-      if (apFilter === "noHigh" && stats.high > 0) return false;
-    }
-
-    return true;
-  });
+      return true;
+    });
+  }, [pfmeas, filters]);
 
   // Summary stats
   const summaryStats = {
@@ -398,58 +421,13 @@ export default function PFMEAPage() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by part number, name, or doc number..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            <Select value={partFilter} onValueChange={setPartFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter by part" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Parts</SelectItem>
-                {parts.map((part) => (
-                  <SelectItem key={part.id} value={part.id}>
-                    {part.partNumber} - {part.partName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="review">Review</SelectItem>
-                <SelectItem value="effective">Effective</SelectItem>
-                <SelectItem value="superseded">Superseded</SelectItem>
-                <SelectItem value="obsolete">Obsolete</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={apFilter} onValueChange={setAPFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="AP Filter" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All AP Levels</SelectItem>
-                <SelectItem value="hasHigh">Has High AP</SelectItem>
-                <SelectItem value="noHigh">No High AP</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <DataTableToolbar
+            searchPlaceholder="Search by part number, name, or doc number..."
+            filters={filterConfig}
+            activeFilters={filters}
+            onFiltersChange={setFilters}
+            resultCount={filteredPFMEAs.length}
+          />
         </CardContent>
       </Card>
 
@@ -465,11 +443,11 @@ export default function PFMEAPage() {
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold">No PFMEAs Found</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm || statusFilter !== "all" || partFilter !== "all"
+                {filters.search || filters.status || filters.hasHighAP
                   ? "Try adjusting your filters"
                   : "Generate your first PFMEA to get started"}
               </p>
-              {!searchTerm && statusFilter === "all" && partFilter === "all" && (
+              {!filters.search && !filters.status && !filters.hasHighAP && (
                 <Button onClick={() => setGenerateDialogOpen(true)}>
                   <Wand2 className="h-4 w-4 mr-2" />
                   Generate PFMEA

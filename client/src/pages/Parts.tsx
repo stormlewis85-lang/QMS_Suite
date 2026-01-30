@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import DataTableToolbar, { ActiveFilters, FilterConfig } from "@/components/DataTableToolbar";
 import {
   Card,
   CardContent,
@@ -126,9 +127,7 @@ export default function PartsPage() {
   const [, navigate] = useLocation();
 
   // State
-  const [searchTerm, setSearchTerm] = useState("");
-  const [customerFilter, setCustomerFilter] = useState<string>("all");
-  const [plantFilter, setPlantFilter] = useState<string>("all");
+  const [filters, setFilters] = useState<ActiveFilters>({ search: '' });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [deletePartId, setDeletePartId] = useState<string | null>(null);
@@ -237,22 +236,56 @@ export default function PartsPage() {
     },
   });
 
+  // Filter configuration
+  const filterConfig: FilterConfig[] = useMemo(() => [
+    {
+      key: 'customer',
+      label: 'Customer',
+      type: 'select',
+      options: Array.from(new Set(parts?.map(p => p.customer) || [])).map(c => ({ value: c, label: c })),
+    },
+    {
+      key: 'program',
+      label: 'Program',
+      type: 'select',
+      options: Array.from(new Set(parts?.map(p => p.program).filter(Boolean) || [])).map(p => ({ value: p!, label: p! })),
+    },
+    {
+      key: 'plant',
+      label: 'Plant',
+      type: 'select',
+      options: Array.from(new Set(parts?.map(p => p.plant) || [])).map(p => ({ value: p, label: p })),
+    },
+  ], [parts]);
+
   // Filter parts
-  const filteredParts = parts.filter((part) => {
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      if (
-        !part.partNumber.toLowerCase().includes(search) &&
-        !part.partName.toLowerCase().includes(search) &&
-        !part.program?.toLowerCase().includes(search)
-      ) {
-        return false;
+  const filteredParts = useMemo(() => {
+    if (!parts) return [];
+    
+    return parts.filter(part => {
+      // Search filter
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        const matches = 
+          part.partNumber.toLowerCase().includes(search) ||
+          part.partName.toLowerCase().includes(search) ||
+          part.customer.toLowerCase().includes(search) ||
+          (part.program?.toLowerCase().includes(search) || false);
+        if (!matches) return false;
       }
-    }
-    if (customerFilter !== "all" && part.customer !== customerFilter) return false;
-    if (plantFilter !== "all" && part.plant !== plantFilter) return false;
-    return true;
-  });
+      
+      // Customer filter
+      if (filters.customer && part.customer !== filters.customer) return false;
+      
+      // Program filter
+      if (filters.program && part.program !== filters.program) return false;
+      
+      // Plant filter
+      if (filters.plant && part.plant !== filters.plant) return false;
+      
+      return true;
+    });
+  }, [parts, filters]);
 
   // Get unique values for filters
   const uniqueCustomers = Array.from(new Set(parts.map((p) => p.customer)));
@@ -380,47 +413,13 @@ export default function PartsPage() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by part number, name, or program..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            <Select value={customerFilter} onValueChange={setCustomerFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Customer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                {uniqueCustomers.map((customer) => (
-                  <SelectItem key={customer} value={customer}>
-                    {customer}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={plantFilter} onValueChange={setPlantFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Plant" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Plants</SelectItem>
-                {uniquePlants.map((plant) => (
-                  <SelectItem key={plant} value={plant}>
-                    {plant}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <DataTableToolbar
+            searchPlaceholder="Search parts..."
+            filters={filterConfig}
+            activeFilters={filters}
+            onFiltersChange={setFilters}
+            resultCount={filteredParts.length}
+          />
         </CardContent>
       </Card>
 
@@ -436,11 +435,11 @@ export default function PartsPage() {
               <Package className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold">No Parts Found</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm || customerFilter !== "all" || plantFilter !== "all"
+                {filters.search || filters.customer || filters.program || filters.plant
                   ? "Try adjusting your filters"
                   : "Add your first part to get started"}
               </p>
-              {!searchTerm && customerFilter === "all" && plantFilter === "all" && (
+              {!filters.search && !filters.customer && !filters.program && !filters.plant && (
                 <Button onClick={() => setCreateDialogOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Part
