@@ -850,6 +850,34 @@ export const actionItemRelations = relations(actionItem, ({ one }) => ({
   }),
 }));
 
+// Notifications
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  
+  // Recipient
+  userId: text('user_id').notNull(), // Would link to users table in production
+  
+  // Notification content
+  type: text('type').notNull(), // 'action_overdue' | 'action_assigned' | 'signature_required' | 'document_approved' | 'review_complete' | 'high_ap_added'
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  
+  // Link to related entity
+  entityType: text('entity_type'), // 'pfmea' | 'control_plan' | 'action_item' | 'part'
+  entityId: integer('entity_id'),
+  
+  // Status
+  read: boolean('read').notNull().default(false),
+  readAt: timestamp('read_at'),
+  
+  // Priority
+  priority: text('priority').notNull().default('normal'), // 'low' | 'normal' | 'high' | 'urgent'
+  
+  // Timestamps
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  expiresAt: timestamp('expires_at'), // Optional expiration
+});
+
 export const pfmeaRowRelations = relations(pfmeaRow, ({ one, many }) => ({
   pfmea: one(pfmea, {
     fields: [pfmeaRow.pfmeaId],

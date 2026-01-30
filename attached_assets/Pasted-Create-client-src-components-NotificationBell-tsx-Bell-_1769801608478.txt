@@ -1,0 +1,504 @@
+Create client/src/components/NotificationBell.tsx - Bell icon with dropdown:
+
+FULL FILE:
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { 
+  Popover, 
+  PopoverContent, 
+  PopoverTrigger 
+} from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { 
+  Bell, 
+  BellOff,
+  Check, 
+  CheckCheck, 
+  Trash2,
+  Clock,
+  AlertTriangle,
+  FileText,
+  ClipboardList,
+  Target,
+  Shield,
+  ExternalLink
+} from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { Link } from 'wouter';
+import { apiRequest } from '@/lib/queryClient';
+
+interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  entityType?: string;
+  entityId?: number;
+  read: boolean;
+  priority: string;
+  createdAt: string;
+}
+
+const TYPE_ICONS: Record<string, any> = {
+  action_overdue: AlertTriangle,
+  action_assigned: Target,
+  action_due_soon: Clock,
+  signature_required: Shield,
+  document_approved: Check,
+  document_effective: FileText,
+  review_findings: ClipboardList,
+  high_ap_added: AlertTriangle,
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  urgent: 'bg-red-500',
+  high: 'bg-orange-500',
+  normal: 'bg-blue-500',
+  low: 'bg-gray-400',
+};
+
+export function NotificationBell() {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  
+  // Fetch unread count
+  const { data: countData } = useQuery({
+    queryKey: ['/api/notifications/unread-count'],
+    refetchInterval: 30000, // Poll every 30 seconds
+  });
+  
+  // Fetch notifications when popover opens
+  const { data: notifications, isLoading } = useQuery({
+    queryKey: ['/api/notifications'],
+    enabled: open,
+  });
+  
+  // Mark as read mutation
+  const markReadMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/notifications/${id}/read`, { method: 'POST' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
+    },
+  });
+  
+  // Mark all as read mutation
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest('/api/notifications/read-all', { method: 'POST' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
+    },
+  });
+  
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/notifications/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
+    },
+  });
+  
+  const unreadCount = countData?.count || 0;
+  
+  const getEntityLink = (notification: Notification): string | null => {
+    if (!notification.entityType || !notification.entityId) return null;
+    
+    switch (notification.entityType) {
+      case 'pfmea':
+        return `/pfmea/${notification.entityId}`;
+      case 'control_plan':
+        return `/control-plans/${notification.entityId}`;
+      case 'action_item':
+        return `/actions`; // Could deep-link to specific action
+      case 'part':
+        return `/parts/${notification.entityId}`;
+      default:
+        return null;
+    }
+  };
+  
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.read) {
+      markReadMutation.mutate(notification.id);
+    }
+    
+    const link = getEntityLink(notification);
+    if (link) {
+      setOpen(false);
+      // Navigation handled by Link component
+    }
+  };
+  
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="relative">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-[10px]"
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      
+      <PopoverContent className="w-96 p-0" align="end">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <h4 className="font-semibold">Notifications</h4>
+          {unreadCount > 0 && (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => markAllReadMutation.mutate()}
+              disabled={markAllReadMutation.isPending}
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Mark all read
+            </Button>
+          )}
+        </div>
+        
+        {/* Notifications List */}
+        <ScrollArea className="h-[400px]">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">
+              Loading...
+            </div>
+          ) : !notifications || notifications.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <BellOff className="h-8 w-8 mx-auto mb-2 opacity-20" />
+              <p>No notifications</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {notifications.map((notification: Notification) => {
+                const Icon = TYPE_ICONS[notification.type] || Bell;
+                const link = getEntityLink(notification);
+                
+                const content = (
+                  <div 
+                    className={`p-4 hover:bg-muted/50 cursor-pointer transition-colors ${
+                      !notification.read ? 'bg-blue-50/50' : ''
+                    }`}
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <div className="flex gap-3">
+                      {/* Priority indicator */}
+                      <div className="flex-shrink-0 mt-1">
+                        <div className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[notification.priority]}`} />
+                      </div>
+                      
+                      {/* Icon */}
+                      <div className="flex-shrink-0">
+                        <Icon className={`h-5 w-5 ${
+                          notification.type.includes('overdue') || notification.type.includes('high_ap') 
+                            ? 'text-red-500' 
+                            : 'text-muted-foreground'
+                        }`} />
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm font-medium truncate ${!notification.read ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            {notification.title}
+                          </p>
+                          {link && (
+                            <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                      
+                      {/* Actions */}
+                      <div className="flex-shrink-0 flex flex-col gap-1">
+                        {!notification.read && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markReadMutation.mutate(notification.id);
+                            }}
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteMutation.mutate(notification.id);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+                
+                if (link) {
+                  return (
+                    <Link key={notification.id} href={link}>
+                      {content}
+                    </Link>
+                  );
+                }
+                
+                return <div key={notification.id}>{content}</div>;
+              })}
+            </div>
+          )}
+        </ScrollArea>
+        
+        {/* Footer */}
+        {notifications && notifications.length > 0 && (
+          <div className="p-2 border-t">
+            <Link href="/notifications">
+              <Button variant="ghost" size="sm" className="w-full">
+                View all notifications
+              </Button>
+            </Link>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export default NotificationBell;
+
+---
+
+Update client/src/components/AppSidebar.tsx - Add notification bell to header:
+
+ADD IMPORT:
+import NotificationBell from './NotificationBell';
+
+FIND the SidebarHeader section and ADD the bell:
+
+<SidebarHeader className="border-b p-4">
+  <div className="flex items-center justify-between">
+    <Link href="/">
+      <div className="flex items-center gap-2 cursor-pointer">
+        <Shield className="h-6 w-6 text-primary" />
+        <span className="font-bold text-lg">PFMEA Suite</span>
+      </div>
+    </Link>
+    <NotificationBell />
+  </div>
+</SidebarHeader>
+
+---
+
+Create client/src/pages/Notifications.tsx - Full notifications page:
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  Bell, 
+  BellOff,
+  Check, 
+  CheckCheck, 
+  Trash2,
+  Clock,
+  AlertTriangle,
+  FileText,
+  Target,
+  Shield,
+  ExternalLink,
+  Filter
+} from 'lucide-react';
+import { formatDistanceToNow, format } from 'date-fns';
+import { Link } from 'wouter';
+import { useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+
+export default function Notifications() {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('all');
+  
+  const { data: notifications, isLoading } = useQuery({
+    queryKey: ['/api/notifications'],
+  });
+  
+  const markReadMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/notifications/${id}/read`, { method: 'POST' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
+    },
+  });
+  
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest('/api/notifications/read-all', { method: 'POST' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
+    },
+  });
+  
+  const deleteReadMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest('/api/notifications/read', { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+    },
+  });
+  
+  const filteredNotifications = notifications?.filter((n: any) => {
+    if (activeTab === 'all') return true;
+    if (activeTab === 'unread') return !n.read;
+    if (activeTab === 'actions') return n.type.includes('action');
+    if (activeTab === 'documents') return n.type.includes('document') || n.type.includes('signature');
+    return true;
+  }) || [];
+  
+  const unreadCount = notifications?.filter((n: any) => !n.read).length || 0;
+  
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Bell className="h-8 w-8" />
+            Notifications
+          </h1>
+          <p className="text-muted-foreground">{unreadCount} unread</p>
+        </div>
+        <div className="flex gap-2">
+          {unreadCount > 0 && (
+            <Button variant="outline" onClick={() => markAllReadMutation.mutate()}>
+              <CheckCheck className="h-4 w-4 mr-2" />
+              Mark All Read
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => deleteReadMutation.mutate()}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Clear Read
+          </Button>
+        </div>
+      </div>
+      
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="unread">
+            Unread
+            {unreadCount > 0 && (
+              <Badge variant="destructive" className="ml-2">{unreadCount}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="actions">Actions</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value={activeTab} className="mt-4">
+          <Card>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="p-8 text-center">Loading...</div>
+              ) : filteredNotifications.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <BellOff className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p>No notifications</p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {filteredNotifications.map((notification: any) => (
+                    <div 
+                      key={notification.id}
+                      className={`p-4 flex items-start gap-4 ${!notification.read ? 'bg-blue-50/50' : ''}`}
+                    >
+                      <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                        notification.priority === 'urgent' ? 'bg-red-500' :
+                        notification.priority === 'high' ? 'bg-orange-500' :
+                        'bg-blue-500'
+                      }`} />
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`font-medium ${!notification.read ? '' : 'text-muted-foreground'}`}>
+                            {notification.title}
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {notification.type.replace(/_/g, ' ')}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {format(new Date(notification.createdAt), 'MMM d, yyyy h:mm a')}
+                          {' • '}
+                          {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {!notification.read && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => markReadMutation.mutate(notification.id)}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {notification.entityType && notification.entityId && (
+                          <Link href={`/${notification.entityType === 'pfmea' ? 'pfmea' : notification.entityType === 'control_plan' ? 'control-plans' : 'parts'}/${notification.entityId}`}>
+                            <Button variant="outline" size="sm">
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+---
+
+Add route to App.tsx:
+<Route path="/notifications" component={Notifications} />

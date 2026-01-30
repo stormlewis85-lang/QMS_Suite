@@ -30,6 +30,7 @@ The application uses a modern web stack:
 - **Auto-Review & Change Management**: `auto_review_run`, `auto_review_finding`, `change_package`, `change_package_item`, `change_package_approval`, `change_package_propagation`.
 - **Library Entities**: `failure_modes_library`, `controls_library`, `control_pairings`, `fmea_template_catalog_link`.
 - **Action Tracking**: `action_item` - tracks PFMEA recommended actions with full lifecycle management.
+- **Notifications**: `notifications` - system notifications for overdue actions, signature requests, approvals.
 
 **Recent Updates** (Jan 2025 - Phase 11):
 - **Action Items Tracking**: Full lifecycle management for PFMEA recommended actions:
@@ -40,6 +41,12 @@ The application uses a modern web stack:
   - Post-action S/O/D ratings with automatic AP recalculation on verification
   - API endpoints: create, update, complete, verify, cancel, delete, summary, overdue
   - Dashboard integration for overdue action items across all PFMEAs
+- **Notification System**: Automated notifications for quality events:
+  - New `notifications` table with priority levels (low, normal, high, urgent)
+  - Notification types: action_overdue, action_assigned, action_due_soon, signature_required, document_approved, review_findings, high_ap_added
+  - NotificationService for creating, reading, and managing notifications
+  - Automated generators for overdue actions and actions due soon
+  - API endpoints: list, unread-count, mark-read, mark-all-read, delete, generate
 - **Excel Import Wizard**: Multi-step import for PFMEA and Control Plan data:
   - Drag & drop file upload with react-dropzone
   - Auto-column detection using AIAG patterns

@@ -32,7 +32,8 @@ import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
 import { eq, desc, and, lt, asc, inArray } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem } from "@shared/schema";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications } from "@shared/schema";
+import { notificationService } from "./services/notification-service";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -1143,7 +1144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             severity: updated.newSeverity,
             occurrence: updated.newOccurrence,
             detection: updated.newDetection,
-            ap: updated.newAP,
+            ap: updated.newAP || undefined,
           })
           .where(eq(pfmeaRow.id, updated.pfmeaRowId));
       }
@@ -1282,6 +1283,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
       .orderBy(asc(actionItem.targetDate));
       
       res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ NOTIFICATIONS ============
+
+  // Get notifications for current user
+  app.get('/api/notifications', async (req, res) => {
+    const userId = 'current-user'; // TODO: Get from auth
+    const { unreadOnly, limit, type } = req.query;
+    
+    try {
+      const items = await notificationService.getForUser(userId, {
+        unreadOnly: unreadOnly === 'true',
+        limit: limit ? parseInt(limit as string) : 50,
+        type: type as any,
+      });
+      
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get unread count
+  app.get('/api/notifications/unread-count', async (req, res) => {
+    const userId = 'current-user';
+    
+    try {
+      const count = await notificationService.getUnreadCount(userId);
+      res.json({ count });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Mark notification as read
+  app.post('/api/notifications/:id/read', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+      const updated = await notificationService.markAsRead(parseInt(id));
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Mark all as read
+  app.post('/api/notifications/read-all', async (req, res) => {
+    const userId = 'current-user';
+    
+    try {
+      await notificationService.markAllAsRead(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete notification
+  app.delete('/api/notifications/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+      await notificationService.delete(parseInt(id));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete all read notifications
+  app.delete('/api/notifications/read', async (req, res) => {
+    const userId = 'current-user';
+    
+    try {
+      await notificationService.deleteAllRead(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Trigger notification generation (would be called by cron job in production)
+  app.post('/api/notifications/generate', async (req, res) => {
+    try {
+      const overdueCount = await notificationService.generateOverdueActionNotifications();
+      const dueSoonCount = await notificationService.generateDueSoonNotifications(3);
+      
+      res.json({ 
+        generated: {
+          overdue: overdueCount,
+          dueSoon: dueSoonCount,
+        }
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
