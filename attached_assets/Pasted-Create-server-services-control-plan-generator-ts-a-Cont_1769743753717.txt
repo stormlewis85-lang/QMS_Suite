@@ -1,0 +1,135 @@
+Create server/services/control-plan-generator.ts - a Control Plan Generator service following these exact specifications:
+
+IMPORTS:
+- Import db from '../db'
+- Import { controlPlan, controlPlanRows, pfmeaRows, controlTemplateRows, fmeaTemplateRows } from '@shared/schema'
+- Import { eq, inArray } from 'drizzle-orm'
+
+INTERFACES:
+interface GenerateControlPlanInput {
+  partId: string;
+  pfmeaId: string;
+  type?: 'Pre-Launch' | 'Production';
+  rev?: string;
+}
+
+interface GenerateControlPlanResult {
+  controlPlan: typeof controlPlan.$inferSelect;
+  rows: (typeof controlPlanRows.$inferSelect)[];
+  summary: {
+    totalRows: number;
+    specialCharacteristics: number;
+    linkedToPfmea: number;
+  };
+}
+
+FUNCTION: generateControlPlan(input: GenerateControlPlanInput): Promise<GenerateControlPlanResult>
+
+LOGIC:
+1. Validate partId exists in parts table, throw if not found
+2. Validate pfmeaId exists in pfmea table AND belongs to this part, throw if not found or mismatched
+3. Fetch all pfmea_rows WHERE pfmea_id = pfmeaId, include parent_template_row_id
+4. For each pfmea_row that has a parent_template_row_id:
+   - Fetch control_template_rows WHERE source_template_row_id = parent_template_row_id
+5. If no control templates found, throw error "No Control Plan templates found for this PFMEA. Ensure FMEA template rows have linked control templates."
+6. Use db.transaction() for atomicity:
+   a. INSERT into control_plan table: { 
+        partId, 
+        rev: input.rev || '1.0.0', 
+        status: 'draft', 
+        type: input.type || 'Production',
+        docNo: null,
+        approvedBy: null,
+        approvedAt: null,
+        effectiveFrom: null,
+        supersedesId: null
+      }
+   b. For each control template row found:
+      - Find the corresponding pfmea_row that links to this template
+      - INSERT into control_plan_rows: {
+          controlPlanId: newControlPlan.id,
+          sourcePfmeaRowId: matchingPfmeaRow.id,
+          parentControlTemplateRowId: controlTemplate.id,
+          charId: controlTemplate.charId,
+          characteristicName: controlTemplate.characteristicName,
+          type: controlTemplate.type,
+          target: controlTemplate.target,
+          tolerance: controlTemplate.tolerance,
+          specialFlag: controlTemplate.specialFlag,
+          csrSymbol: controlTemplate.csrSymbol,
+          measurementSystem: controlTemplate.measurementSystem,
+          gageDetails: controlTemplate.gageDetails,
+          sampleSize: controlTemplate.defaultSampleSize,
+          frequency: controlTemplate.defaultFrequency,
+          controlMethod: controlTemplate.controlMethod,
+          acceptanceCriteria: controlTemplate.acceptanceCriteria,
+          reactionPlan: controlTemplate.reactionPlan,
+          overrideFlags: {}
+        }
+7. Calculate summary:
+   - totalRows: count of created control_plan_rows
+   - specialCharacteristics: count WHERE specialFlag = true
+   - linkedToPfmea: count WHERE sourcePfmeaRowId IS NOT NULL
+8. Return created Control Plan, all rows, and summary
+
+ERROR HANDLING:
+- Wrap in try/catch
+- On error, transaction auto-rollbacks
+- Throw descriptive errors: "Part not found", "PFMEA not found", "PFMEA does not belong to this part", "No control templates found"
+
+Then add to server/routes.ts:
+
+app.post('/api/pfmeas/:id/generate-control-plan', async (req, res) => {
+  const { id } = req.params;
+  const { partId, type } = req.body;
+  
+  // Validate partId is provided
+  if (!partId) {
+    return res.status(400).json({ error: 'partId is required' });
+  }
+  
+  try {
+    const result = await generateControlPlan({ 
+      partId, 
+      pfmeaId: id,
+      type: type || 'Production'
+    });
+    res.json(result);
+  } catch (error) {
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+Also add a convenience endpoint to generate both at once:
+
+app.post('/api/parts/:id/generate-documents', async (req, res) => {
+  const { id } = req.params;
+  const { processIds, controlPlanType } = req.body;
+  
+  if (!Array.isArray(processIds) || processIds.length === 0) {
+    return res.status(400).json({ error: 'processIds must be a non-empty array' });
+  }
+  
+  try {
+    // Step 1: Generate PFMEA
+    const pfmeaResult = await generatePFMEA({ partId: id, processDefIds: processIds });
+    
+    // Step 2: Generate Control Plan from the new PFMEA
+    const cpResult = await generateControlPlan({ 
+      partId: id, 
+      pfmeaId: pfmeaResult.pfmea.id,
+      type: controlPlanType || 'Production'
+    });
+    
+    res.json({
+      pfmea: pfmeaResult,
+      controlPlan: cpResult,
+      message: `Generated PFMEA with ${pfmeaResult.summary.totalRows} rows and Control Plan with ${cpResult.summary.totalRows} characteristics`
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});

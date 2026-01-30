@@ -22,6 +22,7 @@ import {
 } from "./change-package-service";
 import { runAllSeeds } from "./seed";
 import { generatePFMEA } from "./services/pfmea-generator";
+import { generateControlPlan } from "./services/control-plan-generator";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -1311,6 +1312,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error: any) {
       console.error("Error generating PFMEA:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Generate Control Plan from PFMEA
+  app.post("/api/pfmeas/:id/generate-control-plan", async (req, res) => {
+    const { id } = req.params;
+    const { partId, type } = req.body;
+
+    if (!partId) {
+      return res.status(400).json({ error: "partId is required" });
+    }
+
+    try {
+      const result = await generateControlPlan({
+        partId,
+        pfmeaId: id,
+        type: type || 'Production'
+      });
+      res.json(result);
+    } catch (error: any) {
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Generate both PFMEA and Control Plan at once
+  app.post("/api/parts/:id/generate-documents", async (req, res) => {
+    const { id } = req.params;
+    const { processIds, controlPlanType } = req.body;
+
+    if (!Array.isArray(processIds) || processIds.length === 0) {
+      return res.status(400).json({ error: "processIds must be a non-empty array" });
+    }
+
+    try {
+      const pfmeaResult = await generatePFMEA({ partId: id, processDefIds: processIds });
+
+      const cpResult = await generateControlPlan({
+        partId: id,
+        pfmeaId: pfmeaResult.pfmea.id,
+        type: controlPlanType || 'Production'
+      });
+
+      res.json({
+        pfmea: pfmeaResult,
+        controlPlan: cpResult,
+        message: `Generated PFMEA with ${pfmeaResult.summary.totalRows} rows and Control Plan with ${cpResult.summary.totalRows} characteristics`
+      });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
