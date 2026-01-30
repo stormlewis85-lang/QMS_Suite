@@ -29,8 +29,24 @@ The application uses a modern web stack:
 - **Supporting Entities**: `rating_scale`, `gage_library`, `calibration_link`, `equipment_library`, `equipment_error_proofing`, `equipment_control_methods`.
 - **Auto-Review & Change Management**: `auto_review_run`, `auto_review_finding`, `change_package`, `change_package_item`, `change_package_approval`, `change_package_propagation`.
 - **Library Entities**: `failure_modes_library`, `controls_library`, `control_pairings`, `fmea_template_catalog_link`.
+- **Action Tracking**: `action_item` - tracks PFMEA recommended actions with full lifecycle management.
 
-**Recent Updates** (Jan 2025 - Phase 10):
+**Recent Updates** (Jan 2025 - Phase 11):
+- **Action Items Tracking**: Full lifecycle management for PFMEA recommended actions:
+  - New `action_item` table with status tracking (open → in_progress → completed → verified)
+  - Priority levels: critical, high, medium, low
+  - Action types: design_change, process_change, detection_improvement, prevention, other
+  - Evidence tracking with attachments and descriptions
+  - Post-action S/O/D ratings with automatic AP recalculation on verification
+  - API endpoints: create, update, complete, verify, cancel, delete, summary, overdue
+  - Dashboard integration for overdue action items across all PFMEAs
+- **Excel Import Wizard**: Multi-step import for PFMEA and Control Plan data:
+  - Drag & drop file upload with react-dropzone
+  - Auto-column detection using AIAG patterns
+  - Data preview with validation before import
+  - Support for creating new documents or adding rows to existing ones
+
+**Previous Updates** (Jan 2025 - Phase 10):
 - **Document Control Panel**: New sidebar component on PFMEA/Control Plan detail pages with:
   - Status tab: Submit for review, add signatures, approve, create revisions
   - Signatures tab: View collected signatures with content hashes, track missing required signatures

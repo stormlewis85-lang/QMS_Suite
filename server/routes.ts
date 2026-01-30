@@ -31,8 +31,8 @@ import { calculateAP } from "./services/ap-calculator";
 import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog } from "@shared/schema";
+import { eq, desc, and, lt, asc, inArray } from "drizzle-orm";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem } from "@shared/schema";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -927,6 +927,362 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.send(result.buffer);
     } catch (error: any) {
       console.error('Export failed:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ ACTION ITEMS ============
+
+  // Get all action items for a PFMEA
+  app.get('/api/pfmeas/:pfmeaId/action-items', async (req, res) => {
+    const { pfmeaId } = req.params;
+    const { status, priority } = req.query;
+    
+    try {
+      const rows = await db.query.pfmeaRow.findMany({
+        where: eq(pfmeaRow.pfmeaId, pfmeaId),
+        columns: { id: true },
+      });
+      
+      const rowIds = rows.map(r => r.id);
+      
+      if (rowIds.length === 0) {
+        return res.json([]);
+      }
+      
+      const items = await db.select().from(actionItem)
+        .where(inArray(actionItem.pfmeaRowId, rowIds));
+      
+      let filtered = items;
+      if (status) {
+        filtered = filtered.filter(i => i.status === status);
+      }
+      if (priority) {
+        filtered = filtered.filter(i => i.priority === priority);
+      }
+      
+      filtered.sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime());
+      
+      res.json(filtered);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get action items for a specific PFMEA row
+  app.get('/api/pfmea-rows/:rowId/action-items', async (req, res) => {
+    const { rowId } = req.params;
+    
+    try {
+      const items = await db.query.actionItem.findMany({
+        where: eq(actionItem.pfmeaRowId, rowId),
+        orderBy: [asc(actionItem.targetDate)],
+      });
+      
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create action item
+  app.post('/api/pfmea-rows/:rowId/action-items', async (req, res) => {
+    const { rowId } = req.params;
+    const {
+      actionType,
+      description,
+      responsiblePerson,
+      responsibleRole,
+      targetDate,
+      priority,
+    } = req.body;
+    
+    try {
+      const row = await db.query.pfmeaRow.findFirst({
+        where: eq(pfmeaRow.id, rowId),
+      });
+      
+      if (!row) {
+        return res.status(404).json({ error: 'PFMEA row not found' });
+      }
+      
+      const [newItem] = await db.insert(actionItem).values({
+        pfmeaRowId: rowId,
+        actionType: actionType || 'other',
+        description,
+        responsiblePerson,
+        responsibleRole,
+        targetDate: new Date(targetDate),
+        priority: priority || 'medium',
+        status: 'open',
+        createdBy: 'current-user',
+      }).returning();
+      
+      res.status(201).json(newItem);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update action item
+  app.patch('/api/action-items/:id', async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body };
+    
+    try {
+      delete updates.id;
+      delete updates.pfmeaRowId;
+      delete updates.createdBy;
+      delete updates.createdAt;
+      
+      updates.updatedAt = new Date();
+      
+      if (updates.targetDate) {
+        updates.targetDate = new Date(updates.targetDate);
+      }
+      if (updates.completedDate) {
+        updates.completedDate = new Date(updates.completedDate);
+      }
+      if (updates.verifiedDate) {
+        updates.verifiedDate = new Date(updates.verifiedDate);
+      }
+      
+      const [updated] = await db.update(actionItem)
+        .set(updates)
+        .where(eq(actionItem.id, parseInt(id)))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Complete action item
+  app.post('/api/action-items/:id/complete', async (req, res) => {
+    const { id } = req.params;
+    const {
+      completionNotes,
+      evidenceDescription,
+      evidenceAttachment,
+      newSeverity,
+      newOccurrence,
+      newDetection,
+    } = req.body;
+    
+    try {
+      let newAP = null;
+      if (newSeverity && newOccurrence && newDetection) {
+        const result = calculateAP({ severity: newSeverity, occurrence: newOccurrence, detection: newDetection });
+        newAP = result.priority;
+      }
+      
+      const [updated] = await db.update(actionItem)
+        .set({
+          status: 'completed',
+          completedDate: new Date(),
+          completionNotes,
+          evidenceDescription,
+          evidenceAttachment,
+          newSeverity,
+          newOccurrence,
+          newDetection,
+          newAP,
+          updatedAt: new Date(),
+        })
+        .where(eq(actionItem.id, parseInt(id)))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Verify completed action item
+  app.post('/api/action-items/:id/verify', async (req, res) => {
+    const { id } = req.params;
+    const { verifiedBy, verificationNotes } = req.body;
+    
+    try {
+      const item = await db.query.actionItem.findFirst({
+        where: eq(actionItem.id, parseInt(id)),
+      });
+      
+      if (!item) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+      
+      if (item.status !== 'completed') {
+        return res.status(400).json({ error: 'Action must be completed before verification' });
+      }
+      
+      const [updated] = await db.update(actionItem)
+        .set({
+          status: 'verified',
+          verifiedBy,
+          verifiedDate: new Date(),
+          verificationNotes,
+          updatedAt: new Date(),
+        })
+        .where(eq(actionItem.id, parseInt(id)))
+        .returning();
+      
+      // If new ratings were recorded, update the PFMEA row
+      if (updated.newSeverity && updated.newOccurrence && updated.newDetection) {
+        await db.update(pfmeaRow)
+          .set({
+            severity: updated.newSeverity,
+            occurrence: updated.newOccurrence,
+            detection: updated.newDetection,
+            ap: updated.newAP,
+          })
+          .where(eq(pfmeaRow.id, updated.pfmeaRowId));
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Cancel action item
+  app.post('/api/action-items/:id/cancel', async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+    
+    try {
+      const [updated] = await db.update(actionItem)
+        .set({
+          status: 'cancelled',
+          completionNotes: `Cancelled: ${reason || 'No reason provided'}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(actionItem.id, parseInt(id)))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete action item
+  app.delete('/api/action-items/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+      const [deleted] = await db.delete(actionItem)
+        .where(eq(actionItem.id, parseInt(id)))
+        .returning();
+      
+      if (!deleted) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get action items summary/stats for a PFMEA
+  app.get('/api/pfmeas/:pfmeaId/action-items/summary', async (req, res) => {
+    const { pfmeaId } = req.params;
+    
+    try {
+      const rows = await db.query.pfmeaRow.findMany({
+        where: eq(pfmeaRow.pfmeaId, pfmeaId),
+        columns: { id: true },
+      });
+      
+      const rowIds = rows.map(r => r.id);
+      
+      if (rowIds.length === 0) {
+        return res.json({
+          total: 0,
+          byStatus: {},
+          byPriority: {},
+          overdue: 0,
+          dueThisWeek: 0,
+        });
+      }
+      
+      const items = await db.select().from(actionItem)
+        .where(inArray(actionItem.pfmeaRowId, rowIds));
+      
+      const now = new Date();
+      const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      const summary = {
+        total: items.length,
+        byStatus: {
+          open: items.filter(i => i.status === 'open').length,
+          in_progress: items.filter(i => i.status === 'in_progress').length,
+          completed: items.filter(i => i.status === 'completed').length,
+          verified: items.filter(i => i.status === 'verified').length,
+          cancelled: items.filter(i => i.status === 'cancelled').length,
+        },
+        byPriority: {
+          critical: items.filter(i => i.priority === 'critical').length,
+          high: items.filter(i => i.priority === 'high').length,
+          medium: items.filter(i => i.priority === 'medium').length,
+          low: items.filter(i => i.priority === 'low').length,
+        },
+        overdue: items.filter(i => 
+          ['open', 'in_progress'].includes(i.status) && 
+          new Date(i.targetDate) < now
+        ).length,
+        dueThisWeek: items.filter(i => 
+          ['open', 'in_progress'].includes(i.status) && 
+          new Date(i.targetDate) >= now &&
+          new Date(i.targetDate) <= oneWeekFromNow
+        ).length,
+      };
+      
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all overdue action items (dashboard)
+  app.get('/api/action-items/overdue', async (req, res) => {
+    try {
+      const now = new Date();
+      
+      const items = await db.select({
+        actionItem: actionItem,
+        pfmeaRow: pfmeaRow,
+        pfmea: pfmea,
+        part: part,
+      })
+      .from(actionItem)
+      .innerJoin(pfmeaRow, eq(actionItem.pfmeaRowId, pfmeaRow.id))
+      .innerJoin(pfmea, eq(pfmeaRow.pfmeaId, pfmea.id))
+      .innerJoin(part, eq(pfmea.partId, part.id))
+      .where(
+        and(
+          inArray(actionItem.status, ['open', 'in_progress']),
+          lt(actionItem.targetDate, now)
+        )
+      )
+      .orderBy(asc(actionItem.targetDate));
+      
+      res.json(items);
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });

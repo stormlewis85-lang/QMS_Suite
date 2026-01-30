@@ -1,4 +1,4 @@
-import { pgTable, text, integer, jsonb, timestamp, boolean, uuid, pgEnum, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, jsonb, timestamp, boolean, uuid, pgEnum, index, uniqueIndex, serial } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
 import { z } from 'zod';
@@ -812,7 +812,45 @@ export const pfmeaRelations = relations(pfmea, ({ one, many }) => ({
   autoReviews: many(autoReviewRun),
 }));
 
-export const pfmeaRowRelations = relations(pfmeaRow, ({ one }) => ({
+// Action Items for PFMEA Rows (AIAG-VDA Recommended Actions)
+export const actionItem = pgTable('action_item', {
+  id: serial('id').primaryKey(),
+  pfmeaRowId: uuid('pfmea_row_id').notNull().references(() => pfmeaRow.id, { onDelete: 'cascade' }),
+  actionType: text('action_type').notNull(), // 'prevention' | 'detection' | 'design' | 'process' | 'other'
+  description: text('description').notNull(),
+  responsiblePerson: text('responsible_person').notNull(),
+  responsibleRole: text('responsible_role'),
+  targetDate: timestamp('target_date').notNull(),
+  completedDate: timestamp('completed_date'),
+  status: text('status').notNull().default('open'), // 'open' | 'in_progress' | 'completed' | 'verified' | 'cancelled'
+  priority: text('priority').notNull().default('medium'), // 'low' | 'medium' | 'high' | 'critical'
+  completionNotes: text('completion_notes'),
+  evidenceDescription: text('evidence_description'),
+  evidenceAttachment: text('evidence_attachment'),
+  verifiedBy: text('verified_by'),
+  verifiedDate: timestamp('verified_date'),
+  verificationNotes: text('verification_notes'),
+  newSeverity: integer('new_severity'),
+  newOccurrence: integer('new_occurrence'),
+  newDetection: integer('new_detection'),
+  newAP: text('new_ap'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  pfmeaRowIdx: index('action_item_pfmea_row_idx').on(table.pfmeaRowId),
+  statusIdx: index('action_item_status_idx').on(table.status),
+  targetDateIdx: index('action_item_target_date_idx').on(table.targetDate),
+}));
+
+export const actionItemRelations = relations(actionItem, ({ one }) => ({
+  pfmeaRow: one(pfmeaRow, {
+    fields: [actionItem.pfmeaRowId],
+    references: [pfmeaRow.id],
+  }),
+}));
+
+export const pfmeaRowRelations = relations(pfmeaRow, ({ one, many }) => ({
   pfmea: one(pfmea, {
     fields: [pfmeaRow.pfmeaId],
     references: [pfmea.id],
@@ -821,6 +859,7 @@ export const pfmeaRowRelations = relations(pfmeaRow, ({ one }) => ({
     fields: [pfmeaRow.parentTemplateRowId],
     references: [fmeaTemplateRow.id],
   }),
+  actionItems: many(actionItem),
 }));
 
 export const controlPlanRelations = relations(controlPlan, ({ one, many }) => ({
@@ -973,6 +1012,7 @@ export const insertPfdSchema = createInsertSchema(pfd).omit({ id: true, createdA
 export const insertPfdStepSchema = createInsertSchema(pfdStep).omit({ id: true });
 export const insertPfmeaSchema = createInsertSchema(pfmea).omit({ id: true, createdAt: true });
 export const insertPfmeaRowSchema = createInsertSchema(pfmeaRow).omit({ id: true });
+export const insertActionItemSchema = createInsertSchema(actionItem).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertControlPlanSchema = createInsertSchema(controlPlan).omit({ id: true, createdAt: true });
 export const insertControlPlanRowSchema = createInsertSchema(controlPlanRow).omit({ id: true });
 export const insertPartProcessMapSchema = createInsertSchema(partProcessMap).omit({ id: true });
@@ -1016,6 +1056,8 @@ export type PFMEA = typeof pfmea.$inferSelect;
 export type InsertPFMEA = z.infer<typeof insertPfmeaSchema>;
 export type PFMEARow = typeof pfmeaRow.$inferSelect;
 export type InsertPFMEARow = z.infer<typeof insertPfmeaRowSchema>;
+export type ActionItem = typeof actionItem.$inferSelect;
+export type InsertActionItem = z.infer<typeof insertActionItemSchema>;
 export type ControlPlan = typeof controlPlan.$inferSelect;
 export type InsertControlPlan = z.infer<typeof insertControlPlanSchema>;
 export type ControlPlanRow = typeof controlPlanRow.$inferSelect;
