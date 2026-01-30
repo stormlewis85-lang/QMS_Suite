@@ -94,7 +94,9 @@ import { OwnershipPanel } from "@/components/OwnershipPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
 import ExportDialog from "@/components/ExportDialog";
 import ImportWizard from "@/components/ImportWizard";
-import { FileSpreadsheet, Upload } from "lucide-react";
+import ActionsPanel from "@/components/ActionsPanel";
+import ActionItemDialog from "@/components/ActionItemDialog";
+import { FileSpreadsheet, Upload, CheckCircle } from "lucide-react";
 
 const CURRENT_USER = {
   id: "user-001",
@@ -503,7 +505,7 @@ export default function PFMEADetail() {
   const [inlineEdits, setInlineEdits] = useState<RowEditState>({});
 
   // Fetch PFMEA details
-  const { data: pfmea, isLoading } = useQuery<PFMEAWithDetails>({
+  const { data: pfmea, isLoading, refetch } = useQuery<PFMEAWithDetails>({
     queryKey: ["/api/pfmeas", id, "details"],
     queryFn: async () => {
       const response = await fetch(`/api/pfmeas/${id}/details`);
@@ -512,6 +514,33 @@ export default function PFMEADetail() {
     },
     enabled: !!id,
   });
+
+  // Fetch action items for this PFMEA
+  const { data: allActionItems } = useQuery<any[]>({
+    queryKey: [`/api/pfmeas/${id}/action-items`],
+    enabled: !!id,
+  });
+
+  // State for action item dialog
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [selectedRowForAction, setSelectedRowForAction] = useState<any>(null);
+
+  // Helper to get action count for a row
+  const getActionCountForRow = (rowId: string | number) => {
+    if (!allActionItems) return { total: 0, open: 0, overdue: 0, completed: 0 };
+    
+    const rowActions = allActionItems.filter((a: any) => a.pfmeaRowId === rowId || a.pfmeaRowId === String(rowId));
+    const now = new Date();
+    
+    return {
+      total: rowActions.length,
+      open: rowActions.filter((a: any) => ['open', 'in_progress'].includes(a.status)).length,
+      overdue: rowActions.filter((a: any) => 
+        ['open', 'in_progress'].includes(a.status) && new Date(a.targetDate) < now
+      ).length,
+      completed: rowActions.filter((a: any) => ['completed', 'verified'].includes(a.status)).length,
+    };
+  };
 
   // Update row mutation
   const updateRowMutation = useMutation({
@@ -956,6 +985,7 @@ export default function PFMEADetail() {
                     <TableHead className="w-16 text-center">D</TableHead>
                     <TableHead className="w-16 text-center">AP</TableHead>
                     <TableHead className="w-12">CSR</TableHead>
+                    <TableHead className="w-24">Action Items</TableHead>
                     <TableHead className="w-20 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1023,6 +1053,46 @@ export default function PFMEADetail() {
                           </TableCell>
                           <TableCell>
                             <CSRSymbolBadge symbol={row.csrSymbol} />
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              const counts = getActionCountForRow(row.id);
+                              if (counts.total === 0) {
+                                return row.ap === 'H' ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-500 hover:text-red-700"
+                                    onClick={() => {
+                                      setSelectedRowForAction(row);
+                                      setActionDialogOpen(true);
+                                    }}
+                                    disabled={isReadOnly}
+                                  >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add
+                                  </Button>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                );
+                              }
+                              
+                              return (
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {counts.total}
+                                  </Badge>
+                                  {counts.overdue > 0 && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      {counts.overdue}!
+                                    </Badge>
+                                  )}
+                                  {counts.completed === counts.total && counts.total > 0 && (
+                                    <CheckCircle className="h-3 w-3 text-green-500" />
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
@@ -1212,6 +1282,12 @@ export default function PFMEADetail() {
               </Button>
             </CardContent>
           </Card>
+          
+          <ActionsPanel 
+            pfmeaId={id!} 
+            pfmeaRows={pfmea?.rows || []} 
+            isReadOnly={isReadOnly}
+          />
         </div>
       </div>
 
@@ -1260,6 +1336,23 @@ export default function PFMEADetail() {
           toast({ title: "Import Complete", description: "Rows have been added to the PFMEA." });
         }}
       />
+
+      {selectedRowForAction && (
+        <ActionItemDialog
+          open={actionDialogOpen}
+          onOpenChange={setActionDialogOpen}
+          pfmeaRowId={selectedRowForAction.id}
+          failureMode={selectedRowForAction.failureMode}
+          currentAP={selectedRowForAction.ap}
+          currentS={selectedRowForAction.severity}
+          currentO={selectedRowForAction.occurrence}
+          currentD={selectedRowForAction.detection}
+          onSuccess={() => {
+            refetch();
+            queryClient.invalidateQueries({ queryKey: [`/api/pfmeas/${id}/action-items`] });
+          }}
+        />
+      )}
     </div>
   );
 }

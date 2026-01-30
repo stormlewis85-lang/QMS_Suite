@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Settings,
   Upload,
+  Target,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 
@@ -77,6 +78,12 @@ const qualityNavItems = [
     url: "/import",
     icon: Upload,
     testId: "nav-import",
+  },
+  {
+    title: "Actions",
+    url: "/actions",
+    icon: Target,
+    testId: "nav-actions",
   },
 ];
 
