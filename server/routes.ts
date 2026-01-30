@@ -26,6 +26,9 @@ import { generateControlPlan } from "./services/control-plan-generator";
 import { calculateAP } from "./services/ap-calculator";
 import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { pfmea, controlPlan } from "@shared/schema";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -557,6 +560,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export PFMEA
+  app.get('/api/pfmeas/:id/export', async (req, res) => {
+    const { id } = req.params;
+    const format = (req.query.format as string) || 'pdf';
+    const includeSignatures = req.query.includeSignatures !== 'false';
+    
+    if (!['pdf', 'xlsx'].includes(format)) {
+      return res.status(400).json({ error: 'Invalid format. Use pdf or xlsx' });
+    }
+    
+    try {
+      const { exportService } = await import('./services/export-service');
+      const result = await exportService.export({
+        format: format as 'pdf' | 'xlsx',
+        documentType: 'pfmea',
+        documentId: id,
+        includeSignatures,
+        orientation: 'landscape',
+      });
+      
+      res.setHeader('Content-Type', result.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Length', result.buffer.length);
+      res.send(result.buffer);
+    } catch (error: any) {
+      console.error('Export failed:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Control Plans API
   app.get("/api/control-plans", async (req, res) => {
     try {
@@ -646,6 +679,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating control plan row:", error);
       res.status(500).json({ error: "Failed to update control plan row" });
+    }
+  });
+
+  // Export Control Plan
+  app.get('/api/control-plans/:id/export', async (req, res) => {
+    const { id } = req.params;
+    const format = (req.query.format as string) || 'pdf';
+    const includeSignatures = req.query.includeSignatures !== 'false';
+    
+    if (!['pdf', 'xlsx'].includes(format)) {
+      return res.status(400).json({ error: 'Invalid format. Use pdf or xlsx' });
+    }
+    
+    try {
+      const { exportService } = await import('./services/export-service');
+      const result = await exportService.export({
+        format: format as 'pdf' | 'xlsx',
+        documentType: 'control_plan',
+        documentId: id,
+        includeSignatures,
+        orientation: 'landscape',
+      });
+      
+      res.setHeader('Content-Type', result.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Length', result.buffer.length);
+      res.send(result.buffer);
+    } catch (error: any) {
+      console.error('Export failed:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk export for a part (all documents)
+  app.get('/api/parts/:id/export-all', async (req, res) => {
+    const { id } = req.params;
+    const format = (req.query.format as string) || 'xlsx';
+    
+    try {
+      const latestPfmea = await db.query.pfmea.findFirst({
+        where: eq(pfmea.partId, id),
+        orderBy: (p, { desc }) => [desc(p.createdAt)],
+      });
+      
+      const latestCP = await db.query.controlPlan.findFirst({
+        where: eq(controlPlan.partId, id),
+        orderBy: (cp, { desc }) => [desc(cp.createdAt)],
+      });
+      
+      if (!latestPfmea && !latestCP) {
+        return res.status(404).json({ error: 'No documents found for this part' });
+      }
+      
+      const { exportService } = await import('./services/export-service');
+      const exports: any = {};
+      
+      if (latestPfmea) {
+        const pfmeaExport = await exportService.export({
+          format: format as 'pdf' | 'xlsx',
+          documentType: 'pfmea',
+          documentId: latestPfmea.id,
+        });
+        exports.pfmea = {
+          filename: pfmeaExport.filename,
+          mimeType: pfmeaExport.mimeType,
+          base64: pfmeaExport.buffer.toString('base64'),
+        };
+      }
+      
+      if (latestCP) {
+        const cpExport = await exportService.export({
+          format: format as 'pdf' | 'xlsx',
+          documentType: 'control_plan',
+          documentId: latestCP.id,
+        });
+        exports.controlPlan = {
+          filename: cpExport.filename,
+          mimeType: cpExport.mimeType,
+          base64: cpExport.buffer.toString('base64'),
+        };
+      }
+      
+      res.json(exports);
+    } catch (error: any) {
+      console.error('Bulk export failed:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 
