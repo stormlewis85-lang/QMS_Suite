@@ -1,0 +1,92 @@
+Update client/src/pages/PFMEADetail.tsx to add export functionality:
+
+ADD IMPORT at top:
+import ExportDialog from '@/components/ExportDialog';
+
+FIND the header section and ADD export button:
+
+In the header area (near the title), add:
+
+<div className="flex items-center gap-2">
+  <ExportDialog
+    documentType="pfmea"
+    documentId={id!}
+    documentName={`${pfmeaData?.part?.partNumber || ''} Rev ${pfmeaData?.rev || ''}`}
+    trigger={
+      <Button variant="outline">
+        <Download className="h-4 w-4 mr-2" />
+        Export
+      </Button>
+    }
+  />
+  
+  {/* Quick export buttons */}
+  <Button 
+    variant="ghost" 
+    size="icon"
+    title="Export as PDF"
+    onClick={() => window.open(`/api/pfmeas/${id}/export?format=pdf`, '_blank')}
+  >
+    <FileText className="h-4 w-4" />
+  </Button>
+  <Button 
+    variant="ghost" 
+    size="icon"
+    title="Export as Excel"
+    onClick={() => window.open(`/api/pfmeas/${id}/export?format=xlsx`, '_blank')}
+  >
+    <FileSpreadsheet className="h-4 w-4" />
+  </Button>
+</div>
+
+ADD IMPORTS for icons:
+import { FileText, FileSpreadsheet, Download } from 'lucide-react';
+
+---
+
+Similarly update client/src/pages/ControlPlanDetail.tsx:
+
+ADD IMPORT:
+import ExportDialog from '@/components/ExportDialog';
+
+ADD export buttons in header:
+
+<div className="flex items-center gap-2">
+  <ExportDialog
+    documentType="control_plan"
+    documentId={id!}
+    documentName={`${controlPlanData?.part?.partNumber || ''} Rev ${controlPlanData?.rev || ''}`}
+  />
+</div>
+
+---
+
+Also add export option to the DocumentControlPanel sidebar:
+
+In the "Quick Actions" card section of DocumentControlPanel.tsx or the detail pages, add:
+
+<Card>
+  <CardHeader>
+    <CardTitle className="text-sm">Export</CardTitle>
+  </CardHeader>
+  <CardContent className="space-y-2">
+    <Button 
+      variant="outline" 
+      size="sm" 
+      className="w-full justify-start"
+      onClick={() => window.open(`/api/${documentType === 'pfmea' ? 'pfmeas' : 'control-plans'}/${documentId}/export?format=pdf`, '_blank')}
+    >
+      <FileText className="h-4 w-4 mr-2 text-red-500" />
+      Download PDF
+    </Button>
+    <Button 
+      variant="outline" 
+      size="sm" 
+      className="w-full justify-start"
+      onClick={() => window.open(`/api/${documentType === 'pfmea' ? 'pfmeas' : 'control-plans'}/${documentId}/export?format=xlsx`, '_blank')}
+    >
+      <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />
+      Download Excel
+    </Button>
+  </CardContent>
+</Card>
