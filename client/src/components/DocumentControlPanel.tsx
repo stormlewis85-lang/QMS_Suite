@@ -30,6 +30,7 @@ import {
   Download
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { SignaturesPanel } from '@/components/SignaturesPanel';
 
 interface DocumentControlPanelProps {
   documentType: 'pfmea' | 'control_plan';
@@ -518,43 +519,11 @@ export function DocumentControlPanel({
           </TabsContent>
           
           <TabsContent value="signatures" className="space-y-4">
-            {signatures && signatures.length > 0 ? (
-              <div className="space-y-3">
-                {signatures.map((sig: Signature) => (
-                  <div key={sig.id} className="flex items-center justify-between gap-2 p-3 border rounded-lg flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                        <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div>
-                        <p className="font-medium capitalize">{sig.role.replace('_', ' ')}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(sig.signedAt).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {sig.contentHash.slice(0, 8)}...
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6 text-muted-foreground">
-                <PenTool className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                <p>No signatures yet</p>
-              </div>
-            )}
-            
-            {currentStatus === 'review' && missingRoles.length > 0 && (
-              <Alert>
-                <Users className="h-4 w-4" />
-                <AlertTitle>Awaiting Signatures</AlertTitle>
-                <AlertDescription>
-                  {missingRoles.map(r => r.replace('_', ' ')).join(', ')}
-                </AlertDescription>
-              </Alert>
-            )}
+            <SignaturesPanel
+              entityType={documentType}
+              entityId={parseInt(documentId)}
+              status={currentStatus}
+            />
           </TabsContent>
           
           <TabsContent value="history">
