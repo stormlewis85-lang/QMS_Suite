@@ -108,13 +108,13 @@ function ViewDetailsButton({ partId }: { partId: string }) {
   const [, navigate] = useLocation();
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
-      data-testid={`button-view-details-${partId}`}
+      data-testid={`button-view-${partId}`}
       onClick={() => navigate(`/parts/${partId}`)}
     >
       <Eye className="h-4 w-4 mr-1" />
-      View Details
+      View
     </Button>
   );
 }
@@ -464,11 +464,14 @@ export default function PartsPage() {
                 {filteredParts.map((part) => (
                   <TableRow key={part.id} className="group">
                     <TableCell>
-                      <Link href={`/parts/${part.id}`}>
-                        <span className="font-medium text-primary hover:underline cursor-pointer">
-                          {part.partNumber}
-                        </span>
-                      </Link>
+                      <Button 
+                        variant="link" 
+                        className="font-mono font-medium p-0 h-auto"
+                        onClick={() => navigate(`/parts/${part.id}`)}
+                        data-testid={`link-part-${part.id}`}
+                      >
+                        {part.partNumber}
+                      </Button>
                     </TableCell>
                     <TableCell>{part.partName}</TableCell>
                     <TableCell>
