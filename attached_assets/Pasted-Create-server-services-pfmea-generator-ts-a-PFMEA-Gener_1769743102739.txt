@@ -1,0 +1,81 @@
+Create server/services/pfmea-generator.ts - a PFMEA Generator service following these exact specifications:
+
+IMPORTS:
+- Import db from '../db'
+- Import { pfmea, pfmeaRows, fmeaTemplateRows, processSteps } from '@shared/schema'
+- Import { calculateAP } from './ap-calculator'
+- Import { eq, inArray } from 'drizzle-orm'
+
+INTERFACE:
+interface GeneratePFMEAInput {
+  partId: string;
+  processDefIds: string[];
+  rev?: string;
+}
+
+interface GeneratePFMEAResult {
+  pfmea: typeof pfmea.$inferSelect;
+  rows: (typeof pfmeaRows.$inferSelect)[];
+  summary: {
+    totalRows: number;
+    highAP: number;
+    mediumAP: number;
+    lowAP: number;
+  };
+}
+
+FUNCTION: generatePFMEA(input: GeneratePFMEAInput): Promise<GeneratePFMEAResult>
+
+LOGIC:
+1. Validate partId exists in parts table, throw if not found
+2. Fetch all fmea_template_rows WHERE process_def_id IN processDefIds, JOIN with process_steps to get step name
+3. If no template rows found, throw error "No FMEA templates found for selected processes"
+4. Use db.transaction() for atomicity:
+   a. INSERT into pfmea table: { partId, rev: input.rev || '1.0.0', status: 'draft', basis: 'AIAG-VDA 2019' }
+   b. For each template row:
+      - Call calculateAP(severity, occurrence, detection)
+      - INSERT into pfmea_rows: {
+          pfmeaId: newPfmea.id,
+          parentTemplateRowId: template.id,
+          stepRef: processStep.name,
+          function: template.function,
+          requirement: template.requirement,
+          failureMode: template.failureMode,
+          effect: template.effect,
+          severity: template.severity,
+          cause: template.cause,
+          occurrence: template.occurrence,
+          preventionControls: template.preventionControls,
+          detectionControls: template.detectionControls,
+          detection: template.detection,
+          ap: calculatedAP.ap,
+          specialFlag: template.specialFlag,
+          csrSymbol: template.csrSymbol,
+          notes: null,
+          overrideFlags: {}
+        }
+5. Return created PFMEA, all rows, and summary counts
+
+ERROR HANDLING:
+- Wrap in try/catch
+- On error, transaction auto-rollbacks
+- Throw descriptive errors for validation failures
+
+Then add to server/routes.ts:
+
+app.post('/api/parts/:id/generate-pfmea', async (req, res) => {
+  const { id } = req.params;
+  const { processIds } = req.body;
+  
+  // Validate processIds is array of strings
+  if (!Array.isArray(processIds) || processIds.length === 0) {
+    return res.status(400).json({ error: 'processIds must be a non-empty array' });
+  }
+  
+  try {
+    const result = await generatePFMEA({ partId: id, processDefIds: processIds });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});

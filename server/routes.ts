@@ -21,6 +21,7 @@ import {
   advanceWorkflow
 } from "./change-package-service";
 import { runAllSeeds } from "./seed";
+import { generatePFMEA } from "./services/pfmea-generator";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -1293,6 +1294,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Auto-review error:", error);
       res.status(500).json({ message: "Failed to run auto-review" });
+    }
+  });
+
+  // Generate PFMEA from process templates
+  app.post("/api/parts/:id/generate-pfmea", async (req, res) => {
+    const { id } = req.params;
+    const { processIds } = req.body;
+
+    if (!Array.isArray(processIds) || processIds.length === 0) {
+      return res.status(400).json({ error: "processIds must be a non-empty array" });
+    }
+
+    try {
+      const result = await generatePFMEA({ partId: id, processDefIds: processIds });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error generating PFMEA:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
