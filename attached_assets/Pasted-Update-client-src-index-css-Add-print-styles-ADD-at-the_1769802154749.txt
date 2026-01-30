@@ -1,0 +1,354 @@
+Update client/src/index.css - Add print styles:
+
+ADD at the end of the file:
+
+/* ========== PRINT STYLES ========== */
+@media print {
+  /* Hide non-essential elements */
+  .no-print,
+  nav,
+  aside,
+  header,
+  footer,
+  button,
+  .sidebar,
+  [data-sidebar],
+  [role="navigation"] {
+    display: none !important;
+  }
+  
+  /* Reset layout */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+  
+  main {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .container {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  
+  /* Table styles */
+  table {
+    width: 100% !important;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+  
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 4px 8px !important;
+    text-align: left;
+  }
+  
+  th {
+    background-color: #f3f4f6 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* AP colors for print */
+  .ap-high {
+    background-color: #fee2e2 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .ap-medium {
+    background-color: #fef3c7 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .ap-low {
+    background-color: #dcfce7 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* Special characteristics */
+  .special-char {
+    background-color: #f3e8ff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* Badge colors for print */
+  .badge-high {
+    background-color: #ef4444 !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .badge-medium {
+    background-color: #f59e0b !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .badge-low {
+    background-color: #22c55e !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always;
+  }
+  
+  .page-break-after {
+    page-break-after: always;
+  }
+  
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+  
+  /* Cards for print */
+  .card {
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    margin-bottom: 16px;
+  }
+  
+  /* QR code section */
+  .qr-code-print {
+    display: block !important;
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #ccc;
+  }
+  
+  /* Header for printed documents */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #000;
+  }
+  
+  .print-header h1 {
+    font-size: 18pt;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+  
+  .print-header .doc-info {
+    font-size: 10pt;
+    color: #666;
+  }
+  
+  /* Footer for printed documents */
+  .print-footer {
+    display: block !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 9pt;
+    color: #666;
+    border-top: 1px solid #ccc;
+    padding-top: 8px;
+  }
+  
+  /* Links */
+  a {
+    color: black !important;
+    text-decoration: none !important;
+  }
+  
+  a[href]:after {
+    content: none !important;
+  }
+}
+
+/* Print-only elements (hidden on screen) */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+}
+
+---
+
+Create client/src/components/PrintHeader.tsx - Print header component:
+
+interface PrintHeaderProps {
+  title: string;
+  docNo?: string;
+  rev?: string;
+  status?: string;
+  partNumber?: string;
+  partName?: string;
+}
+
+export function PrintHeader({ title, docNo, rev, status, partNumber, partName }: PrintHeaderProps) {
+  return (
+    <div className="print-only print-header hidden">
+      <h1>{title}</h1>
+      <div className="doc-info">
+        {docNo && <span>Doc No: {docNo} | </span>}
+        {rev && <span>Rev: {rev} | </span>}
+        {status && <span>Status: {status} | </span>}
+        {partNumber && <span>Part: {partNumber} {partName && `- ${partName}`}</span>}
+      </div>
+      <div className="doc-info" style={{ marginTop: '4px' }}>
+        Printed: {new Date().toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+export default PrintHeader;
+
+---
+
+Create client/src/components/QRCode.tsx - QR code component:
+
+npm install qrcode.react
+
+import { QRCodeSVG } from 'qrcode.react';
+
+interface QRCodeProps {
+  value: string;
+  size?: number;
+  includeMargin?: boolean;
+  title?: string;
+}
+
+export function QRCode({ value, size = 100, includeMargin = true, title }: QRCodeProps) {
+  return (
+    <div className="qr-code-print print-only hidden text-center">
+      <QRCodeSVG 
+        value={value} 
+        size={size}
+        includeMargin={includeMargin}
+        level="M"
+      />
+      {title && (
+        <p className="text-xs text-muted-foreground mt-2">{title}</p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Scan to verify document
+      </p>
+    </div>
+  );
+}
+
+export default QRCode;
+
+---
+
+Update client/src/pages/PFMEADetail.tsx - Add print elements:
+
+ADD IMPORTS:
+import PrintHeader from '@/components/PrintHeader';
+import QRCode from '@/components/QRCode';
+
+ADD near the top of the return JSX (after the main container div):
+
+<PrintHeader
+  title="PROCESS FAILURE MODE AND EFFECTS ANALYSIS (PFMEA)"
+  docNo={pfmea?.docNo}
+  rev={pfmea?.rev}
+  status={pfmea?.status}
+  partNumber={pfmea?.part?.partNumber}
+  partName={pfmea?.part?.partName}
+/>
+
+ADD at the bottom of the page content (before closing container div):
+
+<QRCode 
+  value={`${window.location.origin}/pfmea/${id}`}
+  title={`PFMEA ${pfmea?.docNo || id}`}
+/>
+
+ADD print button to the header actions:
+
+<Button 
+  variant="outline" 
+  onClick={() => window.print()}
+  className="no-print"
+>
+  <Printer className="h-4 w-4 mr-2" />
+  Print
+</Button>
+
+ADD IMPORT:
+import { Printer } from 'lucide-react';
+
+ADD print-specific classes to table rows:
+
+// In the table row for each PFMEA row:
+<TableRow 
+  key={row.id} 
+  className={`avoid-break ${
+    row.ap === 'H' ? 'ap-high' : 
+    row.ap === 'M' ? 'ap-medium' : 
+    'ap-low'
+  }`}
+>
+
+---
+
+Similarly update client/src/pages/ControlPlanDetail.tsx:
+
+ADD IMPORTS:
+import PrintHeader from '@/components/PrintHeader';
+import QRCode from '@/components/QRCode';
+import { Printer } from 'lucide-react';
+
+ADD PrintHeader and QRCode:
+
+<PrintHeader
+  title="CONTROL PLAN"
+  docNo={controlPlan?.docNo}
+  rev={controlPlan?.rev}
+  status={controlPlan?.status}
+  partNumber={controlPlan?.part?.partNumber}
+  partName={controlPlan?.part?.partName}
+/>
+
+{/* At bottom */}
+<QRCode 
+  value={`${window.location.origin}/control-plans/${id}`}
+  title={`Control Plan ${controlPlan?.docNo || id}`}
+/>
+
+ADD Print button:
+
+<Button 
+  variant="outline" 
+  onClick={() => window.print()}
+  className="no-print"
+>
+  <Printer className="h-4 w-4 mr-2" />
+  Print
+</Button>
+
+ADD special-char class to special characteristic rows:
+
+<TableRow 
+  key={row.id} 
+  className={`avoid-break ${row.specialFlag ? 'special-char' : ''}`}
+>
