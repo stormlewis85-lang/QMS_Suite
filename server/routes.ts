@@ -349,6 +349,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/pfd/preview", async (req, res) => {
+    const { processIds } = req.body;
+    
+    if (!Array.isArray(processIds) || processIds.length === 0) {
+      return res.status(400).json({ error: 'processIds must be a non-empty array' });
+    }
+    
+    try {
+      const allSteps: { seq: number; name: string; area: string | null; processName: string | undefined }[] = [];
+      let stepNum = 10;
+      
+      for (const processId of processIds) {
+        const processWithSteps = await storage.getProcessWithSteps(processId);
+        if (!processWithSteps) continue;
+        const steps = processWithSteps.steps;
+        
+        for (const step of steps) {
+          allSteps.push({
+            seq: stepNum,
+            name: step.name,
+            area: step.area,
+            processName: processWithSteps.name,
+          });
+          stepNum += 10;
+        }
+      }
+      
+      let mermaid = 'graph TD\n';
+      mermaid += '  Start([Start]) --> ';
+      
+      allSteps.forEach((step, idx) => {
+        const nodeId = `S${step.seq}`;
+        const label = `${step.seq}: ${step.name}`;
+        
+        if (idx === 0) {
+          mermaid += `${nodeId}["${label}"]\n`;
+        } else {
+          const prevNodeId = `S${allSteps[idx - 1].seq}`;
+          mermaid += `  ${prevNodeId} --> ${nodeId}["${label}"]\n`;
+        }
+      });
+      
+      if (allSteps.length > 0) {
+        const lastNodeId = `S${allSteps[allSteps.length - 1].seq}`;
+        mermaid += `  ${lastNodeId} --> End([End])\n`;
+      }
+      
+      res.json({ mermaid, steps: allSteps });
+    } catch (error: any) {
+      console.error("Error generating PFD preview:", error);
+      res.status(500).json({ error: error.message || "Failed to generate PFD preview" });
+    }
+  });
+
   // PFMEA API
   app.get("/api/pfmea", async (req, res) => {
     try {
