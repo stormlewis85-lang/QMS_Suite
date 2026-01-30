@@ -93,7 +93,8 @@ import { SignatureStatusBadge } from "@/components/SignaturePanel";
 import { OwnershipPanel } from "@/components/OwnershipPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
 import ExportDialog from "@/components/ExportDialog";
-import { FileSpreadsheet } from "lucide-react";
+import ImportWizard from "@/components/ImportWizard";
+import { FileSpreadsheet, Upload } from "lucide-react";
 
 const CURRENT_USER = {
   id: "user-001",
@@ -497,6 +498,7 @@ export default function PFMEADetail() {
   // State
   const [editingRow, setEditingRow] = useState<PFMEARow | null>(null);
   const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [inlineEdits, setInlineEdits] = useState<RowEditState>({});
 
@@ -810,6 +812,16 @@ export default function PFMEADetail() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setImportWizardOpen(true)} 
+            disabled={isReadOnly}
+            data-testid="button-import-rows"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Import Rows
+          </Button>
+          
           <ExportDialog
             documentType="pfmea"
             documentId={id!}
@@ -1236,6 +1248,18 @@ export default function PFMEADetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        defaultType="pfmea"
+        pfmeaId={id}
+        onImportComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/pfmeas', id] });
+          setImportWizardOpen(false);
+          toast({ title: "Import Complete", description: "Rows have been added to the PFMEA." });
+        }}
+      />
     </div>
   );
 }

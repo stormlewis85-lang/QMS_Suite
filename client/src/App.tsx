@@ -25,6 +25,7 @@ import NewChangePackage from "@/pages/NewChangePackage";
 import FMEATemplateRowEdit from "@/pages/FMEATemplateRowEdit";
 import ControlTemplateRowEdit from "@/pages/ControlTemplateRowEdit";
 import AutoReview from "@/pages/AutoReview";
+import Import from "@/pages/Import";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -49,6 +50,7 @@ function Router() {
       <Route path="/change-packages/new" component={NewChangePackage} />
       <Route path="/change-packages/:id" component={ChangePackageDetail} />
       <Route path="/auto-review" component={AutoReview} />
+      <Route path="/import" component={Import} />
       <Route component={NotFound} />
     </Switch>
   );

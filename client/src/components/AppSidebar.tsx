@@ -22,6 +22,7 @@ import {
   Shield,
   ShieldCheck,
   Settings,
+  Upload,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 
@@ -70,6 +71,12 @@ const qualityNavItems = [
     url: "/auto-review",
     icon: ShieldCheck,
     testId: "nav-auto-review",
+  },
+  {
+    title: "Import",
+    url: "/import",
+    icon: Upload,
+    testId: "nav-import",
   },
 ];
 

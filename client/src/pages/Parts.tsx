@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import DataTableToolbar, { ActiveFilters, FilterConfig } from "@/components/DataTableToolbar";
+import ImportWizard from '@/components/ImportWizard';
 import {
   Card,
   CardContent,
@@ -75,6 +76,7 @@ import {
   Sparkles,
   Loader2,
   CheckCircle,
+  Upload,
 } from "lucide-react";
 import type { ProcessDef } from "@shared/schema";
 import type { Part, InsertPart } from "@shared/schema";
@@ -129,6 +131,7 @@ export default function PartsPage() {
   // State
   const [filters, setFilters] = useState<ActiveFilters>({ search: '' });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [deletePartId, setDeletePartId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<InsertPart>>({});
@@ -373,10 +376,16 @@ export default function PartsPage() {
             Manage parts and generate quality documents
           </p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Part
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setImportWizardOpen(true)} data-testid="button-import-excel">
+            <Upload className="h-4 w-4 mr-2" />
+            Import Excel
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-add-part">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Part
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -831,6 +840,15 @@ export default function PartsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        onImportComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/parts'] });
+          setImportWizardOpen(false);
+        }}
+      />
     </div>
   );
 }

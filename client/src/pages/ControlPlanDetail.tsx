@@ -92,7 +92,8 @@ import type { Part, ControlPlan, ControlPlanRow, InsertControlPlanRow } from "@s
 import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
 import ExportDialog from "@/components/ExportDialog";
-import { FileSpreadsheet, Download } from "lucide-react";
+import ImportWizard from "@/components/ImportWizard";
+import { FileSpreadsheet, Download, Upload } from "lucide-react";
 
 // Types
 interface ControlPlanWithDetails extends ControlPlan {
@@ -463,6 +464,7 @@ export default function ControlPlanDetail() {
   // State
   const [editingRow, setEditingRow] = useState<ControlPlanRow | null>(null);
   const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [inlineEdits, setInlineEdits] = useState<RowEditState>({});
 
@@ -731,6 +733,16 @@ export default function ControlPlanDetail() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setImportWizardOpen(true)} 
+            disabled={isReadOnly}
+            data-testid="button-import-characteristics"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Import Characteristics
+          </Button>
+          
           <ExportDialog
             documentType="control_plan"
             documentId={id!}
@@ -1203,6 +1215,18 @@ export default function ControlPlanDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        defaultType="control_plan"
+        controlPlanId={id}
+        onImportComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/control-plans', id] });
+          setImportWizardOpen(false);
+          toast({ title: "Import Complete", description: "Characteristics have been added." });
+        }}
+      />
     </div>
   );
 }
