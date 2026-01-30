@@ -20,6 +20,7 @@ import {
   Wrench,
   AlertTriangle,
   Shield,
+  ShieldCheck,
   Settings,
 } from "lucide-react";
 
@@ -59,6 +60,15 @@ const mainNavItems = [
     url: "/change-packages",
     icon: GitBranch,
     testId: "nav-change-packages",
+  },
+];
+
+const qualityNavItems = [
+  {
+    title: "Auto-Review",
+    url: "/auto-review",
+    icon: ShieldCheck,
+    testId: "nav-auto-review",
   },
 ];
 
@@ -125,6 +135,29 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={item.testId}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Quality */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Quality</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {qualityNavItems.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     asChild
