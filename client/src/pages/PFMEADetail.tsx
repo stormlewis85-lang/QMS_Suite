@@ -75,13 +75,16 @@ import {
   Clock,
   FileCheck,
   ShieldAlert,
+  ShieldCheck,
   ChevronDown,
   ChevronUp,
   Star,
   Copy,
   FileText,
   Download,
+  Lock,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { Part, PFMEA, PFMEARow, InsertPFMEARow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
@@ -687,9 +690,26 @@ export default function PFMEADetail() {
     );
   }
 
+  const isReadOnly = pfmea.status === 'effective' || pfmea.status === 'superseded';
+
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
+    <div className="p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Main Content - 3 columns */}
+        <div className="lg:col-span-3 space-y-6">
+          {/* Locked Document Banner */}
+          {isReadOnly && (
+            <Alert className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950">
+              <Lock className="h-4 w-4" />
+              <AlertTitle>Document Locked</AlertTitle>
+              <AlertDescription>
+                This {pfmea.status} document cannot be edited.
+                {pfmea.status === 'effective' && ' Create a new revision to make changes.'}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" asChild>
@@ -1016,41 +1036,6 @@ export default function PFMEADetail() {
         />
       </div>
 
-      {/* Document Control Section */}
-      <Separator className="my-8" />
-      
-      <div className="grid gap-6 md:grid-cols-2">
-        <DocumentControlPanel
-          documentType="pfmea"
-          documentId={pfmea.id}
-          currentStatus={pfmea.status}
-          currentRev={pfmea.rev}
-          docNo={pfmea.docNo}
-          onStatusChange={() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/pfmeas", id] });
-          }}
-        />
-        
-        <div className="space-y-6">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <h2 className="text-xl font-semibold">Document Governance</h2>
-            <div className="flex items-center gap-4">
-              <OwnershipPanel
-                entityType="pfmea"
-                entityId={pfmea.id}
-                currentUserId={CURRENT_USER.id}
-                currentUserName={CURRENT_USER.name}
-                currentUserEmail={CURRENT_USER.email}
-                compact
-              />
-              <SignatureStatusBadge
-                status={pfmea.status}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
       <GovernanceTabPanel
         entityType="pfmea"
         entityId={pfmea.id}
@@ -1069,6 +1054,45 @@ export default function PFMEADetail() {
           queryClient.invalidateQueries({ queryKey: ["/api/pfmeas"] });
         }}
       />
+        </div>
+
+        {/* Sidebar - 1 column */}
+        <div className="lg:col-span-1 space-y-4">
+          <DocumentControlPanel
+            documentType="pfmea"
+            documentId={pfmea.id}
+            currentStatus={pfmea.status}
+            currentRev={pfmea.rev}
+            docNo={pfmea.docNo}
+            onStatusChange={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/pfmeas", id, "details"] });
+            }}
+          />
+          
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button variant="outline" size="sm" className="w-full justify-start" data-testid="button-export-pdf">
+                <FileText className="h-4 w-4 mr-2" />
+                Export to PDF
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full justify-start"
+                onClick={() => recalculateMutation.mutate()}
+                disabled={recalculateMutation.isPending || isReadOnly}
+                data-testid="button-recalculate-ap"
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Recalculate AP
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Row Editor Dialog */}
       <RowEditorDialog

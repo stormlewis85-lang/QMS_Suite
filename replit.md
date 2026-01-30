@@ -30,11 +30,25 @@ The application uses a modern web stack:
 - **Auto-Review & Change Management**: `auto_review_run`, `auto_review_finding`, `change_package`, `change_package_item`, `change_package_approval`, `change_package_propagation`.
 - **Library Entities**: `failure_modes_library`, `controls_library`, `control_pairings`, `fmea_template_catalog_link`.
 
-**Recent Schema Updates** (Jan 2025 - Phase 9):
+**Recent Updates** (Jan 2025 - Phase 10):
+- **Document Control Panel**: New sidebar component on PFMEA/Control Plan detail pages with:
+  - Status tab: Submit for review, add signatures, approve, create revisions
+  - Signatures tab: View collected signatures with content hashes, track missing required signatures
+  - History tab: Audit log entries and revision history with navigation
+  - Read-only mode: Locked document banner for effective/superseded documents
+  - Quick actions: Export to PDF, recalculate AP / validate plan buttons
+- **Document Control API**: Full lifecycle management endpoints:
+  - `/api/documents/:type/:id/submit-for-review` - Submit and assign document number
+  - `/api/documents/:type/:id/signatures` - Add/get digital signatures
+  - `/api/documents/:type/:id/approve` - Approve with required signatures
+  - `/api/documents/:type/:id/revise` - Create new revision from effective document
+  - `/api/documents/:type/:id/audit-log` - Get audit history
+- **2-Column Layout**: Detail pages now use sidebar layout with DocumentControlPanel
+
+**Previous Updates** (Jan 2025 - Phase 9):
 - Added Auto-Review system with `auto_review_run` and `auto_review_finding` tables for automated compliance validation
 - Enhanced Change Management with new approval workflow (`change_package_approval`) and propagation tracking (`change_package_propagation`)
 - Updated `change_package` with impact analysis, before/after snapshots, and redline JSON support
-- Removed deprecated governance tables (audit_log, signature, approval_matrix, ownership, training_ack)
 - Auto-scoring metadata in PFMEA/template rows: effectCategory, severityJustification, occurrenceMethod, detectionControlId
 - Enhanced failure modes library with effectCategory, severityMin/severityMax
 - Enhanced controls library with controlCategory, detectionMin/detectionMax
