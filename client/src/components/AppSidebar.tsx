@@ -26,6 +26,7 @@ import {
   Target,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
+import NotificationBell from "./NotificationBell";
 
 const mainNavItems = [
   {
@@ -130,17 +131,20 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b px-6 py-4">
-        <Link href="/">
-          <div className="flex items-center gap-2 cursor-pointer">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <FileWarning className="h-5 w-5 text-primary-foreground" />
+        <div className="flex items-center justify-between">
+          <Link href="/">
+            <div className="flex items-center gap-2 cursor-pointer">
+              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                <FileWarning className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm">PFMEA Suite</span>
+                <span className="text-xs text-muted-foreground">QMS Platform</span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="font-semibold text-sm">PFMEA Suite</span>
-              <span className="text-xs text-muted-foreground">QMS Platform</span>
-            </div>
-          </div>
-        </Link>
+          </Link>
+          <NotificationBell />
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
