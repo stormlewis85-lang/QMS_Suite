@@ -564,6 +564,24 @@ export default function PFMEADetail() {
     },
   });
 
+  // Copy row mutation
+  const copyRowMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      const response = await fetch(`/api/pfmea-rows/${rowId}/copy`, {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error('Failed to copy row');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pfmeas", id, "details"] });
+      toast({ title: "Row Copied", description: "A copy has been created below." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to copy row", variant: "destructive" });
+    },
+  });
+
   // Recalculate AP mutation
   const recalculateMutation = useMutation({
     mutationFn: async () => {
@@ -962,7 +980,10 @@ export default function PFMEADetail() {
                                     <Edit className="h-4 w-4 mr-2" />
                                     Edit Full Row
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => copyRowMutation.mutate(row.id)}
+                                    disabled={isReadOnly || copyRowMutation.isPending}
+                                  >
                                     <Copy className="h-4 w-4 mr-2" />
                                     Duplicate
                                   </DropdownMenuItem>

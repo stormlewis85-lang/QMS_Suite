@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { 
   runAutoReview as runAutoReviewService, 
@@ -28,7 +29,7 @@ import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { pfmea, controlPlan } from "@shared/schema";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow } from "@shared/schema";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -560,6 +561,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Copy PFMEA Row
+  app.post('/api/pfmea-rows/:id/copy', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+      const original = await db.query.pfmeaRow.findFirst({
+        where: eq(pfmeaRow.id, id),
+      });
+      
+      if (!original) {
+        return res.status(404).json({ error: 'Row not found' });
+      }
+      
+      const [newRow] = await db.insert(pfmeaRow).values({
+        id: randomUUID(),
+        pfmeaId: original.pfmeaId,
+        parentTemplateRowId: original.parentTemplateRowId,
+        stepRef: original.stepRef,
+        function: original.function,
+        requirement: original.requirement,
+        failureMode: `${original.failureMode} (Copy)`,
+        effect: original.effect,
+        severity: original.severity,
+        cause: original.cause,
+        occurrence: original.occurrence,
+        preventionControls: original.preventionControls,
+        detectionControls: original.detectionControls,
+        detection: original.detection,
+        ap: original.ap,
+        specialFlag: original.specialFlag,
+        csrSymbol: original.csrSymbol,
+        overrideFlags: {},
+        notes: original.notes,
+      }).returning();
+      
+      res.json(newRow);
+    } catch (error: any) {
+      console.error('Error copying PFMEA row:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Export PFMEA
   app.get('/api/pfmeas/:id/export', async (req, res) => {
     const { id } = req.params;
@@ -679,6 +722,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating control plan row:", error);
       res.status(500).json({ error: "Failed to update control plan row" });
+    }
+  });
+
+  // Copy Control Plan Row
+  app.post('/api/control-plan-rows/:id/copy', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+      const original = await db.query.controlPlanRow.findFirst({
+        where: eq(controlPlanRow.id, id),
+      });
+      
+      if (!original) {
+        return res.status(404).json({ error: 'Row not found' });
+      }
+      
+      // Generate new char ID
+      const existingRows = await db.query.controlPlanRow.findMany({
+        where: eq(controlPlanRow.controlPlanId, original.controlPlanId),
+      });
+      const maxCharNum = Math.max(...existingRows.map(r => {
+        const match = r.charId?.match(/\d+/);
+        return match ? parseInt(match[0]) : 0;
+      }), 0);
+      const newCharId = `C-${(maxCharNum + 1).toString().padStart(3, '0')}`;
+      
+      const [newRow] = await db.insert(controlPlanRow).values({
+        id: randomUUID(),
+        controlPlanId: original.controlPlanId,
+        sourcePfmeaRowId: original.sourcePfmeaRowId,
+        parentControlTemplateRowId: original.parentControlTemplateRowId,
+        charId: newCharId,
+        characteristicName: `${original.characteristicName} (Copy)`,
+        type: original.type,
+        target: original.target,
+        tolerance: original.tolerance,
+        specialFlag: original.specialFlag,
+        csrSymbol: original.csrSymbol,
+        measurementSystem: original.measurementSystem,
+        gageDetails: original.gageDetails,
+        sampleSize: original.sampleSize,
+        frequency: original.frequency,
+        controlMethod: original.controlMethod,
+        acceptanceCriteria: original.acceptanceCriteria,
+        reactionPlan: original.reactionPlan,
+        overrideFlags: {},
+      }).returning();
+      
+      res.json(newRow);
+    } catch (error: any) {
+      console.error('Error copying Control Plan row:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 

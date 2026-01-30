@@ -537,6 +537,24 @@ export default function ControlPlanDetail() {
     },
   });
 
+  // Copy row mutation
+  const copyRowMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      const response = await fetch(`/api/control-plan-rows/${rowId}/copy`, {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error('Failed to copy row');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/control-plans", id, "details"] });
+      toast({ title: "Characteristic Copied", description: "A copy has been created." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to copy", variant: "destructive" });
+    },
+  });
+
   // Validate mutation
   const validateMutation = useMutation({
     mutationFn: async () => {
@@ -985,7 +1003,10 @@ export default function ControlPlanDetail() {
                                     <Edit className="h-4 w-4 mr-2" />
                                     Edit Full Row
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => copyRowMutation.mutate(row.id)}
+                                    disabled={isReadOnly || copyRowMutation.isPending}
+                                  >
                                     <Copy className="h-4 w-4 mr-2" />
                                     Duplicate
                                   </DropdownMenuItem>

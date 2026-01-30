@@ -1,0 +1,360 @@
+Add to server/routes.ts - Dashboard metrics endpoint:
+
+// Dashboard metrics
+app.get('/api/dashboard/metrics', async (req, res) => {
+  try {
+    // Total counts
+    const allParts = await db.select().from(part);
+    const allPfmeas = await db.select().from(pfmea);
+    const allControlPlans = await db.select().from(controlPlan);
+    const allPfmeaRows = await db.select().from(pfmeaRows);
+    
+    // Status breakdowns
+    const pfmeaByStatus = {
+      draft: allPfmeas.filter(p => p.status === 'draft').length,
+      review: allPfmeas.filter(p => p.status === 'review').length,
+      effective: allPfmeas.filter(p => p.status === 'effective').length,
+      superseded: allPfmeas.filter(p => p.status === 'superseded').length,
+    };
+    
+    const cpByStatus = {
+      draft: allControlPlans.filter(c => c.status === 'draft').length,
+      review: allControlPlans.filter(c => c.status === 'review').length,
+      effective: allControlPlans.filter(c => c.status === 'effective').length,
+      superseded: allControlPlans.filter(c => c.status === 'superseded').length,
+    };
+    
+    // AP distribution
+    const apDistribution = {
+      high: allPfmeaRows.filter(r => r.ap === 'H').length,
+      medium: allPfmeaRows.filter(r => r.ap === 'M').length,
+      low: allPfmeaRows.filter(r => r.ap === 'L').length,
+    };
+    
+    // Documents pending review (in review status)
+    const pendingReview = allPfmeas.filter(p => p.status === 'review').length +
+                          allControlPlans.filter(c => c.status === 'review').length;
+    
+    // High AP items needing attention (in draft documents)
+    const draftPfmeaIds = allPfmeas.filter(p => p.status === 'draft').map(p => p.id);
+    const highAPInDraft = allPfmeaRows.filter(
+      r => r.ap === 'H' && draftPfmeaIds.includes(r.pfmeaId)
+    ).length;
+    
+    // Recent activity (last 10 audit entries)
+    const recentActivity = await db.select()
+      .from(auditLog)
+      .orderBy(desc(auditLog.at))
+      .limit(10);
+    
+    // Parts without documents
+    const partsWithPfmea = new Set(allPfmeas.map(p => p.partId));
+    const partsWithoutPfmea = allParts.filter(p => !partsWithPfmea.has(p.id)).length;
+    
+    res.json({
+      summary: {
+        totalParts: allParts.length,
+        totalPfmeas: allPfmeas.length,
+        totalControlPlans: allControlPlans.length,
+        totalFailureModes: allPfmeaRows.length,
+        pendingReview,
+        highAPItems: apDistribution.high,
+        highAPInDraft,
+        partsWithoutPfmea,
+      },
+      pfmeaByStatus,
+      cpByStatus,
+      apDistribution,
+      recentActivity: recentActivity.map(a => ({
+        id: a.id,
+        action: a.action,
+        entityType: a.entityType,
+        entityId: a.entityId,
+        actor: a.actor,
+        at: a.at,
+      })),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+---
+
+Update client/src/pages/Dashboard.tsx - Replace placeholder with real data:
+
+FULL REPLACEMENT:
+
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { 
+  LayoutDashboard, 
+  Package, 
+  FileText, 
+  ClipboardList,
+  AlertTriangle,
+  Clock,
+  CheckCircle,
+  TrendingUp,
+  Activity,
+  ArrowRight,
+  FileWarning
+} from 'lucide-react';
+import { Link } from 'wouter';
+
+export default function Dashboard() {
+  const { data: metrics, isLoading } = useQuery({
+    queryKey: ['/api/dashboard/metrics'],
+  });
+  
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-gray-200 rounded w-48"></div>
+          <div className="grid grid-cols-4 gap-4">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="h-32 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  const { summary, pfmeaByStatus, cpByStatus, apDistribution, recentActivity } = metrics || {};
+  
+  const formatAction = (action: string) => {
+    const labels: Record<string, string> = {
+      'status_changed': 'Status Changed',
+      'signature_added': 'Signature Added',
+      'revision_created': 'Revision Created',
+      'exported': 'Document Exported',
+      'doc_number_assigned': 'Doc Number Assigned',
+    };
+    return labels[action] || action;
+  };
+  
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <LayoutDashboard className="h-8 w-8" />
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground">PFMEA Suite Overview</p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/parts">
+            <Button>
+              <Package className="h-4 w-4 mr-2" />
+              View Parts
+            </Button>
+          </Link>
+        </div>
+      </div>
+      
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Parts</CardDescription>
+            <CardTitle className="text-3xl">{summary?.totalParts || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xs text-muted-foreground">
+              {summary?.partsWithoutPfmea || 0} without PFMEA
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total Failure Modes</CardDescription>
+            <CardTitle className="text-3xl">{summary?.totalFailureModes || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <Badge variant="destructive" className="text-xs">{apDistribution?.high || 0} High</Badge>
+              <Badge variant="outline" className="bg-yellow-50 text-xs">{apDistribution?.medium || 0} Med</Badge>
+              <Badge variant="outline" className="bg-green-50 text-xs">{apDistribution?.low || 0} Low</Badge>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className={summary?.pendingReview > 0 ? 'border-yellow-300 bg-yellow-50' : ''}>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Pending Review
+            </CardDescription>
+            <CardTitle className="text-3xl">{summary?.pendingReview || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xs text-muted-foreground">
+              Documents awaiting signatures
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className={summary?.highAPInDraft > 0 ? 'border-red-300 bg-red-50' : ''}>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              High AP in Draft
+            </CardDescription>
+            <CardTitle className="text-3xl">{summary?.highAPInDraft || 0}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xs text-muted-foreground">
+              Require action before release
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Status Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* PFMEA Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5" />
+              PFMEA Documents
+            </CardTitle>
+            <CardDescription>{summary?.totalPfmeas || 0} total</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-gray-400"></span>
+                  Draft
+                </span>
+                <span>{pfmeaByStatus?.draft || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
+                  In Review
+                </span>
+                <span>{pfmeaByStatus?.review || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                  Effective
+                </span>
+                <span>{pfmeaByStatus?.effective || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-400"></span>
+                  Superseded
+                </span>
+                <span>{pfmeaByStatus?.superseded || 0}</span>
+              </div>
+            </div>
+            <Link href="/pfmea">
+              <Button variant="outline" size="sm" className="w-full mt-2">
+                View All PFMEAs
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+        
+        {/* Control Plan Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ClipboardList className="h-5 w-5" />
+              Control Plans
+            </CardTitle>
+            <CardDescription>{summary?.totalControlPlans || 0} total</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-gray-400"></span>
+                  Draft
+                </span>
+                <span>{cpByStatus?.draft || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
+                  In Review
+                </span>
+                <span>{cpByStatus?.review || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                  Effective
+                </span>
+                <span>{cpByStatus?.effective || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-400"></span>
+                  Superseded
+                </span>
+                <span>{cpByStatus?.superseded || 0}</span>
+              </div>
+            </div>
+            <Link href="/control-plans">
+              <Button variant="outline" size="sm" className="w-full mt-2">
+                View All Control Plans
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Activity className="h-5 w-5" />
+            Recent Activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recentActivity && recentActivity.length > 0 ? (
+            <div className="space-y-3">
+              {recentActivity.map((activity: any) => (
+                <div key={activity.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-primary"></div>
+                    <div>
+                      <p className="text-sm font-medium">{formatAction(activity.action)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {activity.entityType} • {activity.actor}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(activity.at).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Activity className="h-8 w-8 mx-auto mb-2 opacity-20" />
+              <p>No recent activity</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
