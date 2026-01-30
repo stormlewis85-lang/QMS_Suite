@@ -1,0 +1,84 @@
+Create server/services/import-service.ts - Excel parsing and validation service:
+
+IMPORTS:
+import ExcelJS from 'exceljs';
+import { db } from '../db';
+import { 
+  part, 
+  pfmea, 
+  pfmeaRows, 
+  controlPlan, 
+  controlPlanRows,
+  processDef,
+  processStep 
+} from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import { apCalculatorService } from './ap-calculator';
+
+INTERFACES:
+export type ImportType = 'pfmea' | 'control_plan' | 'process_flow' | 'auto_detect';
+
+export interface ColumnMapping {
+  sourceColumn: string;
+  targetField: string;
+  transform?: 'none' | 'number' | 'array' | 'boolean';
+}
+
+export interface ImportValidationError {
+  row: number;
+  column: string;
+  value: any;
+  error: string;
+  severity: 'error' | 'warning';
+}
+
+export interface ImportPreviewRow {
+  rowNumber: number;
+  data: Record<string, any>;
+  errors: ImportValidationError[];
+  warnings: ImportValidationError[];
+}
+
+export interface ImportPreview {
+  type: ImportType;
+  filename: string;
+  sheetName: string;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  columns: string[];
+  suggestedMapping: ColumnMapping[];
+  preview: ImportPreviewRow[];
+  canImport: boolean;
+}
+
+export interface ImportResult {
+  success: boolean;
+  importedCount: number;
+  skippedCount: number;
+  errors: ImportValidationError[];
+  createdIds: string[];
+}
+
+export interface ImportOptions {
+  type: ImportType;
+  partId?: string;
+  pfmeaId?: string;
+  controlPlanId?: string;
+  mapping: ColumnMapping[];
+  skipInvalidRows: boolean;
+  createNewDocument: boolean;
+}
+
+// Standard AIAG column mappings
+const PFMEA_COLUMN_PATTERNS: Record<string, string[]> = {
+  'stepRef': ['step', 'process step', 'operation', 'op #', 'op no', 'station'],
+  'function': ['function', 'process function', 'item function'],
+  'requirement': ['requirement', 'requirements', 'spec', 'specification'],
+  'failureMode': ['failure mode', 'potential failure mode', 'failure', 'fm'],
+  'effect': ['effect', 'potential effect', 'effects', 'effect of failure'],
+  'severity': ['severity', 'sev', 's', 'severity rating'],
+  'cause': ['cause', 'potential cause', 'causes', 'cause of failure'],
+  'occurrence': ['occurrence', 'occ', 'o', 'occurrence rating'],
+  'preventionControls': ['prevention', 'prevention control', 'current control prevention', 'prevention controls'],
+  'detectionControls': ['detec

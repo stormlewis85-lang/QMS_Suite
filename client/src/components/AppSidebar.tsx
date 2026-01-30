@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Settings,
 } from "lucide-react";
+import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 
 const mainNavItems = [
   {
@@ -216,6 +217,9 @@ export function AppSidebar() {
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
+        <div className="px-2 pb-2">
+          <KeyboardShortcutsHelp />
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

@@ -62,6 +62,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import {
   ArrowLeft,
   Save,
@@ -633,6 +634,60 @@ export default function PFMEADetail() {
       });
     },
   });
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    {
+      key: 's',
+      ctrl: true,
+      description: 'Save changes',
+      action: () => {
+        if (editingRow && inlineEdits[editingRow.id]) {
+          const edits = inlineEdits[editingRow.id];
+          const data: Partial<InsertPFMEARow> = {
+            ...edits,
+            ap: calculateAP(
+              (edits.severity ?? editingRow.severity) as number,
+              (edits.occurrence ?? editingRow.occurrence) as number,
+              (edits.detection ?? editingRow.detection) as number
+            ),
+          };
+          updateRowMutation.mutate({ rowId: editingRow.id, data });
+        }
+      },
+    },
+    {
+      key: 'Escape',
+      description: 'Cancel edit',
+      action: () => {
+        if (editingRow) {
+          setEditingRow(null);
+          setInlineEdits({});
+        }
+      },
+    },
+    {
+      key: 'p',
+      ctrl: true,
+      description: 'Export PDF',
+      action: () => {
+        if (id) {
+          window.open(`/api/pfmeas/${id}/export?format=pdf`, '_blank');
+        }
+      },
+    },
+    {
+      key: 'p',
+      ctrl: true,
+      shift: true,
+      description: 'Export Excel',
+      action: () => {
+        if (id) {
+          window.open(`/api/pfmeas/${id}/export?format=xlsx`, '_blank');
+        }
+      },
+    },
+  ]);
 
   // Handle inline rating change
   const handleInlineRatingChange = (
