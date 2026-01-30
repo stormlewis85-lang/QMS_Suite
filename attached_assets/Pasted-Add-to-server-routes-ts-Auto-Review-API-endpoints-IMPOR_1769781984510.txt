@@ -1,0 +1,94 @@
+Add to server/routes.ts - Auto-Review API endpoints:
+
+IMPORTS (add at top):
+import { runAutoReview } from './services/auto-review';
+
+ENDPOINTS:
+
+// Run auto-review for PFMEA (optionally with Control Plan)
+app.post('/api/auto-review', async (req, res) => {
+  const { pfmeaId, controlPlanId, options } = req.body;
+  
+  if (!pfmeaId) {
+    return res.status(400).json({ error: 'pfmeaId is required' });
+  }
+  
+  try {
+    const result = await runAutoReview({
+      pfmeaId,
+      controlPlanId,
+      options,
+    });
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Auto-review failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Run auto-review for a part (uses latest PFMEA and Control Plan)
+app.post('/api/parts/:id/auto-review', async (req, res) => {
+  const { id } = req.params;
+  const { options } = req.body;
+  
+  try {
+    // Get latest PFMEA for part
+    const latestPfmea = await db.query.pfmea.findFirst({
+      where: eq(pfmea.partId, id),
+      orderBy: (p, { desc }) => [desc(p.createdAt)],
+    });
+    
+    if (!latestPfmea) {
+      return res.status(404).json({ error: 'No PFMEA found for this part' });
+    }
+    
+    // Get latest Control Plan for part
+    const latestCP = await db.query.controlPlan.findFirst({
+      where: eq(controlPlan.partId, id),
+      orderBy: (cp, { desc }) => [desc(cp.createdAt)],
+    });
+    
+    const result = await runAutoReview({
+      pfmeaId: latestPfmea.id,
+      controlPlanId: latestCP?.id,
+      options,
+    });
+    
+    res.json(result);
+  } catch (error: any) {
+    console.error('Auto-review failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get auto-review summary for dashboard
+app.get('/api/auto-review/summary', async (req, res) => {
+  try {
+    // Get all parts with their latest documents
+    const parts = await db.query.part.findMany({
+      with: {
+        pfmeas: {
+          orderBy: (p, { desc }) => [desc(p.createdAt)],
+          limit: 1,
+        },
+        controlPlans: {
+          orderBy: (cp, { desc }) => [desc(cp.createdAt)],
+          limit: 1,
+        },
+      },
+    });
+    
+    const summary = {
+      totalParts: parts.length,
+      partsWithPfmea: parts.filter(p => p.pfmeas.length > 0).length,
+      partsWithCP: parts.filter(p => p.controlPlans.length > 0).length,
+      partsNeedingReview: 0,
+      lastReviewDate: null as string | null,
+    };
+    
+    res.json(summary);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});

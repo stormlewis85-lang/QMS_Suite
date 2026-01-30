@@ -255,8 +255,8 @@ export default function PartsPage() {
   });
 
   // Get unique values for filters
-  const uniqueCustomers = [...new Set(parts.map((p) => p.customer))];
-  const uniquePlants = [...new Set(parts.map((p) => p.plant))];
+  const uniqueCustomers = Array.from(new Set(parts.map((p) => p.customer)));
+  const uniquePlants = Array.from(new Set(parts.map((p) => p.plant)));
 
   // Summary stats
   const stats = {
@@ -464,14 +464,13 @@ export default function PartsPage() {
                 {filteredParts.map((part) => (
                   <TableRow key={part.id} className="group">
                     <TableCell>
-                      <Button 
-                        variant="link" 
-                        className="font-mono font-medium p-0 h-auto"
+                      <button 
+                        className="font-mono font-medium text-primary hover:underline cursor-pointer bg-transparent border-none p-0"
                         onClick={() => navigate(`/parts/${part.id}`)}
                         data-testid={`link-part-${part.id}`}
                       >
                         {part.partNumber}
-                      </Button>
+                      </button>
                     </TableCell>
                     <TableCell>{part.partName}</TableCell>
                     <TableCell>
