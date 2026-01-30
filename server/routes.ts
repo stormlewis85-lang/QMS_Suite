@@ -25,6 +25,7 @@ import { generatePFMEA } from "./services/pfmea-generator";
 import { generateControlPlan } from "./services/control-plan-generator";
 import { calculateAP } from "./services/ap-calculator";
 import { autoReviewService } from "./services/auto-review";
+import { documentControlService } from "./services/document-control";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -2112,6 +2113,244 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to cancel package' 
       });
+    }
+  });
+
+  // ==========================================
+  // Document Control Endpoints
+  // ==========================================
+
+  // Transition document status
+  app.post('/api/documents/:type/:id/status', async (req, res) => {
+    const { type, id } = req.params;
+    const { newStatus, comment } = req.body;
+    const userId = req.headers['x-user-id'] as string || 'system';
+    
+    if (!['pfmea', 'control_plan'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid document type' });
+    }
+    
+    if (!newStatus) {
+      return res.status(400).json({ error: 'newStatus is required' });
+    }
+    
+    try {
+      const result = await documentControlService.transitionStatus({
+        documentType: type as 'pfmea' | 'control_plan',
+        documentId: id,
+        newStatus,
+        userId,
+        comment,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Submit for review (convenience endpoint)
+  app.post('/api/documents/:type/:id/submit-for-review', async (req, res) => {
+    const { type, id } = req.params;
+    const userId = req.headers['x-user-id'] as string || 'system';
+    
+    try {
+      await documentControlService.assignDocNumber(type as any, id);
+      
+      const result = await documentControlService.transitionStatus({
+        documentType: type as 'pfmea' | 'control_plan',
+        documentId: id,
+        newStatus: 'review',
+        userId,
+        comment: 'Submitted for review',
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Approve and make effective (convenience endpoint)
+  app.post('/api/documents/:type/:id/approve', async (req, res) => {
+    const { type, id } = req.params;
+    const userId = req.headers['x-user-id'] as string || 'system';
+    const { comment } = req.body;
+    
+    try {
+      const result = await documentControlService.transitionStatus({
+        documentType: type as 'pfmea' | 'control_plan',
+        documentId: id,
+        newStatus: 'effective',
+        userId,
+        comment: comment || 'Approved',
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Create new revision
+  app.post('/api/documents/:type/:id/revise', async (req, res) => {
+    const { type, id } = req.params;
+    const { reason } = req.body;
+    const userId = req.headers['x-user-id'] as string || 'system';
+    
+    if (!reason) {
+      return res.status(400).json({ error: 'reason is required' });
+    }
+    
+    try {
+      const result = await documentControlService.createRevision({
+        documentType: type as 'pfmea' | 'control_plan',
+        documentId: id,
+        reason,
+        userId,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Get revision history
+  app.get('/api/documents/:type/:id/revisions', async (req, res) => {
+    const { type, id } = req.params;
+    
+    try {
+      const history = await documentControlService.getRevisionHistory(
+        type as 'pfmea' | 'control_plan',
+        id
+      );
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Add signature
+  app.post('/api/documents/:type/:id/signatures', async (req, res) => {
+    const { type, id } = req.params;
+    const { role, signerName, signerEmail } = req.body;
+    const signerUserId = req.headers['x-user-id'] as string || 'system';
+    
+    if (!role) {
+      return res.status(400).json({ error: 'role is required' });
+    }
+    
+    try {
+      const result = await documentControlService.addSignature({
+        documentType: type as 'pfmea' | 'control_plan',
+        documentId: id,
+        role,
+        signerUserId,
+        signerName: signerName || 'Unknown',
+        signerEmail: signerEmail || '',
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Get signatures
+  app.get('/api/documents/:type/:id/signatures', async (req, res) => {
+    const { type, id } = req.params;
+    
+    try {
+      const signatures = await documentControlService.getSignatures(
+        type as 'pfmea' | 'control_plan',
+        id
+      );
+      res.json(signatures);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Verify signature
+  app.get('/api/signatures/:id/verify', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+      const result = await documentControlService.verifySignature(id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get audit log
+  app.get('/api/documents/:type/:id/audit-log', async (req, res) => {
+    const { type, id } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    
+    try {
+      const log = await documentControlService.getAuditLog(
+        type as 'pfmea' | 'control_plan',
+        id,
+        { limit, offset }
+      );
+      res.json(log);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Assign document number
+  app.post('/api/documents/:type/:id/assign-doc-number', async (req, res) => {
+    const { type, id } = req.params;
+    
+    try {
+      const docNo = await documentControlService.assignDocNumber(
+        type as 'pfmea' | 'control_plan',
+        id
+      );
+      res.json({ docNo });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Set owner
+  app.post('/api/documents/:type/:id/owner', async (req, res) => {
+    const { type, id } = req.params;
+    const { ownerUserId } = req.body;
+    
+    if (!ownerUserId) {
+      return res.status(400).json({ error: 'ownerUserId is required' });
+    }
+    
+    try {
+      await documentControlService.setOwner(
+        type as 'pfmea' | 'control_plan',
+        id,
+        ownerUserId
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Add watcher
+  app.post('/api/documents/:type/:id/watchers', async (req, res) => {
+    const { type, id } = req.params;
+    const { watcherUserId } = req.body;
+    
+    if (!watcherUserId) {
+      return res.status(400).json({ error: 'watcherUserId is required' });
+    }
+    
+    try {
+      await documentControlService.addWatcher(
+        type as 'pfmea' | 'control_plan',
+        id,
+        watcherUserId
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
     }
   });
 
