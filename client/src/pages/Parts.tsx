@@ -54,6 +54,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Search,
   Plus,
@@ -69,7 +71,11 @@ import {
   ClipboardList,
   Wand2,
   ChevronRight,
+  Sparkles,
+  Loader2,
+  CheckCircle,
 } from "lucide-react";
+import type { ProcessDef } from "@shared/schema";
 import type { Part, InsertPart } from "@shared/schema";
 
 // Common customers for automotive
@@ -117,6 +123,8 @@ export default function PartsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [, navigate] = useLocation();
+
   // State
   const [searchTerm, setSearchTerm] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
@@ -126,9 +134,21 @@ export default function PartsPage() {
   const [deletePartId, setDeletePartId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<InsertPart>>({});
 
+  // Generation state
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
+  const [selectedPartForGeneration, setSelectedPartForGeneration] = useState<Part | null>(null);
+  const [selectedProcessIds, setSelectedProcessIds] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<any>(null);
+
   // Fetch parts
   const { data: parts = [], isLoading } = useQuery<Part[]>({
     queryKey: ["/api/parts"],
+  });
+
+  // Fetch processes for generation modal
+  const { data: processes = [] } = useQuery<ProcessDef[]>({
+    queryKey: ["/api/processes"],
   });
 
   // Create mutation
@@ -256,6 +276,40 @@ export default function PartsPage() {
       plant: part.plant,
       csrNotes: part.csrNotes,
     });
+  };
+
+  // Handle document generation
+  const handleGenerate = async () => {
+    if (!selectedPartForGeneration || selectedProcessIds.length === 0) return;
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch(`/api/parts/${selectedPartForGeneration.id}/generate-documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ processIds: selectedProcessIds }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Generation failed');
+      }
+
+      const result = await response.json();
+      setGenerationResult(result);
+
+      queryClient.invalidateQueries({ queryKey: ['/api/pfmeas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/control-plans'] });
+
+    } catch (error: any) {
+      toast({
+        title: "Generation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   // Handle form submit
@@ -440,6 +494,20 @@ export default function PartsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          data-testid={`button-generate-${part.id}`}
+                          onClick={() => {
+                            setSelectedPartForGeneration(part);
+                            setSelectedProcessIds([]);
+                            setGenerationResult(null);
+                            setGenerateModalOpen(true);
+                          }}
+                        >
+                          <Sparkles className="h-4 w-4 mr-1" />
+                          Generate
+                        </Button>
                         <ViewDetailsButton partId={part.id} />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -638,6 +706,130 @@ export default function PartsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Generate Documents Modal */}
+      <Dialog open={generateModalOpen} onOpenChange={setGenerateModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Generate Documents for {selectedPartForGeneration?.partName}</DialogTitle>
+            <DialogDescription>
+              Select processes to include in PFD, PFMEA, and Control Plan generation.
+              Part: {selectedPartForGeneration?.partNumber}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!generationResult ? (
+            <>
+              <div className="space-y-4 py-4">
+                <Label>Select Processes (in sequence order)</Label>
+                <div className="border rounded-md max-h-64 overflow-y-auto p-2 space-y-2">
+                  {processes?.filter((p) => p.status === 'effective').map((process) => (
+                    <div key={process.id} className="flex items-center space-x-2 p-2 hover-elevate rounded">
+                      <Checkbox
+                        id={process.id}
+                        checked={selectedProcessIds.includes(process.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedProcessIds([...selectedProcessIds, process.id]);
+                          } else {
+                            setSelectedProcessIds(selectedProcessIds.filter((id) => id !== process.id));
+                          }
+                        }}
+                      />
+                      <label htmlFor={process.id} className="flex-1 cursor-pointer">
+                        <span className="font-medium">{process.name}</span>
+                        <span className="text-muted-foreground ml-2">Rev {process.rev}</span>
+                      </label>
+                    </div>
+                  ))}
+                  {processes?.filter((p) => p.status === 'effective').length === 0 && (
+                    <p className="text-muted-foreground text-sm p-2">
+                      No effective processes available. Create and approve processes first.
+                    </p>
+                  )}
+                </div>
+                {selectedProcessIds.length > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {selectedProcessIds.length} process(es) selected
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setGenerateModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={selectedProcessIds.length === 0 || isGenerating}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate PFMEA & Control Plan
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-4 py-4">
+                <Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <AlertTitle className="text-green-800 dark:text-green-200">Generation Complete!</AlertTitle>
+                  <AlertDescription className="text-green-700 dark:text-green-300">
+                    Successfully created documents for {selectedPartForGeneration?.partName}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">PFMEA</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-1 text-sm">
+                        <p><strong>Total Rows:</strong> {generationResult.pfmea?.summary?.totalRows ?? 0}</p>
+                        <p><strong>High AP:</strong> <span className="text-red-600">{generationResult.pfmea?.summary?.highAP ?? 0}</span></p>
+                        <p><strong>Medium AP:</strong> <span className="text-yellow-600">{generationResult.pfmea?.summary?.mediumAP ?? 0}</span></p>
+                        <p><strong>Low AP:</strong> <span className="text-green-600">{generationResult.pfmea?.summary?.lowAP ?? 0}</span></p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Control Plan</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-1 text-sm">
+                        <p><strong>Total Characteristics:</strong> {generationResult.controlPlan?.summary?.totalRows ?? 0}</p>
+                        <p><strong>Special Chars:</strong> {generationResult.controlPlan?.summary?.specialCharacteristics ?? 0}</p>
+                        <p><strong>Linked to PFMEA:</strong> {generationResult.controlPlan?.summary?.linkedToPfmea ?? 0}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setGenerateModalOpen(false)}>
+                  Close
+                </Button>
+                <Button onClick={() => navigate(`/pfmea/${generationResult.pfmea?.pfmea?.id}`)}>
+                  View PFMEA
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
