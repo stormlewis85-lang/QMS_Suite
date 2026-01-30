@@ -144,6 +144,7 @@ export interface IStorage {
   getControlPlansByPartId(partId: string): Promise<ControlPlan[]>;
   getControlPlanById(id: string): Promise<(ControlPlan & { rows: ControlPlanRow[] }) | undefined>;
   getAllControlPlans(): Promise<ControlPlan[]>;
+  getControlPlanRows(controlPlanId: string): Promise<ControlPlanRow[]>;
   createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan>;
   updateControlPlan(id: string, updates: Partial<InsertControlPlan>): Promise<ControlPlan | undefined>;
   createControlPlanRow(insertRow: InsertControlPlanRow): Promise<ControlPlanRow>;
@@ -529,6 +530,10 @@ class DatabaseStorage implements IStorage {
     const rows = await db.select().from(controlPlanRow).where(eq(controlPlanRow.controlPlanId, id));
     
     return { ...cpResult, rows };
+  }
+
+  async getControlPlanRows(controlPlanId: string): Promise<ControlPlanRow[]> {
+    return await db.select().from(controlPlanRow).where(eq(controlPlanRow.controlPlanId, controlPlanId));
   }
 
   async createControlPlan(insertControlPlan: InsertControlPlan): Promise<ControlPlan> {

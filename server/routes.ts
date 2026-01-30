@@ -502,6 +502,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/control-plans/:id/rows", async (req, res) => {
+    try {
+      const rows = await storage.getControlPlanRows(req.params.id);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching control plan rows:", error);
+      res.status(500).json({ error: "Failed to fetch control plan rows" });
+    }
+  });
+
   app.post("/api/control-plans", async (req, res) => {
     try {
       const validatedData = insertControlPlanSchema.parse(req.body);

@@ -1,0 +1,569 @@
+Create client/src/pages/PartDetail.tsx - a comprehensive part detail page with document overview and generation wizard:
+
+IMPORTS:
+import { useState, useEffect } from 'react';
+import { useParams, useLocation } from 'wouter';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
+import { 
+  ArrowLeft, 
+  Package, 
+  FileText, 
+  ClipboardList, 
+  GitBranch,
+  Building2,
+  Car,
+  Factory,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Plus,
+  ExternalLink,
+  Sparkles,
+  ChevronRight,
+  Info
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+
+INTERFACES:
+interface Part {
+  id: string;
+  customer: string;
+  program: string;
+  partNumber: string;
+  partName: string;
+  plant: string;
+  csrNotes: string | null;
+  createdAt: string;
+}
+
+interface PartDocument {
+  id: string;
+  type: 'pfd' | 'pfmea' | 'control-plan';
+  rev: string;
+  status: string;
+  createdAt: string;
+  rowCount?: number;
+}
+
+interface ProcessMapping {
+  id: string;
+  processDefId: string;
+  processName: string;
+  processRev: string;
+  sequence: number;
+}
+
+COMPONENT:
+export default function PartDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  // State for generation wizard
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [selectedProcessIds, setSelectedProcessIds] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<any>(null);
+  
+  // Queries
+  const { data: part, isLoading: partLoading } = useQuery({
+    queryKey: [`/api/parts/${id}`],
+  });
+  
+  const { data: pfmeas } = useQuery({
+    queryKey: [`/api/pfmeas`, { partId: id }],
+    queryFn: async () => {
+      const res = await fetch(`/api/pfmeas?partId=${id}`);
+      return res.json();
+    },
+  });
+  
+  const { data: controlPlans } = useQuery({
+    queryKey: [`/api/control-plans`, { partId: id }],
+    queryFn: async () => {
+      const res = await fetch(`/api/control-plans?partId=${id}`);
+      return res.json();
+    },
+  });
+  
+  const { data: processMappings } = useQuery({
+    queryKey: [`/api/parts/${id}/processes`],
+  });
+  
+  const { data: availableProcesses } = useQuery({
+    queryKey: ['/api/processes', { status: 'effective' }],
+    queryFn: async () => {
+      const res = await fetch('/api/processes?status=effective');
+      return res.json();
+    },
+  });
+  
+  // Computed
+  const latestPfmea = pfmeas?.sort((a: any, b: any) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )[0];
+  
+  const latestControlPlan = controlPlans?.sort((a: any, b: any) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )[0];
+  
+  const documentCompleteness = {
+    hasPfmea: pfmeas?.length > 0,
+    hasControlPlan: controlPlans?.length > 0,
+    pfmeaEffective: pfmeas?.some((p: any) => p.status === 'effective'),
+    cpEffective: controlPlans?.some((cp: any) => cp.status === 'effective'),
+  };
+  
+  const completenessScore = [
+    documentCompleteness.hasPfmea,
+    documentCompleteness.hasControlPlan,
+    documentCompleteness.pfmeaEffective,
+    documentCompleteness.cpEffective,
+  ].filter(Boolean).length * 25;
+  
+  // Loading state
+  if (partLoading) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <div className="grid grid-cols-3 gap-6">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+        </div>
+      </div>
+    );
+  }
+  
+  if (!part) {
+    return (
+      <div className="container mx-auto p-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>Part not found</AlertDescription>
+        </Alert>
+        <Button variant="outline" className="mt-4" onClick={() => navigate('/parts')}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Parts
+        </Button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/parts')}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Package className="h-6 w-6" />
+              {part.partNumber}
+            </h1>
+            <p className="text-muted-foreground">{part.partName}</p>
+          </div>
+        </div>
+        <Button onClick={() => { setShowWizard(true); setWizardStep(1); }}>
+          <Sparkles className="h-4 w-4 mr-2" />
+          Generate Documents
+        </Button>
+      </div>
+      
+      {/* Part Info Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <Building2 className="h-3 w-3" /> Customer
+            </CardDescription>
+            <CardTitle className="text-lg">{part.customer}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <Car className="h-3 w-3" /> Program
+            </CardDescription>
+            <CardTitle className="text-lg">{part.program}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <Factory className="h-3 w-3" /> Plant
+            </CardDescription>
+            <CardTitle className="text-lg">{part.plant}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Document Completeness</CardDescription>
+            <CardTitle className="text-lg">{completenessScore}%</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Progress value={completenessScore} className="h-2" />
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* CSR Notes Alert */}
+      {part.csrNotes && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>Customer Special Requirements</AlertTitle>
+          <AlertDescription>{part.csrNotes}</AlertDescription>
+        </Alert>
+      )}
+      
+      {/* Main Content Tabs */}
+      <Tabs defaultValue="documents" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="processes">Process Flow</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+        </TabsList>
+        
+        {/* Documents Tab */}
+        <TabsContent value="documents" className="space-y-4">
+          <div className="grid grid-cols-2 gap-6">
+            {/* PFMEA Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                    <CardTitle>PFMEA</CardTitle>
+                  </div>
+                  {latestPfmea && (
+                    <Badge variant={latestPfmea.status === 'effective' ? 'default' : 'secondary'}>
+                      {latestPfmea.status}
+                    </Badge>
+                  )}
+                </div>
+                <CardDescription>Process Failure Mode and Effects Analysis</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {latestPfmea ? (
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Latest Revision:</span>
+                      <span className="font-medium">Rev {latestPfmea.rev}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Basis:</span>
+                      <span>{latestPfmea.basis || 'AIAG-VDA 2019'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Created:</span>
+                      <span>{new Date(latestPfmea.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    <Separator />
+                    <div className="text-sm text-muted-foreground">
+                      {pfmeas?.length} revision(s) total
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                    <p>No PFMEA generated yet</p>
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="flex gap-2">
+                {latestPfmea ? (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => navigate(`/pfmea/${latestPfmea.id}`)}
+                    >
+                      View Latest
+                      <ExternalLink className="h-4 w-4 ml-1" />
+                    </Button>
+                    <Button variant="ghost" size="icon">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button 
+                    className="w-full"
+                    onClick={() => { setShowWizard(true); setWizardStep(1); }}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate PFMEA
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+            
+            {/* Control Plan Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="h-5 w-5 text-green-600" />
+                    <CardTitle>Control Plan</CardTitle>
+                  </div>
+                  {latestControlPlan && (
+                    <Badge variant={latestControlPlan.status === 'effective' ? 'default' : 'secondary'}>
+                      {latestControlPlan.status}
+                    </Badge>
+                  )}
+                </div>
+                <CardDescription>Process Control Plan</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {latestControlPlan ? (
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Latest Revision:</span>
+                      <span className="font-medium">Rev {latestControlPlan.rev}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Type:</span>
+                      <span>{latestControlPlan.type}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Created:</span>
+                      <span>{new Date(latestControlPlan.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    <Separator />
+                    <div className="text-sm text-muted-foreground">
+                      {controlPlans?.length} revision(s) total
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <ClipboardList className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                    <p>No Control Plan generated yet</p>
+                    {!latestPfmea && (
+                      <p className="text-xs mt-1">Generate PFMEA first</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="flex gap-2">
+                {latestControlPlan ? (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => navigate(`/control-plans/${latestControlPlan.id}`)}
+                    >
+                      View Latest
+                      <ExternalLink className="h-4 w-4 ml-1" />
+                    </Button>
+                    <Button variant="ghost" size="icon">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button 
+                    className="w-full"
+                    disabled={!latestPfmea}
+                    onClick={() => { setShowWizard(true); setWizardStep(1); }}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate Control Plan
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+          </div>
+          
+          {/* All Documents Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">All Document Revisions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Rev</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Doc No</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...(pfmeas || []).map((p: any) => ({ ...p, docType: 'PFMEA' })),
+                    ...(controlPlans || []).map((cp: any) => ({ ...cp, docType: 'Control Plan' }))]
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((doc: any) => (
+                      <TableRow key={`${doc.docType}-${doc.id}`}>
+                        <TableCell>
+                          <Badge variant={doc.docType === 'PFMEA' ? 'default' : 'secondary'}>
+                            {doc.docType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{doc.rev}</TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            doc.status === 'effective' ? 'default' :
+                            doc.status === 'draft' ? 'outline' : 'secondary'
+                          }>
+                            {doc.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {doc.docNo || '-'}
+                        </TableCell>
+                        <TableCell>{new Date(doc.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => navigate(
+                              doc.docType === 'PFMEA' ? `/pfmea/${doc.id}` : `/control-plans/${doc.id}`
+                            )}
+                          >
+                            View <ChevronRight className="h-4 w-4 ml-1" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  {(!pfmeas?.length && !controlPlans?.length) && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                        No documents generated yet. Click "Generate Documents" to get started.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Processes Tab */}
+        <TabsContent value="processes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <GitBranch className="h-5 w-5" />
+                    Process Flow
+                  </CardTitle>
+                  <CardDescription>Processes mapped to this part</CardDescription>
+                </div>
+                <Button variant="outline" size="sm">
+                  <Plus className="h-4 w-4 mr-1" /> Add Process
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {processMappings?.length > 0 ? (
+                <div className="space-y-2">
+                  {processMappings
+                    .sort((a: any, b: any) => a.sequence - b.sequence)
+                    .map((mapping: any, index: number) => (
+                      <div 
+                        key={mapping.id}
+                        className="flex items-center gap-4 p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                          {mapping.sequence}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium">{mapping.processName}</div>
+                          <div className="text-sm text-muted-foreground">Rev {mapping.processRev}</div>
+                        </div>
+                        {index < processMappings.length - 1 && (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <GitBranch className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                  <p>No processes mapped yet</p>
+                  <p className="text-sm">Processes will be mapped when you generate documents</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* History Tab */}
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>Activity History</CardTitle>
+              <CardDescription>Recent changes and actions for this part</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8 text-muted-foreground">
+                <Clock className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                <p>Activity history coming soon</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+      
+      {/* Generation Wizard Dialog - will be implemented in next task */}
+      {showWizard && (
+        <GenerationWizard
+          part={part}
+          availableProcesses={availableProcesses || []}
+          open={showWizard}
+          onClose={() => {
+            setShowWizard(false);
+            setWizardStep(1);
+            setSelectedProcessIds([]);
+            setGenerationResult(null);
+          }}
+          onComplete={(result) => {
+            setGenerationResult(result);
+            queryClient.invalidateQueries({ queryKey: [`/api/pfmeas`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/control-plans`] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+Also add the route to App.tsx:
+<Route path="/parts/:id" component={PartDetail} />
+
+Add API endpoint for part's documents in routes.ts:
+app.get('/api/parts/:id/processes', async (req, res) => {
+  const { id } = req.params;
+  const mappings = await storage.getPartProcessMappings(id);
+  res.json(mappings);
+});
+
+Add to storage.ts:
+async getPartProcessMappings(partId: string) {
+  return db
+    .select({
+      id: partProcessMap.id,
+      processDefId: partProcessMap.processDefId,
+      processName: processDef.name,
+      processRev: partProcessMap.processRev,
+      sequence: partProcessMap.sequence,
+    })
+    .from(partProcessMap)
+    .leftJoin(processDef, eq(partProcessMap.processDefId, processDef.id))
+    .where(eq(partProcessMap.partId, partId))
+    .orderBy(partProcessMap.sequence);
+}
