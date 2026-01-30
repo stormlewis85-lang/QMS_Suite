@@ -24,6 +24,7 @@ import { runAllSeeds } from "./seed";
 import { generatePFMEA } from "./services/pfmea-generator";
 import { generateControlPlan } from "./services/control-plan-generator";
 import { calculateAP } from "./services/ap-calculator";
+import { autoReviewService } from "./services/auto-review";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -1797,6 +1798,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to get history' 
       });
+    }
+  });
+
+  /**
+   * Get auto-review summary for dashboard
+   * GET /api/auto-review/summary
+   */
+  app.get('/api/auto-review/summary', async (req, res) => {
+    try {
+      const parts = await storage.getAllParts();
+      
+      let partsWithPfmea = 0;
+      let partsWithCP = 0;
+      
+      for (const part of parts) {
+        const pfmeas = await storage.getPFMEAsByPartId(part.id);
+        const controlPlans = await storage.getControlPlansByPartId(part.id);
+        
+        if (pfmeas.length > 0) partsWithPfmea++;
+        if (controlPlans.length > 0) partsWithCP++;
+      }
+      
+      const summary = {
+        totalParts: parts.length,
+        partsWithPfmea,
+        partsWithCP,
+        partsNeedingReview: parts.length - partsWithPfmea,
+        lastReviewDate: null as string | null,
+      };
+      
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Run auto-review for PFMEA (optionally with Control Plan)
+   * POST /api/auto-review/validate
+   */
+  app.post('/api/auto-review/validate', async (req, res) => {
+    const { pfmeaId, controlPlanId, options } = req.body;
+    
+    if (!pfmeaId) {
+      return res.status(400).json({ error: 'pfmeaId is required' });
+    }
+    
+    try {
+      const result = await autoReviewService.runReview({
+        pfmeaId,
+        controlPlanId,
+        options,
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error('Auto-review failed:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Run auto-review for a part (uses latest PFMEA and Control Plan)
+   * POST /api/parts/:id/auto-review
+   */
+  app.post('/api/parts/:id/auto-review', async (req, res) => {
+    const { id } = req.params;
+    const { options } = req.body;
+    
+    try {
+      const pfmeas = await storage.getPFMEAsByPartId(id);
+      
+      if (pfmeas.length === 0) {
+        return res.status(404).json({ error: 'No PFMEA found for this part' });
+      }
+      
+      const latestPfmea = pfmeas.sort((a, b) => 
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      )[0];
+      
+      const controlPlans = await storage.getControlPlansByPartId(id);
+      const latestCP = controlPlans.length > 0 
+        ? controlPlans.sort((a, b) => 
+            new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          )[0]
+        : null;
+      
+      const result = await autoReviewService.runReview({
+        pfmeaId: latestPfmea.id,
+        controlPlanId: latestCP?.id,
+        options,
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error('Auto-review failed:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 
