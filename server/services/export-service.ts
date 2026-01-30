@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'stream';
+import { randomUUID } from 'crypto';
 
 export type ExportFormat = 'pdf' | 'xlsx';
 export type DocumentType = 'pfmea' | 'control_plan' | 'pfd';
@@ -65,21 +66,65 @@ function getAPColorARGB(ap: string): string {
 
 export class ExportService {
   
+  private async logExport(
+    entityType: 'pfmea' | 'control_plan',
+    entityId: string,
+    format: ExportFormat,
+    filename: string,
+    rowCount: number
+  ): Promise<void> {
+    try {
+      await db.insert(auditLog).values({
+        id: randomUUID(),
+        entityType,
+        entityId,
+        action: 'exported',
+        actor: 'system',
+        payloadJson: {
+          format,
+          filename,
+          rowCount,
+          exportedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error('Failed to log export:', error);
+    }
+  }
+  
   async export(options: ExportOptions): Promise<ExportResult> {
     const { format, documentType, documentId } = options;
     
+    let result: ExportResult;
+    
     switch (documentType) {
       case 'pfmea':
-        return format === 'pdf' 
+        result = await (format === 'pdf' 
           ? this.exportPFMEAToPDF(documentId, options)
-          : this.exportPFMEAToExcel(documentId, options);
+          : this.exportPFMEAToExcel(documentId, options));
+        break;
       case 'control_plan':
-        return format === 'pdf'
+        result = await (format === 'pdf'
           ? this.exportControlPlanToPDF(documentId, options)
-          : this.exportControlPlanToExcel(documentId, options);
+          : this.exportControlPlanToExcel(documentId, options));
+        break;
       default:
         throw new Error(`Unsupported document type: ${documentType}`);
     }
+    
+    const data = documentType === 'pfmea' 
+      ? await this.getPFMEAData(documentId)
+      : await this.getControlPlanData(documentId);
+    
+    await this.logExport(
+      documentType as 'pfmea' | 'control_plan',
+      documentId,
+      format,
+      result.filename,
+      data.rows.length
+    );
+    
+    return result;
   }
   
   private async getPFMEAData(documentId: string): Promise<PFMEAExportData> {
