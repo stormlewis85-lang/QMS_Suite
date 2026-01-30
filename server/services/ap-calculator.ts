@@ -31,6 +31,7 @@ export interface APInput {
  * 
  * MEDIUM (M) - Medium priority for action:
  * - Severity 5-6 AND (Occurrence >= 7 OR Detection >= 7)
+ * - Severity 7-8 AND Occurrence 4-6 AND Detection 4-6
  * 
  * LOW (L) - Lower priority for action:
  * - All other combinations
@@ -70,6 +71,10 @@ function determineAPLevel(s: number, o: number, d: number): ActionPriority {
 
   // MEDIUM priority conditions
   if (s >= 5 && s <= 6 && (o >= 7 || d >= 7)) {
+    return 'M';
+  }
+  
+  if (s >= 7 && s <= 8 && o >= 4 && o <= 6 && d >= 4 && d <= 6) {
     return 'M';
   }
 
