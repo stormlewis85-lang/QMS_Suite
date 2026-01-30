@@ -133,6 +133,7 @@ export interface IStorage {
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
   getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined>;
   getAllPFMEAs(): Promise<PFMEA[]>;
+  getPFMEARows(pfmeaId: string): Promise<PFMEARow[]>;
   createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA>;
   updatePFMEA(id: string, updates: Partial<InsertPFMEA>): Promise<PFMEA | undefined>;
   createPFMEARow(insertRow: InsertPFMEARow): Promise<PFMEARow>;
@@ -479,6 +480,10 @@ class DatabaseStorage implements IStorage {
     const rows = await db.select().from(pfmeaRow).where(eq(pfmeaRow.pfmeaId, id));
     
     return { ...pfmeaResult, rows };
+  }
+
+  async getPFMEARows(pfmeaId: string): Promise<PFMEARow[]> {
+    return await db.select().from(pfmeaRow).where(eq(pfmeaRow.pfmeaId, pfmeaId));
   }
 
   async createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA> {

@@ -346,6 +346,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PFMEA endpoints with plural naming (for PFMEADetail page)
+  app.get("/api/pfmeas", async (req, res) => {
+    try {
+      const pfmeas = await storage.getAllPFMEAs();
+      res.json(pfmeas);
+    } catch (error) {
+      console.error("Error fetching PFMEAs:", error);
+      res.status(500).json({ error: "Failed to fetch PFMEAs" });
+    }
+  });
+
+  app.get("/api/pfmeas/:id", async (req, res) => {
+    try {
+      const pfmea = await storage.getPFMEAById(req.params.id);
+      if (!pfmea) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+      res.json(pfmea);
+    } catch (error) {
+      console.error("Error fetching PFMEA:", error);
+      res.status(500).json({ error: "Failed to fetch PFMEA" });
+    }
+  });
+
+  app.get("/api/pfmeas/:id/rows", async (req, res) => {
+    try {
+      const rows = await storage.getPFMEARows(req.params.id);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching PFMEA rows:", error);
+      res.status(500).json({ error: "Failed to fetch PFMEA rows" });
+    }
+  });
+
+  app.get("/api/pfmeas/:id/details", async (req, res) => {
+    try {
+      const pfmea = await storage.getPFMEAById(req.params.id);
+      if (!pfmea) {
+        return res.status(404).json({ error: "PFMEA not found" });
+      }
+      const rows = await storage.getPFMEARows(req.params.id);
+      const part = await storage.getPartById(pfmea.partId);
+      res.json({ ...pfmea, rows, part });
+    } catch (error) {
+      console.error("Error fetching PFMEA details:", error);
+      res.status(500).json({ error: "Failed to fetch PFMEA details" });
+    }
+  });
+
   app.post("/api/pfmea", async (req, res) => {
     try {
       const validatedData = insertPfmeaSchema.parse(req.body);
