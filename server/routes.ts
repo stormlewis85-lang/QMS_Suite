@@ -23,6 +23,7 @@ import {
 import { runAllSeeds } from "./seed";
 import { generatePFMEA } from "./services/pfmea-generator";
 import { generateControlPlan } from "./services/control-plan-generator";
+import { calculateAP } from "./services/ap-calculator";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -392,6 +393,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching PFMEA details:", error);
       res.status(500).json({ error: "Failed to fetch PFMEA details" });
+    }
+  });
+
+  app.post("/api/calculate-ap", async (req, res) => {
+    try {
+      const { severity, occurrence, detection } = req.body;
+      
+      if (!severity || !occurrence || !detection) {
+        return res.status(400).json({ error: 'severity, occurrence, and detection are required' });
+      }
+      
+      const s = parseInt(severity);
+      const o = parseInt(occurrence);
+      const d = parseInt(detection);
+      
+      if (isNaN(s) || isNaN(o) || isNaN(d) || s < 1 || s > 10 || o < 1 || o > 10 || d < 1 || d > 10) {
+        return res.status(400).json({ error: 'S, O, D must be integers between 1 and 10' });
+      }
+      
+      const result = calculateAP({ severity: s, occurrence: o, detection: d });
+      res.json({ ap: result.priority, reason: result.description });
+    } catch (error) {
+      console.error("Error calculating AP:", error);
+      res.status(500).json({ error: "Failed to calculate AP" });
     }
   });
 
