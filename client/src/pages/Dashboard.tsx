@@ -12,7 +12,8 @@ import {
   Activity,
   ArrowRight,
   Target,
-  TrendingUp
+  TrendingUp,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { 
@@ -32,6 +33,49 @@ const AP_COLORS = {
   high: '#ef4444',
   medium: '#f59e0b', 
   low: '#22c55e',
+};
+
+const RADIAN = Math.PI / 180;
+
+interface CustomLabelProps {
+  cx: number;
+  cy: number;
+  midAngle: number;
+  innerRadius: number;
+  outerRadius: number;
+  percent: number;
+  name: string;
+  value: number;
+}
+
+const renderCustomizedLabel = ({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent,
+  value,
+}: CustomLabelProps) => {
+  if (percent < 0.05) return null;
+  
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="white"
+      textAnchor="middle"
+      dominantBaseline="central"
+      className="text-xs font-semibold"
+      style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+    >
+      {value}
+    </text>
+  );
 };
 
 export default function Dashboard() {
@@ -192,7 +236,7 @@ export default function Dashboard() {
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="text-lg flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
               Action Priority Distribution
@@ -203,31 +247,53 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {apChartData.length > 0 && apChartData.some(d => d.value > 0) ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={apChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    dataKey="value"
-                    label={({ name, value, percent }) => 
-                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
-                    }
-                  >
-                    {apChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="space-y-4">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={apChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                      labelLine={false}
+                      label={renderCustomizedLabel}
+                    >
+                      {apChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number, name: string) => [
+                        `${value} (${((value / apChartData.reduce((a, b) => a + b.value, 0)) * 100).toFixed(0)}%)`,
+                        name
+                      ]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                
+                <div className="flex justify-center gap-6">
+                  {apChartData.map((entry) => (
+                    <div key={entry.name} className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: entry.color }}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {entry.name}: <span className="font-medium text-foreground">{entry.value}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="h-[250px] flex items-center justify-center text-muted-foreground">
-                No failure modes recorded
+                <div className="text-center">
+                  <PieChartIcon className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                  <p>No failure modes recorded</p>
+                </div>
               </div>
             )}
           </CardContent>
