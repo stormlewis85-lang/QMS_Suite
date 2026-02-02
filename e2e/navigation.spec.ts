@@ -9,14 +9,14 @@ test.describe('Navigation', () => {
   test('should navigate via sidebar', async ({ page }) => {
     await page.goto('/');
     const navItems = [
-      { link: /parts/i, url: '/parts' },
-      { link: /processes/i, url: '/processes' },
-      { link: /pfmea/i, url: '/pfmea' },
-      { link: /control plans/i, url: '/control-plans' },
-      { link: /actions/i, url: '/actions' },
+      { testId: 'nav-parts', url: '/parts' },
+      { testId: 'nav-processes', url: '/processes' },
+      { testId: 'nav-pfmea', url: '/pfmea' },
+      { testId: 'nav-control-plans', url: '/control-plans' },
+      { testId: 'nav-actions', url: '/actions' },
     ];
     for (const item of navItems) {
-      await page.getByRole('link', { name: item.link }).click();
+      await page.getByTestId(item.testId).click();
       await expect(page).toHaveURL(item.url);
     }
   });

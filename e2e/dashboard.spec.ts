@@ -3,8 +3,8 @@ import { test, expect } from './fixtures';
 test.describe('Dashboard', () => {
   test('should display dashboard metrics', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText(/total parts|parts/i)).toBeVisible();
-    await expect(page.getByText(/pfmea|failure/i)).toBeVisible();
+    await expect(page.getByText('Total Parts')).toBeVisible();
+    await expect(page.getByText('PFMEA Documents').first()).toBeVisible();
   });
 
   test('should display AP distribution chart', async ({ page }) => {
@@ -16,7 +16,7 @@ test.describe('Dashboard', () => {
 
   test('should have working quick links', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: /parts/i }).first().click();
+    await page.getByTestId('nav-parts').click();
     await expect(page).toHaveURL(/\/parts/);
   });
 });
