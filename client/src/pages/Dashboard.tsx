@@ -97,6 +97,8 @@ export default function Dashboard() {
     actionSummary?: { open: number; inProgress: number; overdue: number };
   }>({
     queryKey: ['/api/dashboard/metrics'],
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
   });
   
   if (isLoading) {

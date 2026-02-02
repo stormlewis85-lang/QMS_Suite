@@ -224,6 +224,7 @@ export default function PartsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
       toast({
         title: "Part Deleted",
         description: "The part has been deleted successfully.",
