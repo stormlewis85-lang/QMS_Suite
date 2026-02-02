@@ -83,17 +83,18 @@ import type { Part, InsertPart } from "@shared/schema";
 
 // Common customers for automotive
 const CUSTOMERS = [
+  "BMW",
+  "EOS",
   "Ford",
   "GM",
+  "Honda",
+  "Kautex",
+  "Magna",
+  "Mercedes-Benz",
   "Stellantis",
   "Tesla",
   "Toyota",
-  "Honda",
-  "BMW",
-  "Mercedes-Benz",
   "Volkswagen",
-  "Kautex",
-  "Magna",
   "Other",
 ];
 
