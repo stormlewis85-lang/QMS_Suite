@@ -262,11 +262,11 @@ export default function ControlPlansPage() {
 
   // Generate mutation
   const generateMutation = useMutation({
-    mutationFn: async ({ pfmeaId, type }: { pfmeaId: string; type: string }) => {
-      const response = await fetch(`/api/pfmeas/${pfmeaId}/control-plan/generate`, {
+    mutationFn: async ({ pfmeaId, partId, type }: { pfmeaId: string; partId: string; type: string }) => {
+      const response = await fetch(`/api/pfmeas/${pfmeaId}/generate-control-plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ partId, type }),
       });
       if (!response.ok) {
         const error = await response.json();
@@ -654,12 +654,16 @@ export default function ControlPlansPage() {
               Cancel
             </Button>
             <Button
-              onClick={() =>
-                generateMutation.mutate({
-                  pfmeaId: selectedPFMEAForGeneration,
-                  type: generationType,
-                })
-              }
+              onClick={() => {
+                const selectedPfmea = pfmeas.find(p => p.id === selectedPFMEAForGeneration);
+                if (selectedPfmea) {
+                  generateMutation.mutate({
+                    pfmeaId: selectedPFMEAForGeneration,
+                    partId: selectedPfmea.partId,
+                    type: generationType,
+                  });
+                }
+              }}
               disabled={!selectedPFMEAForGeneration || generateMutation.isPending}
             >
               {generateMutation.isPending ? (
