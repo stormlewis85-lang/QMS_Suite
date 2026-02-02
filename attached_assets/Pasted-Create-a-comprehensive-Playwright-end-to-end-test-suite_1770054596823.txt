@@ -1,0 +1,548 @@
+Create a comprehensive Playwright end-to-end test suite for the PFMEA Suite application. This should test all user flows in real browsers.
+File Structure to Create:
+playwright.config.ts
+e2e/
+├── fixtures.ts
+├── navigation.spec.ts
+├── parts.spec.ts
+├── pfmea.spec.ts
+├── document-tabs.spec.ts
+├── control-plans.spec.ts
+├── actions.spec.ts
+├── import-export.spec.ts
+├── dashboard.spec.ts
+├── notifications.spec.ts
+├── keyboard-shortcuts.spec.ts
+├── accessibility.spec.ts
+└── mobile.spec.ts
+1. playwright.config.ts
+typescriptimport { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'e2e/test-results.json' }],
+    ['list'],
+  ],
+  use: {
+    baseURL: process.env.BASE_URL || 'http://localhost:5000',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'mobile', use: { ...devices['iPhone 13'] } },
+  ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120000,
+  },
+});
+2. e2e/fixtures.ts
+typescriptimport { test as base, expect, Page } from '@playwright/test';
+
+export const test = base.extend<{
+  partId: number;
+  pfmeaId: number;
+  controlPlanId: number;
+}>({
+  partId: async ({ request }, use) => {
+    const response = await request.post('/api/parts', {
+      data: {
+        partNumber: `E2E-PART-${Date.now()}`,
+        partName: 'E2E Test Part',
+        customer: 'E2E Customer',
+        program: 'E2E Program',
+        plant: 'E2E Plant',
+      },
+    });
+    const part = await response.json();
+    await use(part.id);
+    await request.delete(`/api/parts/${part.id}`).catch(() => {});
+  },
+  pfmeaId: async ({ request, partId }, use) => {
+    const response = await request.post('/api/pfmeas', {
+      data: { partId, title: 'E2E Test PFMEA', rev: '1.0', status: 'draft' },
+    });
+    const pfmea = await response.json();
+    await use(pfmea.id);
+    await request.delete(`/api/pfmeas/${pfmea.id}`).catch(() => {});
+  },
+  controlPlanId: async ({ request, partId }, use) => {
+    const response = await request.post('/api/control-plans', {
+      data: { partId, title: 'E2E Test Control Plan', rev: '1.0', status: 'draft' },
+    });
+    const cp = await response.json();
+    await use(cp.id);
+    await request.delete(`/api/control-plans/${cp.id}`).catch(() => {});
+  },
+});
+
+export { expect };
+
+export async function waitForToast(page: Page, text: string | RegExp) {
+  await expect(page.locator('[role="status"], [data-sonner-toast], .toast').filter({ hasText: text })).toBeVisible({ timeout: 5000 });
+}
+
+export async function waitForTableLoad(page: Page) {
+  await page.waitForSelector('table tbody tr', { state: 'visible', timeout: 10000 }).catch(() => {});
+}
+
+export async function closeDialog(page: Page) {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+}
+3. e2e/navigation.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('Navigation', () => {
+  test('should load dashboard', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+  });
+
+  test('should navigate via sidebar', async ({ page }) => {
+    await page.goto('/');
+    const navItems = [
+      { link: /parts/i, url: '/parts' },
+      { link: /processes/i, url: '/processes' },
+      { link: /pfmea/i, url: '/pfmea' },
+      { link: /control plans/i, url: '/control-plans' },
+      { link: /actions/i, url: '/actions' },
+    ];
+    for (const item of navItems) {
+      await page.getByRole('link', { name: item.link }).click();
+      await expect(page).toHaveURL(item.url);
+    }
+  });
+
+  test('should show 404 for invalid routes', async ({ page }) => {
+    await page.goto('/invalid-route-xyz-123');
+    await expect(page.getByText(/not found|404/i)).toBeVisible();
+  });
+});
+4. e2e/parts.spec.ts
+typescriptimport { test, expect, waitForToast, waitForTableLoad } from './fixtures';
+
+test.describe('Parts Management', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/parts');
+    await waitForTableLoad(page);
+  });
+
+  test('should display parts list', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: /parts/i })).toBeVisible();
+    await expect(page.locator('table')).toBeVisible();
+  });
+
+  test('should create a new part', async ({ page }) => {
+    const uniquePartNumber = `TEST-${Date.now()}`;
+    await page.getByRole('button', { name: /add|create|new/i }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByLabel(/part number/i).fill(uniquePartNumber);
+    await page.getByLabel(/part name/i).fill('E2E Created Part');
+    await page.getByLabel(/customer/i).fill('Test Customer');
+    await page.getByLabel(/program/i).fill('Test Program');
+    await page.getByLabel(/plant/i).fill('Test Plant');
+    await page.getByRole('button', { name: /save|create|submit/i }).click();
+    await waitForToast(page, /created|success/i);
+    await expect(page.getByText(uniquePartNumber)).toBeVisible();
+  });
+
+  test('should search parts', async ({ page }) => {
+    const searchInput = page.getByPlaceholder(/search/i);
+    await searchInput.fill('TEST');
+    await page.waitForTimeout(500);
+    // Verify filter applied (results should contain search term or be empty)
+  });
+
+  test('should navigate to part detail', async ({ page }) => {
+    const firstRow = page.locator('table tbody tr').first();
+    if (await firstRow.isVisible()) {
+      await firstRow.click();
+      await expect(page).toHaveURL(/\/parts\/\d+/);
+    }
+  });
+});
+5. e2e/pfmea.spec.ts
+typescriptimport { test, expect, waitForToast, waitForTableLoad } from './fixtures';
+
+test.describe('PFMEA Management', () => {
+  test('should display PFMEA list', async ({ page }) => {
+    await page.goto('/pfmea');
+    await expect(page.getByRole('heading', { name: /pfmea/i })).toBeVisible();
+  });
+
+  test('should view PFMEA detail', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await expect(page.getByRole('heading')).toBeVisible();
+  });
+
+  test('should add a PFMEA row', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('button', { name: /add.*row|new.*row/i }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByLabel(/step/i).fill('10');
+    await page.getByLabel(/function/i).fill('Test Function');
+    await page.getByLabel(/requirement/i).fill('Test Requirement');
+    await page.getByLabel(/failure mode/i).fill('Test Failure');
+    await page.getByLabel(/effect/i).fill('Test Effect');
+    await page.getByLabel(/cause/i).fill('Test Cause');
+    await page.getByLabel(/severity/i).selectOption('8');
+    await page.getByLabel(/occurrence/i).selectOption('5');
+    await page.getByLabel(/detection/i).selectOption('6');
+    await page.getByRole('button', { name: /save|add/i }).click();
+    await waitForToast(page, /added|created|success/i);
+  });
+
+  test('should calculate AP correctly for high severity', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('button', { name: /add.*row/i }).click();
+    await page.getByLabel(/step/i).fill('20');
+    await page.getByLabel(/function/i).fill('AP Test');
+    await page.getByLabel(/requirement/i).fill('Test');
+    await page.getByLabel(/failure mode/i).fill('Test');
+    await page.getByLabel(/effect/i).fill('Test');
+    await page.getByLabel(/cause/i).fill('Test');
+    await page.getByLabel(/severity/i).selectOption('9');
+    await page.getByLabel(/occurrence/i).selectOption('3');
+    await page.getByLabel(/detection/i).selectOption('3');
+    await page.getByRole('button', { name: /save|add/i }).click();
+    await waitForToast(page, /success/i);
+    // S=9 should result in AP=H
+    await expect(page.locator('text=H').or(page.locator('[data-ap="H"]')).last()).toBeVisible();
+  });
+
+  test('should run auto-review', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('button', { name: /auto-review|run review|validate/i }).click();
+    await page.waitForTimeout(1000);
+    await expect(page.getByText(/finding|issue|error|warning|pass|complete/i)).toBeVisible();
+  });
+
+  test('should change document status', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    const statusBtn = page.getByRole('button', { name: /status|draft/i });
+    if (await statusBtn.isVisible()) {
+      await statusBtn.click();
+      await page.getByRole('option', { name: /review/i }).click();
+      await waitForToast(page, /status|updated/i);
+    }
+  });
+});
+6. e2e/document-tabs.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('PFMEA Document Tabs', () => {
+  test('signatures tab should not show Coming Soon', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('tab', { name: /signatures/i }).click();
+    await expect(page.getByText(/coming soon/i)).not.toBeVisible();
+    await expect(page.getByText(/electronic signature|signature/i)).toBeVisible();
+  });
+
+  test('revisions tab should not show Coming Soon', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('tab', { name: /revisions/i }).click();
+    await expect(page.getByText(/coming soon/i)).not.toBeVisible();
+    await expect(page.getByText(/revision|version/i)).toBeVisible();
+  });
+
+  test('ownership tab should not show Coming Soon', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('tab', { name: /ownership/i }).click();
+    await expect(page.getByText(/coming soon/i)).not.toBeVisible();
+    await expect(page.getByText(/owner|responsible/i)).toBeVisible();
+  });
+
+  test('history tab should not show Coming Soon', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('tab', { name: /history/i }).click();
+    await expect(page.getByText(/coming soon/i)).not.toBeVisible();
+    await expect(page.getByText(/history|audit|change/i)).toBeVisible();
+  });
+
+  test('should add signature when in review status', async ({ page, pfmeaId, request }) => {
+    await request.patch(`/api/pfmeas/${pfmeaId}/status`, { data: { status: 'review' } });
+    await page.goto(`/pfmea/${pfmeaId}`);
+    await page.getByRole('tab', { name: /signatures/i }).click();
+    const addBtn = page.getByRole('button', { name: /add signature/i });
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.getByLabel(/role|signing as/i).selectOption({ index: 1 });
+      await page.getByLabel(/name/i).fill('E2E Test Signer');
+      await page.getByRole('button', { name: /sign/i }).click();
+      await expect(page.getByText('E2E Test Signer')).toBeVisible();
+    }
+  });
+});
+7. e2e/control-plans.spec.ts
+typescriptimport { test, expect, waitForToast, waitForTableLoad } from './fixtures';
+
+test.describe('Control Plans', () => {
+  test('should display control plans list', async ({ page }) => {
+    await page.goto('/control-plans');
+    await expect(page.getByRole('heading', { name: /control plan/i })).toBeVisible();
+  });
+
+  test('should view control plan detail', async ({ page, controlPlanId }) => {
+    await page.goto(`/control-plans/${controlPlanId}`);
+    await expect(page.getByRole('heading')).toBeVisible();
+  });
+
+  test('should add a control plan row', async ({ page, controlPlanId }) => {
+    await page.goto(`/control-plans/${controlPlanId}`);
+    await page.getByRole('button', { name: /add.*row|add.*characteristic/i }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByLabel(/characteristic/i).fill('Test Dimension');
+    await page.getByLabel(/specification|target/i).fill('10.0 ± 0.5');
+    await page.getByLabel(/sample size/i).fill('5');
+    await page.getByLabel(/frequency/i).fill('1/hour');
+    await page.getByLabel(/control method/i).fill('X-bar R Chart');
+    await page.getByLabel(/reaction plan/i).fill('Stop and notify supervisor');
+    await page.getByRole('button', { name: /save|add/i }).click();
+    await waitForToast(page, /added|created|success/i);
+  });
+});
+8. e2e/actions.spec.ts
+typescriptimport { test, expect, waitForToast } from './fixtures';
+
+test.describe('Action Items', () => {
+  test('should display actions list', async ({ page }) => {
+    await page.goto('/actions');
+    await expect(page.getByRole('heading', { name: /action/i })).toBeVisible();
+  });
+
+  test('should filter actions by status', async ({ page }) => {
+    await page.goto('/actions');
+    const statusFilter = page.getByRole('combobox', { name: /status|filter/i });
+    if (await statusFilter.isVisible()) {
+      await statusFilter.click();
+      await page.getByRole('option', { name: /open|pending/i }).click();
+      await page.waitForTimeout(500);
+    }
+  });
+
+  test('should create action from PFMEA row', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    const actionBtn = page.locator('table tbody tr').first().getByRole('button', { name: /action/i });
+    if (await actionBtn.isVisible()) {
+      await actionBtn.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.getByLabel(/description|action/i).fill('E2E Test Action');
+      await page.getByLabel(/responsible|assigned/i).fill('John Doe');
+      await page.getByLabel(/target date|due date/i).fill('2025-12-31');
+      await page.getByRole('button', { name: /save|create|add/i }).click();
+      await waitForToast(page, /created|added|success/i);
+    }
+  });
+});
+9. e2e/import-export.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('Import & Export', () => {
+  test('should export PFMEA to PDF', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: /export/i }).click();
+    await page.getByRole('menuitem', { name: /pdf/i }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
+  });
+
+  test('should export PFMEA to Excel', async ({ page, pfmeaId }) => {
+    await page.goto(`/pfmea/${pfmeaId}`);
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: /export/i }).click();
+    await page.getByRole('menuitem', { name: /excel/i }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
+  });
+
+  test('should show import wizard', async ({ page }) => {
+    await page.goto('/import');
+    await expect(page.getByRole('heading', { name: /import/i })).toBeVisible();
+    await expect(page.getByText(/upload|drag|drop/i)).toBeVisible();
+  });
+
+  test('should download import template', async ({ page }) => {
+    await page.goto('/import');
+    const downloadBtn = page.getByRole('button', { name: /download.*template/i });
+    if (await downloadBtn.isVisible()) {
+      const downloadPromise = page.waitForEvent('download');
+      await downloadBtn.click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
+    }
+  });
+});
+10. e2e/dashboard.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('Dashboard', () => {
+  test('should display dashboard metrics', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByText(/total parts|parts/i)).toBeVisible();
+    await expect(page.getByText(/pfmea|failure/i)).toBeVisible();
+  });
+
+  test('should display AP distribution chart', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByText(/action priority|ap distribution/i)).toBeVisible();
+    const chart = page.locator('.recharts-wrapper, svg[class*="chart"], canvas');
+    await expect(chart.first()).toBeVisible();
+  });
+
+  test('should have working quick links', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: /parts/i }).first().click();
+    await expect(page).toHaveURL(/\/parts/);
+  });
+});
+11. e2e/notifications.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('Notifications', () => {
+  test('should display notification bell', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /notification/i }).or(page.locator('[data-notification-bell]'))).toBeVisible();
+  });
+
+  test('should open notification panel', async ({ page }) => {
+    await page.goto('/');
+    const bell = page.getByRole('button', { name: /notification/i }).or(page.locator('[data-notification-bell]'));
+    if (await bell.isVisible()) {
+      await bell.click();
+      await expect(page.getByText(/notification/i)).toBeVisible();
+    }
+  });
+
+  test('should navigate to notifications page', async ({ page }) => {
+    await page.goto('/notifications');
+    await expect(page.getByRole('heading', { name: /notification/i })).toBeVisible();
+  });
+});
+12. e2e/keyboard-shortcuts.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('Keyboard Shortcuts', () => {
+  test('should open search with Ctrl+K', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('Control+k');
+    await expect(page.getByRole('dialog').or(page.getByPlaceholder(/search/i))).toBeVisible();
+  });
+
+  test('should close dialogs with Escape', async ({ page }) => {
+    await page.goto('/parts');
+    await page.getByRole('button', { name: /add|create|new/i }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+  });
+});
+13. e2e/accessibility.spec.ts
+typescriptimport { test, expect } from './fixtures';
+
+test.describe('Accessibility', () => {
+  test('should be navigable by keyboard', async ({ page }) => {
+    await page.goto('/');
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press('Tab');
+    }
+    const focusedElement = page.locator(':focus');
+    await expect(focusedElement).toBeVisible();
+  });
+
+  test('forms should have proper labels', async ({ page }) => {
+    await page.goto('/parts');
+    await page.getByRole('button', { name: /add|create/i }).click();
+    const inputs = page.locator('input:visible:not([type="hidden"])');
+    const count = await inputs.count();
+    for (let i = 0; i < count; i++) {
+      const input = inputs.nth(i);
+      const id = await input.getAttribute('id');
+      const ariaLabel = await input.getAttribute('aria-label');
+      const ariaLabelledBy = await input.getAttribute('aria-labelledby');
+      const placeholder = await input.getAttribute('placeholder');
+      const hasLabel = id ? await page.locator(`label[for="${id}"]`).isVisible() : false;
+      expect(hasLabel || ariaLabel || ariaLabelledBy || placeholder).toBeTruthy();
+    }
+  });
+});
+14. e2e/mobile.spec.ts
+typescriptimport { test, expect, devices } from '@playwright/test';
+
+test.describe('Mobile Responsiveness', () => {
+  test.use({ ...devices['iPhone 13'] });
+
+  test('should show mobile menu button', async ({ page }) => {
+    await page.goto('/');
+    // Desktop sidebar hidden, mobile menu visible
+    await expect(page.getByRole('button', { name: /menu/i }).or(page.locator('[data-mobile-menu]'))).toBeVisible();
+  });
+
+  test('should open mobile navigation', async ({ page }) => {
+    await page.goto('/');
+    const menuBtn = page.getByRole('button', { name: /menu/i }).or(page.locator('[data-mobile-menu]'));
+    if (await menuBtn.isVisible()) {
+      await menuBtn.click();
+      await expect(page.getByRole('navigation')).toBeVisible();
+    }
+  });
+
+  test('dialogs should be mobile-friendly', async ({ page }) => {
+    await page.goto('/parts');
+    await page.getByRole('button', { name: /add|create/i }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    // Dialog should be nearly full width on mobile
+    const dialogBox = await dialog.boundingBox();
+    if (dialogBox) {
+      expect(dialogBox.width).toBeGreaterThan(300);
+    }
+  });
+});
+15. Package.json Updates
+Add these to your package.json:
+json{
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:chrome": "playwright test --project=chromium",
+    "test:e2e:mobile": "playwright test --project=mobile",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.1"
+  }
+}
+Installation Commands
+bashnpm install -D @playwright/test
+npx playwright install
+Run Commands
+bash# Run all tests
+npm run test:e2e
+
+# Run with interactive UI
+npm run test:e2e:ui
+
+# Run specific file
+npx playwright test e2e/pfmea.spec.ts
+
+# View HTML report
+npm run test:e2e:report
+Test Coverage
+CategoryTestsCoverageNavigation3Routing, sidebar, 404Parts4List, create, search, detailPFMEA6List, detail, add row, AP calc, auto-review, statusDocument Tabs5Signatures, revisions, ownership, history (no placeholders)Control Plans3List, detail, add rowActions3List, filter, create from PFMEAImport/Export4PDF, Excel, template, wizardDashboard3Metrics, charts, linksNotifications3Bell, panel, pageKeyboard2Search shortcut, escapeAccessibility2Keyboard nav, form labelsMobile3Menu, navigation, dialogs
+Total: ~41 E2E tests covering all major user journeys
