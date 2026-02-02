@@ -59,7 +59,7 @@ import {
   Send,
   Archive,
 } from "lucide-react";
-import { SignaturePanel } from "./SignaturePanel";
+import { SignaturesPanel } from "./SignaturesPanel";
 import { AuditLogViewer } from "./AuditLogViewer";
 
 interface ChangePackage {
@@ -844,13 +844,10 @@ function ChangePackageDetail({
           </TabsContent>
 
           <TabsContent value="signatures">
-            <SignaturePanel
-              entityType="change_package"
-              entityId={pkg.id}
-              currentUserId={currentUserId}
-              currentUserName={currentUserName}
-              currentUserEmail={currentUserEmail}
-              currentUserRole={currentUserRole}
+            <SignaturesPanel
+              entityType="pfmea"
+              entityId={parseInt(pkg.id) || 0}
+              status={pkg.status}
             />
           </TabsContent>
 

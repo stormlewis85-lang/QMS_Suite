@@ -1,6 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AuditLogViewer } from "./AuditLogViewer";
-import { SignaturePanel } from "./SignaturePanel";
+import { SignaturesPanel } from "./SignaturesPanel";
 import { RevisionHistory } from "./RevisionHistory";
 import { OwnershipPanel } from "./OwnershipPanel";
 import {
@@ -63,14 +63,10 @@ export function GovernanceTabPanel({
       </TabsList>
 
       <TabsContent value="signatures" className="mt-4">
-        <SignaturePanel
-          entityType={entityType}
-          entityId={entityId}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          currentUserEmail={currentUserEmail}
-          currentUserRole={currentUserRole}
-          onApprovalComplete={onApprovalComplete}
+        <SignaturesPanel
+          entityType={entityType === 'process_def' ? 'pfmea' : entityType}
+          entityId={parseInt(entityId) || 0}
+          status={currentStatus}
         />
       </TabsContent>
 
@@ -89,13 +85,9 @@ export function GovernanceTabPanel({
 
       <TabsContent value="ownership" className="mt-4">
         <OwnershipPanel
-          entityType={entityType}
+          entityType={entityType === 'process_def' ? 'pfmea' : entityType}
           entityId={entityId}
           entityName={entityName}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          currentUserEmail={currentUserEmail}
-          availableUsers={availableUsers}
         />
       </TabsContent>
 

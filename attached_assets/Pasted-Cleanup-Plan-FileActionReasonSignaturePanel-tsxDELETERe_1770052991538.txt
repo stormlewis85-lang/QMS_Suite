@@ -1,0 +1,650 @@
+Cleanup Plan
+FileActionReasonSignaturePanel.tsxDELETEReplaced by SignaturesPanel.tsxAuditLogViewer.tsxIMPLEMENTNeeded for History tabOwnershipPanel.tsxIMPLEMENTNeeded for Ownership tabRevisionHistory.tsxIMPLEMENTNeeded for Revisions tabserver/routes.ts TODORESOLVERemove or implement
+
+1. DELETE: SignaturePanel.tsx (old)
+bashrm client/src/components/SignaturePanel.tsx
+Update any imports to use SignaturesPanel.tsx instead.
+
+2. IMPLEMENT: AuditLogViewer.tsx
+tsx// client/src/components/AuditLogViewer.tsx
+
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  History, 
+  Plus, 
+  Pencil, 
+  Trash2, 
+  Eye,
+  FileSignature,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  User,
+  Clock
+} from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
+
+interface AuditLogEntry {
+  id: number;
+  entityType: string;
+  entityId: number;
+  action: string;
+  actorName?: string;
+  previousValue?: string;
+  newValue?: string;
+  changeNote?: string;
+  ipAddress?: string;
+  createdAt: string;
+}
+
+interface AuditLogViewerProps {
+  entityType: string;
+  entityId: number;
+  limit?: number;
+}
+
+const ACTION_ICONS: Record<string, React.ReactNode> = {
+  create: <Plus className="h-4 w-4 text-green-600" />,
+  update: <Pencil className="h-4 w-4 text-blue-600" />,
+  delete: <Trash2 className="h-4 w-4 text-red-600" />,
+  view: <Eye className="h-4 w-4 text-gray-600" />,
+  sign: <FileSignature className="h-4 w-4 text-purple-600" />,
+  status_change: <RefreshCw className="h-4 w-4 text-orange-600" />,
+  approve: <CheckCircle className="h-4 w-4 text-green-600" />,
+  reject: <AlertCircle className="h-4 w-4 text-red-600" />,
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  create: 'Created',
+  update: 'Updated',
+  delete: 'Deleted',
+  view: 'Viewed',
+  sign: 'Signed',
+  status_change: 'Status Changed',
+  approve: 'Approved',
+  reject: 'Rejected',
+  add_row: 'Added Row',
+  delete_row: 'Deleted Row',
+  add_signature: 'Added Signature',
+  create_revision: 'Created Revision',
+};
+
+export function AuditLogViewer({ entityType, entityId, limit = 50 }: AuditLogViewerProps) {
+  const { data: entries = [], isLoading } = useQuery<AuditLogEntry[]>({
+    queryKey: [`/api/audit-log?entityType=${entityType}&entityId=${entityId}&limit=${limit}`],
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <Clock className="h-8 w-8 mx-auto mb-2 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading history...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Change History
+          </CardTitle>
+          <CardDescription>
+            Complete audit trail for this document
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground">
+            <History className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            <p>No history recorded yet</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          Change History
+        </CardTitle>
+        <CardDescription>
+          Complete audit trail for this document ({entries.length} entries)
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ScrollArea className="h-[400px] pr-4">
+          <div className="relative">
+            {/* Timeline line */}
+            <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
+            
+            <div className="space-y-4">
+              {entries.map((entry, index) => (
+                <div key={entry.id} className="relative pl-10">
+                  {/* Timeline dot */}
+                  <div className="absolute left-2 top-1 w-5 h-5 rounded-full bg-background border-2 border-border flex items-center justify-center">
+                    {ACTION_ICONS[entry.action] || <Pencil className="h-3 w-3 text-gray-400" />}
+                  </div>
+                  
+                  <div className="bg-muted/30 rounded-lg p-3 border">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {ACTION_LABELS[entry.action] || entry.action}
+                          </Badge>
+                          {entry.actorName && (
+                            <span className="text-sm text-muted-foreground flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {entry.actorName}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {entry.changeNote && (
+                          <p className="text-sm mt-1">{entry.changeNote}</p>
+                        )}
+                        
+                        {/* Show field changes */}
+                        {entry.previousValue && entry.newValue && (
+                          <div className="mt-2 text-xs">
+                            <span className="text-red-600 line-through">{entry.previousValue}</span>
+                            <span className="mx-2">→</span>
+                            <span className="text-green-600">{entry.newValue}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="text-right text-xs text-muted-foreground whitespace-nowrap">
+                        <div>{format(new Date(entry.createdAt), 'MMM d, yyyy')}</div>
+                        <div>{format(new Date(entry.createdAt), 'h:mm a')}</div>
+                        <div className="text-[10px] mt-1">
+                          {formatDistanceToNow(new Date(entry.createdAt), { addSuffix: true })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default AuditLogViewer;
+
+3. IMPLEMENT: OwnershipPanel.tsx
+tsx// client/src/components/OwnershipPanel.tsx
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { 
+  Users, 
+  UserPlus, 
+  Crown, 
+  Mail,
+  Building,
+  Calendar,
+  Edit,
+  X
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+
+interface OwnershipPanelProps {
+  entityType: 'pfmea' | 'control_plan';
+  entityId: number;
+  currentOwner?: string;
+  currentTeam?: string;
+  createdBy?: string;
+  createdAt?: string;
+}
+
+export function OwnershipPanel({ 
+  entityType, 
+  entityId,
+  currentOwner = 'Not Assigned',
+  currentTeam = 'Quality Engineering',
+  createdBy = 'System',
+  createdAt,
+}: OwnershipPanelProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isEditingOwner, setIsEditingOwner] = useState(false);
+  const [newOwner, setNewOwner] = useState(currentOwner);
+
+  // In a real app, this would update the database
+  const updateOwnerMutation = useMutation({
+    mutationFn: async (owner: string) => {
+      // Placeholder - would call actual API
+      const response = await fetch(`/api/${entityType}s/${entityId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner }),
+      });
+      if (!response.ok) throw new Error('Failed to update owner');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/${entityType}s/${entityId}`] });
+      toast({ title: 'Owner Updated', description: 'Document ownership has been transferred.' });
+      setIsEditingOwner(false);
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update owner', variant: 'destructive' });
+    },
+  });
+
+  const handleSaveOwner = () => {
+    if (newOwner && newOwner !== currentOwner) {
+      updateOwnerMutation.mutate(newOwner);
+    } else {
+      setIsEditingOwner(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Document Ownership
+        </CardTitle>
+        <CardDescription>
+          Manage document ownership and responsibility
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Owner Section */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Document Owner</Label>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setIsEditingOwner(!isEditingOwner)}
+            >
+              {isEditingOwner ? <X className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
+            </Button>
+          </div>
+          
+          {isEditingOwner ? (
+            <div className="flex gap-2">
+              <Input
+                value={newOwner}
+                onChange={(e) => setNewOwner(e.target.value)}
+                placeholder="Enter owner name or email"
+              />
+              <Button onClick={handleSaveOwner} disabled={updateOwnerMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Crown className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium">{currentOwner}</p>
+                <p className="text-sm text-muted-foreground">Primary responsible party</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Team Section */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Responsible Team</Label>
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+              <Building className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="font-medium">{currentTeam}</p>
+              <p className="text-sm text-muted-foreground">Department responsibility</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Created By Section */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Document Origin</Label>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                <UserPlus className="h-4 w-4" />
+                <span className="text-xs">Created By</span>
+              </div>
+              <p className="font-medium">{createdBy}</p>
+            </div>
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                <Calendar className="h-4 w-4" />
+                <span className="text-xs">Created On</span>
+              </div>
+              <p className="font-medium">
+                {createdAt ? format(new Date(createdAt), 'MMM d, yyyy') : 'Unknown'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications Section */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Notification Subscribers</Label>
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Mail className="h-3 w-3" />
+                owner@company.com
+              </Badge>
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Mail className="h-3 w-3" />
+                quality@company.com
+              </Badge>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                <UserPlus className="h-3 w-3 mr-1" />
+                Add
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              These users will be notified of changes to this document
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default OwnershipPanel;
+
+4. IMPLEMENT: RevisionHistory.tsx
+tsx// client/src/components/RevisionHistory.tsx
+
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { 
+  GitBranch, 
+  Eye, 
+  Download,
+  Clock,
+  CheckCircle,
+  FileText,
+  ArrowRight
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { Link } from 'wouter';
+
+interface Revision {
+  id: number;
+  rev: string;
+  status: string;
+  createdAt: string;
+  createdBy?: string;
+  changeNote?: string;
+  rowCount?: number;
+}
+
+interface RevisionHistoryProps {
+  entityType: 'pfmea' | 'control_plan';
+  entityId: number;
+  currentRev: string;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-800',
+  review: 'bg-yellow-100 text-yellow-800',
+  effective: 'bg-green-100 text-green-800',
+  superseded: 'bg-blue-100 text-blue-800',
+  obsolete: 'bg-red-100 text-red-800',
+};
+
+export function RevisionHistory({ entityType, entityId, currentRev }: RevisionHistoryProps) {
+  // Fetch revision history
+  // In real implementation, this would be a dedicated endpoint
+  const { data: revisions = [], isLoading } = useQuery<Revision[]>({
+    queryKey: [`/api/${entityType}s/${entityId}/revisions`],
+    // If endpoint doesn't exist yet, provide mock data
+    queryFn: async () => {
+      try {
+        const response = await fetch(`/api/${entityType}s/${entityId}/revisions`);
+        if (response.ok) {
+          return response.json();
+        }
+        // Return current doc as only revision if endpoint doesn't exist
+        return [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <Clock className="h-8 w-8 mx-auto mb-2 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading revisions...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GitBranch className="h-5 w-5" />
+          Revision History
+        </CardTitle>
+        <CardDescription>
+          Track document versions and changes over time
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {/* Current Revision Highlight */}
+        <div className="mb-6 p-4 bg-primary/5 border-2 border-primary/20 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">Current Revision</span>
+                  <Badge>{currentRev}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  This is the active version of the document
+                </p>
+              </div>
+            </div>
+            <CheckCircle className="h-6 w-6 text-green-600" />
+          </div>
+        </div>
+
+        {/* Revision Table */}
+        {revisions.length > 0 ? (
+          <ScrollArea className="h-[300px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rev</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Changed By</TableHead>
+                  <TableHead>Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {revisions.map((rev) => (
+                  <TableRow key={rev.id} className={rev.rev === currentRev ? 'bg-primary/5' : ''}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={rev.rev === currentRev ? 'default' : 'outline'}>
+                          {rev.rev}
+                        </Badge>
+                        {rev.rev === currentRev && (
+                          <span className="text-xs text-green-600">(current)</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={STATUS_STYLES[rev.status] || ''}>
+                        {rev.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {format(new Date(rev.createdAt), 'MMM d, yyyy')}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {rev.createdBy || 'System'}
+                    </TableCell>
+                    <TableCell className="text-sm max-w-[200px] truncate">
+                      {rev.changeNote || '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/${entityType === 'pfmea' ? 'pfmea' : 'control-plans'}/${rev.id}`}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+            <GitBranch className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            <p>No previous revisions</p>
+            <p className="text-sm">This is the first version of this document</p>
+          </div>
+        )}
+
+        {/* Revision Flow Diagram */}
+        {revisions.length > 1 && (
+          <div className="mt-6 pt-4 border-t">
+            <Label className="text-sm font-medium mb-3 block">Revision Flow</Label>
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              {revisions.slice().reverse().map((rev, index, arr) => (
+                <div key={rev.id} className="flex items-center">
+                  <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    rev.rev === currentRev 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {rev.rev}
+                  </div>
+                  {index < arr.length - 1 && (
+                    <ArrowRight className="h-4 w-4 mx-1 text-muted-foreground" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Add missing Label import at top
+import { Label } from '@/components/ui/label';
+
+export default RevisionHistory;
+
+5. Remove TODO from routes.ts
+Find the TODO comment in server/routes.ts and either:
+
+Implement it if it's for a needed feature
+Remove it if it's obsolete
+
+Show me the TODO and I'll help resolve it.
+
+Integration: Update Tab Content
+In your PFMEA/Control Plan detail pages, update the tab content:
+tsximport AuditLogViewer from '@/components/AuditLogViewer';
+import OwnershipPanel from '@/components/OwnershipPanel';
+import RevisionHistory from '@/components/RevisionHistory';
+import SignaturesPanel from '@/components/SignaturesPanel';
+
+// In the Tabs section:
+
+<TabsContent value="signatures">
+  <SignaturesPanel
+    entityType="pfmea"
+    entityId={pfmea.id}
+    status={pfmea.status}
+  />
+</TabsContent>
+
+<TabsContent value="revisions">
+  <RevisionHistory
+    entityType="pfmea"
+    entityId={pfmea.id}
+    currentRev={pfmea.rev}
+  />
+</TabsContent>
+
+<TabsContent value="ownership">
+  <OwnershipPanel
+    entityType="pfmea"
+    entityId={pfmea.id}
+    currentOwner={pfmea.owner}
+    createdBy={pfmea.createdBy}
+    createdAt={pfmea.createdAt}
+  />
+</TabsContent>
+
+<TabsContent value="history">
+  <AuditLogViewer
+    entityType="pfmea"
+    entityId={pfmea.id}
+  />
+</TabsContent>

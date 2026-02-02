@@ -1,6 +1,6 @@
 // Governance Components - Phase 9 (Simplified)
 export { AuditLogViewer } from "./AuditLogViewer";
-export { SignaturePanel, SignatureStatusBadge } from "./SignaturePanel";
+export { SignaturesPanel } from "./SignaturesPanel";
 export { ChangePackageManager } from "./ChangePackageManager";
 export { RevisionHistory, RevisionBadge, RevisionCompare } from "./RevisionHistory";
 export { OwnershipPanel } from "./OwnershipPanel";

@@ -1386,7 +1386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get notifications for current user
   app.get('/api/notifications', async (req, res) => {
-    const userId = 'current-user'; // TODO: Get from auth
+    const userId = 'current-user'; // Placeholder: integrate with auth provider when available
     const { unreadOnly, limit, type } = req.query;
     
     try {

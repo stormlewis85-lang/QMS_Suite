@@ -92,7 +92,6 @@ import QRCode from "@/components/QRCode";
 import type { Part, PFMEA, PFMEARow, InsertPFMEARow } from "@shared/schema";
 import AutoReviewPanel from "@/components/AutoReviewPanel";
 import { GovernanceTabPanel } from "@/components/GovernanceTabPanel";
-import { SignatureStatusBadge } from "@/components/SignaturePanel";
 import { OwnershipPanel } from "@/components/OwnershipPanel";
 import { DocumentControlPanel } from "@/components/DocumentControlPanel";
 import ExportDialog from "@/components/ExportDialog";
