@@ -1,0 +1,66 @@
+{
+  "scripts": {
+    "audit": "npx tsx tests/full-system-audit.ts",
+    "audit:ci": "npx tsx tests/full-system-audit.ts 2>&1 | tee audit-output.txt"
+  }
+}
+```
+
+---
+
+## What This Audit Covers
+
+| Section | What It Checks |
+|---------|----------------|
+| **1. Server Health** | Is server running? Database connected? |
+| **2. All API Endpoints** | Every endpoint responds correctly |
+| **3. PFMEA Lifecycle** | Detail, rows, signatures, history, auto-review, status |
+| **4. Control Plan Lifecycle** | Same as PFMEA |
+| **5. Export Functionality** | PDF, Excel, templates |
+| **6. Code Audit** | "Coming Soon", TODO, FIXME, console.log, stubs |
+| **7. UI Components** | All required files exist with content |
+| **8. Route Configuration** | All routes defined in App.tsx |
+| **9. Database Schema** | All tables defined |
+| **10. Feature Completeness** | API + UI for each feature |
+
+---
+
+## Sample Output
+```
+╔════════════════════════════════════════════════════════════╗
+║     PFMEA SUITE - COMPREHENSIVE SYSTEM AUDIT               ║
+╚════════════════════════════════════════════════════════════╝
+
+==========================================================
+SECTION 6: CODE AUDIT - PLACEHOLDERS & INCOMPLETE FEATURES
+==========================================================
+
+🚧 [Code Audit] Coming Soon: client/src/pages/PFMEADetail.tsx
+🚧 [Code Audit] Coming Soon: client/src/components/OwnershipPanel.tsx
+⚠️  [Code Audit] Console.log Debug: client/src/pages/Dashboard.tsx
+
+==========================================================
+AUDIT SUMMARY REPORT
+==========================================================
+
+Total Checks: 87
+✅ PASS: 71 (81.6%)
+❌ FAIL: 5
+⚠️  WARN: 8
+🚧 PLACEHOLDER: 3
+
+----------------------------------------
+CRITICAL FAILURES (Must Fix):
+----------------------------------------
+
+[API]
+  • Get Signatures: ENDPOINT MISSING
+  • Run Auto-Review: Error 500: fetch parameter error
+
+[UI Components]
+  • Signatures Panel: FILE MISSING
+
+----------------------------------------
+PLACEHOLDERS (Need Implementation):
+----------------------------------------
+  🚧 Coming Soon: client/src/pages/PFMEADetail.tsx
