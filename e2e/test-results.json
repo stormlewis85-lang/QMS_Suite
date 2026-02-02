@@ -103,6 +103,2089 @@
   },
   "suites": [
     {
+      "title": "accessibility.spec.ts",
+      "file": "accessibility.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Accessibility",
+          "file": "accessibility.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should be navigable by keyboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 10003,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:31.944Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ddd864604af8a6a0198f-7f836e70dbbd21888a1c",
+              "file": "accessibility.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "forms should have proper labels",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 10433,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:31.997Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ddd864604af8a6a0198f-e220d5cd53248e98b112",
+              "file": "accessibility.spec.ts",
+              "line": 13,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "actions.spec.ts",
+      "file": "actions.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Action Items",
+          "file": "actions.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display actions list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 8941,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:31.949Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "54a77c18d7b95f68bfce-c9a500864217125ebd37",
+              "file": "actions.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should filter actions by status",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 10100,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:31.722Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "54a77c18d7b95f68bfce-97b55b619f1a97a3df40",
+              "file": "actions.spec.ts",
+              "line": 9,
+              "column": 3
+            },
+            {
+              "title": "should create action from PFMEA row",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 12737,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:42.891Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "54a77c18d7b95f68bfce-8e4c61e89688df5d6ac2",
+              "file": "actions.spec.ts",
+              "line": 19,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "app.spec.ts",
+      "file": "app.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Navigation",
+          "file": "app.spec.ts",
+          "line": 14,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load dashboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7047,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:43.767Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-a03d096eda93fb136bba",
+              "file": "app.spec.ts",
+              "line": 15,
+              "column": 3
+            },
+            {
+              "title": "should navigate to Parts page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11839,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:43.784Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-2f753b7bc34813f6ddfc",
+              "file": "app.spec.ts",
+              "line": 20,
+              "column": 3
+            },
+            {
+              "title": "should navigate to Processes page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 10637,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:43.807Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-ce6b553384dda917d316",
+              "file": "app.spec.ts",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "should navigate to PFMEA page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12278,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:50.884Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-79ab10b6221481b6ec84",
+              "file": "app.spec.ts",
+              "line": 32,
+              "column": 3
+            },
+            {
+              "title": "should navigate to Control Plans page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 8817,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:54.670Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-e51ac8a91de64c9ad316",
+              "file": "app.spec.ts",
+              "line": 38,
+              "column": 3
+            },
+            {
+              "title": "should navigate to Equipment Library",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 12025,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:55.682Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-64b9815129cc7cf3ff43",
+              "file": "app.spec.ts",
+              "line": 44,
+              "column": 3
+            },
+            {
+              "title": "should navigate to Failure Modes Library",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 12153,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:20:56.335Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-ddfce286aa06bbe62b2a",
+              "file": "app.spec.ts",
+              "line": 50,
+              "column": 3
+            },
+            {
+              "title": "should navigate to Controls Library",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 10432,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:03.369Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-54a3d41302d061d3610b",
+              "file": "app.spec.ts",
+              "line": 56,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Scrolling & Headers",
+          "file": "app.spec.ts",
+          "line": 67,
+          "column": 6,
+          "specs": [
+            {
+              "title": "table headers should remain visible when scrolling",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 9877,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:03.789Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-d9ccde848f1b2f9f5ded",
+              "file": "app.spec.ts",
+              "line": 68,
+              "column": 3
+            },
+            {
+              "title": "page content should be scrollable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 11294,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:07.779Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-f7b9f22120b46c385dbd",
+              "file": "app.spec.ts",
+              "line": 85,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Parts CRUD",
+          "file": "app.spec.ts",
+          "line": 100,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display parts list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 11766,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:08.818Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-09a5dd5f10eed560228a",
+              "file": "app.spec.ts",
+              "line": 101,
+              "column": 3
+            },
+            {
+              "title": "should open create part dialog",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 14242,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:13.860Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-7ad18c34bd70e01d60f9",
+              "file": "app.spec.ts",
+              "line": 106,
+              "column": 3
+            },
+            {
+              "title": "should navigate to part detail",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 32193,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/runner/workspace/e2e/app.spec.ts",
+                            "column": 71,
+                            "line": 116
+                          },
+                          "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /view details/i }).first()\u001b[22m\n\n\n  114 |     \n  115 |     // Click \"View Details\" button\n> 116 |     await page.getByRole('button', { name: /view details/i }).first().click();\n      |                                                                       ^\n  117 |     \n  118 |     await expect(page).toHaveURL(/\\/parts\\/[a-zA-Z0-9-]+/);\n  119 |   });\n    at /home/runner/workspace/e2e/app.spec.ts:116:71"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:13.946Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/workspace/test-results/app-Parts-CRUD-should-navigate-to-part-detail-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/runner/workspace/test-results/app-Parts-CRUD-should-navigate-to-part-detail-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-784fae85a37916ab83e5",
+              "file": "app.spec.ts",
+              "line": 112,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Equipment Library",
+          "file": "app.spec.ts",
+          "line": 126,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display equipment list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 12037,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:19.325Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-474088c6894e080878b8",
+              "file": "app.spec.ts",
+              "line": 127,
+              "column": 3
+            },
+            {
+              "title": "should open add equipment dialog",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 10439,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:20.799Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-09f244316881b9ddcc34",
+              "file": "app.spec.ts",
+              "line": 132,
+              "column": 3
+            },
+            {
+              "title": "should search equipment",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 11106,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:28.184Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-07c7821cf339b79ff635",
+              "file": "app.spec.ts",
+              "line": 138,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Failure Modes Library",
+          "file": "app.spec.ts",
+          "line": 153,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display failure modes list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 9995,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:31.383Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-4ee3da1006c8715e4f8e",
+              "file": "app.spec.ts",
+              "line": 154,
+              "column": 3
+            },
+            {
+              "title": "should open add failure mode dialog",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 14084,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:31.471Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-472925a056c6ab713e23",
+              "file": "app.spec.ts",
+              "line": 159,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Controls Library",
+          "file": "app.spec.ts",
+          "line": 170,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display controls list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 12945,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:39.403Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-29af5ea02fd207f95c27",
+              "file": "app.spec.ts",
+              "line": 171,
+              "column": 3
+            },
+            {
+              "title": "should have filter tabs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 11530,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:41.522Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-9bd73614a374bc26d4fb",
+              "file": "app.spec.ts",
+              "line": 176,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Process Library",
+          "file": "app.spec.ts",
+          "line": 192,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display processes list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 10318,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:45.681Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-6f071c33be707605c5ee",
+              "file": "app.spec.ts",
+              "line": 193,
+              "column": 3
+            },
+            {
+              "title": "should navigate to process detail",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3023,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:55.065Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-5f9110f83ea8f745f48d",
+              "file": "app.spec.ts",
+              "line": 198,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Document Generation",
+          "file": "app.spec.ts",
+          "line": 212,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should access part detail and see generation options",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "timedOut",
+                      "duration": 38185,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/runner/workspace/e2e/app.spec.ts",
+                            "column": 71,
+                            "line": 217
+                          },
+                          "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /view details/i }).first()\u001b[22m\n\n\n  215 |     \n  216 |     // Navigate to a part\n> 217 |     await page.getByRole('button', { name: /view details/i }).first().click();\n      |                                                                       ^\n  218 |     await page.waitForURL(/\\/parts\\/[a-zA-Z0-9-]+/);\n  219 |     \n  220 |     // Should see generation button (use testid for precision)\n    at /home/runner/workspace/e2e/app.spec.ts:217:71"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:52.465Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/workspace/test-results/app-Document-Generation-sh-d29e1--and-see-generation-options-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/runner/workspace/test-results/app-Document-Generation-sh-d29e1--and-see-generation-options-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-60d25dbf8f4112b55368",
+              "file": "app.spec.ts",
+              "line": 213,
+              "column": 3
+            },
+            {
+              "title": "should open generate documents dialog",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 2,
+                      "status": "timedOut",
+                      "duration": 38016,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/runner/workspace/e2e/app.spec.ts",
+                            "column": 71,
+                            "line": 227
+                          },
+                          "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /view details/i }).first()\u001b[22m\n\n\n  225 |   test('should open generate documents dialog', async ({ page }) => {\n  226 |     await page.goto('/parts');\n> 227 |     await page.getByRole('button', { name: /view details/i }).first().click();\n      |                                                                       ^\n  228 |     await page.waitForURL(/\\/parts\\/[a-zA-Z0-9-]+/);\n  229 |     \n  230 |     await page.getByTestId('button-generate-documents').click();\n    at /home/runner/workspace/e2e/app.spec.ts:227:71"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:53.182Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/workspace/test-results/app-Document-Generation-sh-d7b71-n-generate-documents-dialog-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/runner/workspace/test-results/app-Document-Generation-sh-d7b71-n-generate-documents-dialog-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-2866f0c02d693c9b7a24",
+              "file": "app.spec.ts",
+              "line": 225,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "API Health",
+          "file": "app.spec.ts",
+          "line": 241,
+          "column": 6,
+          "specs": [
+            {
+              "title": "parts API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 1225,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:56.398Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-64de6c728179c5ddb5f0",
+              "file": "app.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "processes API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 212,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:57.872Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-0254e36363137d366e37",
+              "file": "app.spec.ts",
+              "line": 247,
+              "column": 3
+            },
+            {
+              "title": "equipment API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 119,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:58.240Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-7e9e281e3ff21afeed08",
+              "file": "app.spec.ts",
+              "line": 252,
+              "column": 3
+            },
+            {
+              "title": "failure-modes API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 255,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:58.547Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-979c5c5066b52b4b7eeb",
+              "file": "app.spec.ts",
+              "line": 257,
+              "column": 3
+            },
+            {
+              "title": "controls-library API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 109,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:58.908Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-1c7e0d9fc70ebd47c142",
+              "file": "app.spec.ts",
+              "line": 262,
+              "column": 3
+            },
+            {
+              "title": "pfmeas API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 68,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:59.081Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-6caadecefbf0938d9d0a",
+              "file": "app.spec.ts",
+              "line": 267,
+              "column": 3
+            },
+            {
+              "title": "control-plans API should respond",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 398,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:59.134Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c31ff144dc4fee3acd0a-fb6c56757bcd9610b73f",
+              "file": "app.spec.ts",
+              "line": 272,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "control-plans.spec.ts",
+      "file": "control-plans.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Control Plans",
+          "file": "control-plans.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display control plans list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 6531,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:59.248Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "039941d27cc9fe25c4e7-45dd3a44ff38ccacc8f7",
+              "file": "control-plans.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should view control plan detail",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4234,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:21:59.657Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "039941d27cc9fe25c4e7-33568034a491ce737111",
+              "file": "control-plans.spec.ts",
+              "line": 10,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "dashboard.spec.ts",
+      "file": "dashboard.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Dashboard",
+          "file": "dashboard.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display dashboard metrics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3161,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:03.960Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "90cda532ab82d274b30b-a9de5e0a470e86ce1baa",
+              "file": "dashboard.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should display AP distribution chart",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 7404,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:05.820Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "90cda532ab82d274b30b-6f776d7505f1b9cf7f7c",
+              "file": "dashboard.spec.ts",
+              "line": 10,
+              "column": 3
+            },
+            {
+              "title": "should have working quick links",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5309,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:07.170Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "90cda532ab82d274b30b-50f06ed1272f7597e001",
+              "file": "dashboard.spec.ts",
+              "line": 17,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "document-tabs.spec.ts",
+      "file": "document-tabs.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PFMEA Document Tabs",
+          "file": "document-tabs.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should have governance tabs available",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9168,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:12.702Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ff66ac1feeeae606697b-7d57b7335cdecc79907d",
+              "file": "document-tabs.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should switch between tabs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 9413,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:13.314Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ff66ac1feeeae606697b-7f7c085e5b3c54a3930c",
+              "file": "document-tabs.spec.ts",
+              "line": 14,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "import-export.spec.ts",
+      "file": "import-export.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Import & Export",
+          "file": "import-export.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should have export button on PFMEA detail",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9416,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:22.021Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8c30c6e4baddf1618651-e1390c53c83328b86959",
+              "file": "import-export.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should navigate to import page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 13317,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:22.881Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8c30c6e4baddf1618651-c8b4f546b3e8737585d6",
+              "file": "import-export.spec.ts",
+              "line": 13,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "keyboard-shortcuts.spec.ts",
+      "file": "keyboard-shortcuts.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Keyboard Shortcuts",
+          "file": "keyboard-shortcuts.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should close dialogs with Escape",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 8078,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:36.011Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8c21c95acf6b49c9b424-d26eed15e0b5bfd63ff2",
+              "file": "keyboard-shortcuts.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should be able to tab through form fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12251,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:31.524Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8c21c95acf6b49c9b424-172bd64008a1efaf2184",
+              "file": "keyboard-shortcuts.spec.ts",
+              "line": 12,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "mobile.spec.ts",
+      "file": "mobile.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Mobile Responsiveness",
+          "file": "mobile.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should have responsive layout",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 6170,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:35.827Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e79c838550b25e92508e-80825651c1414ec14b25",
+              "file": "mobile.spec.ts",
+              "line": 6,
+              "column": 3
+            },
+            {
+              "title": "should show sidebar trigger on small screens",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 26424,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:36.507Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e79c838550b25e92508e-bc71112926936684974b",
+              "file": "mobile.spec.ts",
+              "line": 12,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "navigation.spec.ts",
+      "file": "navigation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Navigation",
+          "file": "navigation.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load dashboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 5747,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:43.564Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5d2868f7d23420c27cca-9e74baffe4efd8e84a6d",
+              "file": "navigation.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should navigate via sidebar",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 19822,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:43.880Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5d2868f7d23420c27cca-0ba8d84e750fc1906af7",
+              "file": "navigation.spec.ts",
+              "line": 9,
+              "column": 3
+            },
+            {
+              "title": "should show 404 for invalid routes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 5694,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:22:45.314Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5d2868f7d23420c27cca-1c5c21170bfcc23aff3d",
+              "file": "navigation.spec.ts",
+              "line": 24,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
       "title": "notifications.spec.ts",
       "file": "notifications.spec.ts",
       "column": 0,
@@ -128,15 +2211,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
+                      "workerIndex": 6,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 9623,
+                      "duration": 6941,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:45.191Z",
+                      "startTime": "2026-02-02T18:22:49.590Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -162,15 +2245,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 5,
                       "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 11120,
+                      "duration": 10562,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:45.106Z",
+                      "startTime": "2026-02-02T18:22:51.393Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -196,15 +2279,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 6,
                       "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 9178,
+                      "duration": 9376,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:44.876Z",
+                      "startTime": "2026-02-02T18:22:56.628Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -247,15 +2330,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
-                      "parallelIndex": 3,
+                      "workerIndex": 5,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 10362,
+                      "duration": 9897,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:45.111Z",
+                      "startTime": "2026-02-02T18:23:02.159Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -269,8 +2352,8 @@
               "column": 3
             },
             {
-              "title": "should create a new part",
-              "ok": false,
+              "title": "should open create part dialog",
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -281,57 +2364,59 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 30276,
-                      "error": {
-                        "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
-                      },
-                      "errors": [
-                        {
-                          "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
-                        },
-                        {
-                          "location": {
-                            "file": "/home/runner/workspace/e2e/parts.spec.ts",
-                            "column": 96,
-                            "line": 22
-                          },
-                          "message": "Error: locator.click: Test timeout of 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-slot=\"select-trigger\"]').filter({ hasText: /select customer/i })\u001b[22m\n\n\n\u001b[0m \u001b[90m 20 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByPlaceholder(\u001b[32m'e.g., Stiffener Assembly'\u001b[39m)\u001b[33m.\u001b[39mfill(\u001b[32m'E2E Created Part'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 21 |\u001b[39m     \n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 22 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'[data-slot=\"select-trigger\"]'\u001b[39m)\u001b[33m.\u001b[39mfilter({ hasText\u001b[33m:\u001b[39m \u001b[35m/select customer/i\u001b[39m })\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                                                                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 23 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'option'\u001b[39m)\u001b[33m.\u001b[39mfirst()\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 24 |\u001b[39m     \n \u001b[90m 25 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByPlaceholder(\u001b[32m'e.g., EOS, F-150'\u001b[39m)\u001b[33m.\u001b[39mfill(\u001b[32m'Test Program'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/runner/workspace/e2e/parts.spec.ts:22:96\u001b[22m"
-                        }
-                      ],
+                      "workerIndex": 3,
+                      "parallelIndex": 3,
+                      "status": "passed",
+                      "duration": 26066,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:56.278Z",
+                      "startTime": "2026-02-02T18:23:03.233Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/home/runner/workspace/test-results/parts-Parts-Management-should-create-a-new-part-chromium/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/home/runner/workspace/test-results/parts-Parts-Management-should-create-a-new-part-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/home/runner/workspace/test-results/parts-Parts-Management-should-create-a-new-part-chromium/error-context.md"
-                        }
-                      ]
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
-              "id": "1b880be9d128437500b3-0d16619439f32b5daeaa",
+              "id": "1b880be9d128437500b3-882569e4e5c673e7834d",
               "file": "parts.spec.ts",
               "line": 14,
+              "column": 3
+            },
+            {
+              "title": "should fill part form fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 20575,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:23:03.882Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b880be9d128437500b3-e3434c8ea127f94cb2c2",
+              "file": "parts.spec.ts",
+              "line": 22,
               "column": 3
             },
             {
@@ -347,15 +2432,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
-                      "parallelIndex": 3,
+                      "workerIndex": 6,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 8192,
+                      "duration": 11626,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:56.761Z",
+                      "startTime": "2026-02-02T18:23:06.202Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -381,15 +2466,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 2,
-                      "parallelIndex": 2,
+                      "workerIndex": 5,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 6410,
+                      "duration": 10212,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-02-02T18:05:56.822Z",
+                      "startTime": "2026-02-02T18:23:12.182Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -405,15 +2490,134 @@
           ]
         }
       ]
+    },
+    {
+      "title": "pfmea.spec.ts",
+      "file": "pfmea.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "PFMEA Management",
+          "file": "pfmea.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should display PFMEA list page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 2,
+                      "status": "passed",
+                      "duration": 7807,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:23:18.077Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "dc76beda2dcd32d9b3f8-32d99624062aa1b6f1a8",
+              "file": "pfmea.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "should view PFMEA detail page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 6978,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:23:22.551Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "dc76beda2dcd32d9b3f8-523ff5407ce65d09ea99",
+              "file": "pfmea.spec.ts",
+              "line": 10,
+              "column": 3
+            },
+            {
+              "title": "should have add row button",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5971,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-02T18:23:24.760Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "dc76beda2dcd32d9b3f8-f63a6934d20f97d90ec3",
+              "file": "pfmea.spec.ts",
+              "line": 18,
+              "column": 3
+            }
+          ]
+        }
+      ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-02-02T18:05:41.372Z",
-    "duration": 45425.867,
-    "expected": 6,
+    "startTime": "2026-02-02T18:20:27.651Z",
+    "duration": 183273.933,
+    "expected": 60,
     "skipped": 0,
-    "unexpected": 1,
+    "unexpected": 3,
     "flaky": 0
   }
 }
