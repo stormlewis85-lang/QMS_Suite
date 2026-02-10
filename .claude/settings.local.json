@@ -1,0 +1,10 @@
+{
+  "outputStyle": "default",
+  "spinnerTipsEnabled": true,
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nPre-Ralph checkpoint - before Doc Control module\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}
