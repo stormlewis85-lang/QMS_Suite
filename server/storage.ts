@@ -76,9 +76,24 @@ import {
   type InsertChangePackageApproval,
   type ChangePackagePropagation,
   type InsertChangePackagePropagation,
+  document,
+  documentRevision,
+  documentDistribution,
+  documentReview,
+  documentLink,
+  type Document,
+  type InsertDocument,
+  type DocumentRevision,
+  type InsertDocumentRevision,
+  type DocumentDistribution,
+  type InsertDocumentDistribution,
+  type DocumentReview,
+  type InsertDocumentReview,
+  type DocumentLink,
+  type InsertDocumentLink,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, or, sql, inArray } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql, inArray, lt, count } from "drizzle-orm";
 import crypto from "crypto";
 
 export interface IStorage {
@@ -231,6 +246,50 @@ export interface IStorage {
   getChangePackagePropagations(changePackageId: string): Promise<ChangePackagePropagation[]>;
   createChangePackagePropagation(insertProp: InsertChangePackagePropagation): Promise<ChangePackagePropagation>;
   updateChangePackagePropagation(id: string, updates: Partial<InsertChangePackagePropagation>): Promise<ChangePackagePropagation | undefined>;
+
+  // ============================================
+  // DOCUMENT CONTROL
+  // ============================================
+
+  // Documents
+  getDocuments(filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]>;
+  getDocumentById(id: string): Promise<Document | undefined>;
+  createDocument(data: InsertDocument): Promise<Document>;
+  updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document | undefined>;
+  deleteDocument(id: string): Promise<boolean>;
+
+  // Revisions
+  getDocumentRevisions(documentId: string): Promise<DocumentRevision[]>;
+  getRevisionById(id: string): Promise<DocumentRevision | undefined>;
+  createRevision(data: InsertDocumentRevision): Promise<DocumentRevision>;
+  updateRevision(id: string, data: Partial<InsertDocumentRevision>): Promise<DocumentRevision | undefined>;
+
+  // Distribution
+  getDistributions(documentId: string): Promise<DocumentDistribution[]>;
+  createDistribution(data: InsertDocumentDistribution): Promise<DocumentDistribution>;
+  acknowledgeDistribution(id: string): Promise<DocumentDistribution | undefined>;
+
+  // Reviews
+  getReviews(documentId: string): Promise<DocumentReview[]>;
+  getPendingReviews(): Promise<DocumentReview[]>;
+  getOverdueReviews(): Promise<DocumentReview[]>;
+  createReview(data: InsertDocumentReview): Promise<DocumentReview>;
+  updateReview(id: string, data: Partial<InsertDocumentReview>): Promise<DocumentReview | undefined>;
+
+  // Links
+  getDocumentLinks(documentId: string): Promise<DocumentLink[]>;
+  createDocumentLink(data: InsertDocumentLink): Promise<DocumentLink>;
+  deleteDocumentLink(id: string): Promise<boolean>;
+
+  // Metrics
+  getDocumentMetrics(): Promise<{
+    total: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    overdueReviews: number;
+    pendingApprovals: number;
+    recentChanges: number;
+  }>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -1106,6 +1165,195 @@ class DatabaseStorage implements IStorage {
       createdSteps.push(createdStep);
     }
     return { ...createdPFD, steps: createdSteps };
+  }
+
+  // ============================================
+  // DOCUMENT CONTROL
+  // ============================================
+
+  async getDocuments(filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]> {
+    const conditions = [];
+
+    if (filters?.type) {
+      conditions.push(eq(document.type, filters.type as any));
+    }
+    if (filters?.status) {
+      conditions.push(eq(document.status, filters.status as any));
+    }
+    if (filters?.category) {
+      conditions.push(eq(document.category, filters.category));
+    }
+    if (filters?.search) {
+      conditions.push(
+        or(
+          ilike(document.title, `%${filters.search}%`),
+          ilike(document.docNumber, `%${filters.search}%`),
+          ilike(document.description, `%${filters.search}%`)
+        )
+      );
+    }
+
+    if (conditions.length > 0) {
+      return await db.select().from(document)
+        .where(and(...conditions))
+        .orderBy(desc(document.updatedAt));
+    }
+
+    return await db.select().from(document).orderBy(desc(document.updatedAt));
+  }
+
+  async getDocumentById(id: string): Promise<Document | undefined> {
+    const [result] = await db.select().from(document).where(eq(document.id, id));
+    return result;
+  }
+
+  async createDocument(data: InsertDocument): Promise<Document> {
+    const [newDoc] = await db.insert(document).values(data).returning();
+    return newDoc;
+  }
+
+  async updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document | undefined> {
+    const [updated] = await db.update(document)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(document.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocument(id: string): Promise<boolean> {
+    const result = await db.delete(document).where(eq(document.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Revisions
+  async getDocumentRevisions(documentId: string): Promise<DocumentRevision[]> {
+    return await db.select().from(documentRevision)
+      .where(eq(documentRevision.documentId, documentId))
+      .orderBy(desc(documentRevision.createdAt));
+  }
+
+  async getRevisionById(id: string): Promise<DocumentRevision | undefined> {
+    const [result] = await db.select().from(documentRevision).where(eq(documentRevision.id, id));
+    return result;
+  }
+
+  async createRevision(data: InsertDocumentRevision): Promise<DocumentRevision> {
+    const [newRev] = await db.insert(documentRevision).values(data).returning();
+    return newRev;
+  }
+
+  async updateRevision(id: string, data: Partial<InsertDocumentRevision>): Promise<DocumentRevision | undefined> {
+    const [updated] = await db.update(documentRevision)
+      .set(data)
+      .where(eq(documentRevision.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Distribution
+  async getDistributions(documentId: string): Promise<DocumentDistribution[]> {
+    return await db.select().from(documentDistribution)
+      .where(eq(documentDistribution.documentId, documentId))
+      .orderBy(desc(documentDistribution.distributedAt));
+  }
+
+  async createDistribution(data: InsertDocumentDistribution): Promise<DocumentDistribution> {
+    const [newDist] = await db.insert(documentDistribution).values(data).returning();
+    return newDist;
+  }
+
+  async acknowledgeDistribution(id: string): Promise<DocumentDistribution | undefined> {
+    const [updated] = await db.update(documentDistribution)
+      .set({ acknowledgedAt: new Date() })
+      .where(eq(documentDistribution.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Reviews
+  async getReviews(documentId: string): Promise<DocumentReview[]> {
+    return await db.select().from(documentReview)
+      .where(eq(documentReview.documentId, documentId))
+      .orderBy(desc(documentReview.createdAt));
+  }
+
+  async getPendingReviews(): Promise<DocumentReview[]> {
+    return await db.select().from(documentReview)
+      .where(eq(documentReview.status, 'pending'))
+      .orderBy(documentReview.dueDate);
+  }
+
+  async getOverdueReviews(): Promise<DocumentReview[]> {
+    return await db.select().from(documentReview)
+      .where(and(
+        eq(documentReview.status, 'pending'),
+        lt(documentReview.dueDate, new Date())
+      ))
+      .orderBy(documentReview.dueDate);
+  }
+
+  async createReview(data: InsertDocumentReview): Promise<DocumentReview> {
+    const [newReview] = await db.insert(documentReview).values(data).returning();
+    return newReview;
+  }
+
+  async updateReview(id: string, data: Partial<InsertDocumentReview>): Promise<DocumentReview | undefined> {
+    const [updated] = await db.update(documentReview)
+      .set(data)
+      .where(eq(documentReview.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Links
+  async getDocumentLinks(documentId: string): Promise<DocumentLink[]> {
+    return await db.select().from(documentLink)
+      .where(eq(documentLink.sourceDocId, documentId))
+      .orderBy(desc(documentLink.createdAt));
+  }
+
+  async createDocumentLink(data: InsertDocumentLink): Promise<DocumentLink> {
+    const [newLink] = await db.insert(documentLink).values(data).returning();
+    return newLink;
+  }
+
+  async deleteDocumentLink(id: string): Promise<boolean> {
+    const result = await db.delete(documentLink).where(eq(documentLink.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Metrics
+  async getDocumentMetrics(): Promise<{
+    total: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    overdueReviews: number;
+    pendingApprovals: number;
+    recentChanges: number;
+  }> {
+    const allDocs = await db.select().from(document);
+    const total = allDocs.length;
+
+    const byStatus: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+    for (const doc of allDocs) {
+      byStatus[doc.status] = (byStatus[doc.status] || 0) + 1;
+      byType[doc.type] = (byType[doc.type] || 0) + 1;
+    }
+
+    const overdueReviewsList = await this.getOverdueReviews();
+    const overdueReviews = overdueReviewsList.length;
+
+    const pendingApprovalDocs = allDocs.filter(d => d.status === 'review');
+    const pendingApprovals = pendingApprovalDocs.length;
+
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const recentRevisions = await db.select().from(documentRevision)
+      .where(sql`${documentRevision.createdAt} > ${oneWeekAgo}`);
+    const recentChanges = recentRevisions.length;
+
+    return { total, byStatus, byType, overdueReviews, pendingApprovals, recentChanges };
   }
 }
 

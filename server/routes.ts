@@ -51,6 +51,11 @@ import {
   insertControlPairingsSchema,
   insertFmeaTemplateRowSchema,
   insertControlTemplateRowSchema,
+  insertDocumentSchema,
+  insertDocumentRevisionSchema,
+  insertDocumentDistributionSchema,
+  insertDocumentReviewSchema,
+  insertDocumentLinkSchema,
   type FailureModeCategory,
   type ControlType,
   type ControlEffectiveness,
@@ -3745,6 +3750,604 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==========================================
+  // DOCUMENT CONTROL ENDPOINTS (25 total)
+  // ==========================================
+
+  // --- Helper Functions ---
+
+  function getNextRevisionLetter(currentRev: string): string {
+    if (!currentRev || currentRev === '-') return 'A';
+    if (currentRev.length === 1) {
+      if (currentRev === 'Z') return 'AA';
+      return String.fromCharCode(currentRev.charCodeAt(0) + 1);
+    }
+    if (currentRev.length === 2) {
+      const first = currentRev.charAt(0);
+      const second = currentRev.charAt(1);
+      if (second === 'Z') {
+        if (first === 'Z') return 'AAA';
+        return String.fromCharCode(first.charCodeAt(0) + 1) + 'A';
+      }
+      return first + String.fromCharCode(second.charCodeAt(0) + 1);
+    }
+    return currentRev + '-1';
+  }
+
+  function validateTransition(currentStatus: string, targetStatus: string): { valid: boolean; error?: string } {
+    const validTransitions: Record<string, string[]> = {
+      'draft': ['review'],
+      'review': ['effective', 'draft'],
+      'effective': ['obsolete'],
+      'superseded': [],
+      'obsolete': [],
+    };
+    const allowed = validTransitions[currentStatus] || [];
+    if (!allowed.includes(targetStatus)) {
+      return {
+        valid: false,
+        error: `Invalid transition from ${currentStatus} to ${targetStatus}. Allowed: ${allowed.join(', ') || 'none'}`,
+      };
+    }
+    return { valid: true };
+  }
+
+  // --- 1. GET /api/documents/metrics (must be before :id route) ---
+
+  app.get("/api/documents/metrics", async (req, res) => {
+    try {
+      const metrics = await storage.getDocumentMetrics();
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error fetching document metrics:", error);
+      res.status(500).json({ error: "Failed to fetch document metrics" });
+    }
+  });
+
+  // --- 2. GET /api/documents ---
+
+  app.get("/api/documents", async (req, res) => {
+    try {
+      const { type, status, category, search } = req.query;
+      const documents = await storage.getDocuments({
+        type: type as string | undefined,
+        status: status as string | undefined,
+        category: category as string | undefined,
+        search: search as string | undefined,
+      });
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      res.status(500).json({ error: "Failed to fetch documents" });
+    }
+  });
+
+  // --- 3. GET /api/documents/:id ---
+
+  app.get("/api/documents/:id", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      res.json(doc);
+    } catch (error) {
+      console.error("Error fetching document:", error);
+      res.status(500).json({ error: "Failed to fetch document" });
+    }
+  });
+
+  // --- 4. POST /api/documents ---
+
+  app.post("/api/documents", async (req, res) => {
+    try {
+      const validatedData = insertDocumentSchema.parse(req.body);
+      const newDocument = await storage.createDocument(validatedData);
+
+      // Create initial revision
+      await storage.createRevision({
+        documentId: newDocument.id,
+        rev: newDocument.currentRev,
+        changeDescription: "Initial release",
+        status: "draft",
+        author: newDocument.owner,
+      });
+
+      res.status(201).json(newDocument);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating document:", error);
+      res.status(500).json({ error: "Failed to create document" });
+    }
+  });
+
+  // --- 5. PATCH /api/documents/:id ---
+
+  app.patch("/api/documents/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateDocument(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating document:", error);
+      res.status(500).json({ error: "Failed to update document" });
+    }
+  });
+
+  // --- 6. DELETE /api/documents/:id ---
+
+  app.delete("/api/documents/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteDocument(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ error: "Failed to delete document" });
+    }
+  });
+
+  // --- 7. GET /api/documents/:id/revisions ---
+
+  app.get("/api/documents/:id/revisions", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const revisions = await storage.getDocumentRevisions(req.params.id);
+      res.json(revisions);
+    } catch (error) {
+      console.error("Error fetching revisions:", error);
+      res.status(500).json({ error: "Failed to fetch revisions" });
+    }
+  });
+
+  // --- 8. POST /api/documents/:id/revisions ---
+
+  app.post("/api/documents/:id/revisions", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      if (doc.status !== 'effective') {
+        return res.status(400).json({
+          error: `Cannot create new revision when document status is ${doc.status}. Must be 'effective'.`,
+        });
+      }
+
+      const nextRev = getNextRevisionLetter(doc.currentRev);
+
+      const validatedData = insertDocumentRevisionSchema.parse({
+        documentId: req.params.id,
+        rev: nextRev,
+        changeDescription: req.body.changeDescription || 'New revision',
+        status: 'draft',
+        author: req.body.author || 'Unknown',
+      });
+
+      const newRevision = await storage.createRevision(validatedData);
+
+      await storage.updateDocument(req.params.id, {
+        currentRev: nextRev,
+        status: 'draft' as any,
+      });
+
+      res.status(201).json(newRevision);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating revision:", error);
+      res.status(500).json({ error: "Failed to create revision" });
+    }
+  });
+
+  // --- 9. GET /api/document-revisions/:id ---
+
+  app.get("/api/document-revisions/:id", async (req, res) => {
+    try {
+      const revision = await storage.getRevisionById(req.params.id);
+      if (!revision) {
+        return res.status(404).json({ error: "Revision not found" });
+      }
+      res.json(revision);
+    } catch (error) {
+      console.error("Error fetching revision:", error);
+      res.status(500).json({ error: "Failed to fetch revision" });
+    }
+  });
+
+  // --- 10. PATCH /api/document-revisions/:id ---
+
+  app.patch("/api/document-revisions/:id", async (req, res) => {
+    try {
+      const revision = await storage.getRevisionById(req.params.id);
+      if (!revision) {
+        return res.status(404).json({ error: "Revision not found" });
+      }
+
+      if (revision.status !== 'draft') {
+        return res.status(400).json({ error: "Can only edit revisions in draft status" });
+      }
+
+      const updated = await storage.updateRevision(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating revision:", error);
+      res.status(500).json({ error: "Failed to update revision" });
+    }
+  });
+
+  // --- 11. POST /api/documents/:id/submit-review ---
+
+  app.post("/api/documents/:id/submit-review", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const transition = validateTransition(doc.status, 'review');
+      if (!transition.valid) {
+        return res.status(400).json({ error: transition.error });
+      }
+
+      if (!doc.owner) {
+        return res.status(400).json({ error: "Document must have an owner before submitting for review" });
+      }
+
+      // Update current revision to review status
+      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'draft');
+      if (currentRevision) {
+        await storage.updateRevision(currentRevision.id, { status: 'review' as any });
+      }
+
+      const updated = await storage.updateDocument(req.params.id, { status: 'review' as any });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error submitting for review:", error);
+      res.status(500).json({ error: "Failed to submit for review" });
+    }
+  });
+
+  // --- 12. POST /api/documents/:id/approve ---
+
+  app.post("/api/documents/:id/approve", async (req, res) => {
+    try {
+      const { approverName } = req.body;
+      if (!approverName) {
+        return res.status(400).json({ error: "approverName is required" });
+      }
+
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const transition = validateTransition(doc.status, 'effective');
+      if (!transition.valid) {
+        return res.status(400).json({ error: transition.error });
+      }
+
+      const now = new Date();
+      const reviewDueDate = new Date(now);
+      reviewDueDate.setDate(reviewDueDate.getDate() + (doc.reviewCycleDays || 365));
+
+      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'review');
+      const previousEffective = revisions.find(r => r.status === 'effective');
+
+      if (previousEffective) {
+        await storage.updateRevision(previousEffective.id, {
+          status: 'superseded' as any,
+          supersededDate: now,
+        });
+      }
+
+      if (currentRevision) {
+        await storage.updateRevision(currentRevision.id, {
+          status: 'effective' as any,
+          approvedBy: approverName,
+          approvedAt: now,
+          effectiveDate: now,
+        });
+      }
+
+      const updated = await storage.updateDocument(req.params.id, {
+        status: 'effective' as any,
+        effectiveDate: now,
+        reviewDueDate,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error approving document:", error);
+      res.status(500).json({ error: "Failed to approve document" });
+    }
+  });
+
+  // --- 13. POST /api/documents/:id/reject ---
+
+  app.post("/api/documents/:id/reject", async (req, res) => {
+    try {
+      const { comments } = req.body;
+      if (!comments) {
+        return res.status(400).json({ error: "comments are required when rejecting" });
+      }
+
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const transition = validateTransition(doc.status, 'draft');
+      if (!transition.valid) {
+        return res.status(400).json({ error: transition.error });
+      }
+
+      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'review');
+
+      if (currentRevision) {
+        await storage.updateRevision(currentRevision.id, {
+          status: 'draft' as any,
+          changeDescription: currentRevision.changeDescription + ` [REJECTED: ${comments}]`,
+        });
+      }
+
+      const updated = await storage.updateDocument(req.params.id, { status: 'draft' as any });
+      res.json({ ...updated, rejectionComments: comments });
+    } catch (error) {
+      console.error("Error rejecting document:", error);
+      res.status(500).json({ error: "Failed to reject document" });
+    }
+  });
+
+  // --- 14. POST /api/documents/:id/obsolete ---
+
+  app.post("/api/documents/:id/obsolete", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const transition = validateTransition(doc.status, 'obsolete');
+      if (!transition.valid) {
+        return res.status(400).json({ error: transition.error });
+      }
+
+      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'effective');
+      if (currentRevision) {
+        await storage.updateRevision(currentRevision.id, { status: 'obsolete' as any });
+      }
+
+      const updated = await storage.updateDocument(req.params.id, { status: 'obsolete' as any });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error marking document obsolete:", error);
+      res.status(500).json({ error: "Failed to mark document obsolete" });
+    }
+  });
+
+  // --- 15. GET /api/documents/:id/distributions ---
+
+  app.get("/api/documents/:id/distributions", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const distributions = await storage.getDistributions(req.params.id);
+      res.json(distributions);
+    } catch (error) {
+      console.error("Error fetching distributions:", error);
+      res.status(500).json({ error: "Failed to fetch distributions" });
+    }
+  });
+
+  // --- 16. POST /api/documents/:id/distribute ---
+
+  app.post("/api/documents/:id/distribute", async (req, res) => {
+    try {
+      const { recipients } = req.body;
+
+      if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+        return res.status(400).json({ error: "recipients array is required" });
+      }
+
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const currentRevision = revisions.find(r => r.rev === doc.currentRev);
+
+      if (!currentRevision) {
+        return res.status(400).json({ error: "No current revision found" });
+      }
+
+      const distributions = [];
+      for (const recipient of recipients) {
+        const dist = await storage.createDistribution({
+          documentId: req.params.id,
+          revisionId: currentRevision.id,
+          recipientName: recipient.recipientName,
+          recipientRole: recipient.recipientRole,
+          method: recipient.method || 'electronic',
+        });
+        distributions.push(dist);
+      }
+
+      res.status(201).json(distributions);
+    } catch (error) {
+      console.error("Error distributing document:", error);
+      res.status(500).json({ error: "Failed to distribute document" });
+    }
+  });
+
+  // --- 17. POST /api/document-distributions/:id/acknowledge ---
+
+  app.post("/api/document-distributions/:id/acknowledge", async (req, res) => {
+    try {
+      const updated = await storage.acknowledgeDistribution(req.params.id);
+      if (!updated) {
+        return res.status(404).json({ error: "Distribution record not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error acknowledging distribution:", error);
+      res.status(500).json({ error: "Failed to acknowledge distribution" });
+    }
+  });
+
+  // --- 18. GET /api/document-reviews (all pending) ---
+
+  app.get("/api/document-reviews", async (req, res) => {
+    try {
+      const reviews = await storage.getPendingReviews();
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching pending reviews:", error);
+      res.status(500).json({ error: "Failed to fetch pending reviews" });
+    }
+  });
+
+  // --- 19. GET /api/document-reviews/overdue ---
+
+  app.get("/api/document-reviews/overdue", async (req, res) => {
+    try {
+      const reviews = await storage.getOverdueReviews();
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching overdue reviews:", error);
+      res.status(500).json({ error: "Failed to fetch overdue reviews" });
+    }
+  });
+
+  // --- 20. GET /api/documents/:id/reviews ---
+
+  app.get("/api/documents/:id/reviews", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const reviews = await storage.getReviews(req.params.id);
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error fetching reviews:", error);
+      res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+  });
+
+  // --- 21. POST /api/documents/:id/reviews ---
+
+  app.post("/api/documents/:id/reviews", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const validatedData = insertDocumentReviewSchema.parse({
+        ...req.body,
+        documentId: req.params.id,
+        status: 'pending',
+      });
+
+      const newReview = await storage.createReview(validatedData);
+      res.status(201).json(newReview);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating review:", error);
+      res.status(500).json({ error: "Failed to create review" });
+    }
+  });
+
+  // --- 22. PATCH /api/document-reviews/:id ---
+
+  app.patch("/api/document-reviews/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateReview(req.params.id, {
+        ...req.body,
+        reviewedAt: req.body.status && req.body.status !== 'pending' ? new Date() : undefined,
+      });
+      if (!updated) {
+        return res.status(404).json({ error: "Review not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating review:", error);
+      res.status(500).json({ error: "Failed to update review" });
+    }
+  });
+
+  // --- 23. GET /api/documents/:id/links ---
+
+  app.get("/api/documents/:id/links", async (req, res) => {
+    try {
+      const doc = await storage.getDocumentById(req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const links = await storage.getDocumentLinks(req.params.id);
+      res.json(links);
+    } catch (error) {
+      console.error("Error fetching document links:", error);
+      res.status(500).json({ error: "Failed to fetch document links" });
+    }
+  });
+
+  // --- 24. POST /api/document-links ---
+
+  app.post("/api/document-links", async (req, res) => {
+    try {
+      const validatedData = insertDocumentLinkSchema.parse(req.body);
+      const newLink = await storage.createDocumentLink(validatedData);
+      res.status(201).json(newLink);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromError(error);
+        return res.status(400).json({ error: validationError.toString() });
+      }
+      console.error("Error creating document link:", error);
+      res.status(500).json({ error: "Failed to create document link" });
+    }
+  });
+
+  // --- 25. DELETE /api/document-links/:id ---
+
+  app.delete("/api/document-links/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteDocumentLink(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Document link not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting document link:", error);
+      res.status(500).json({ error: "Failed to delete document link" });
     }
   });
 

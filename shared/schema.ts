@@ -50,6 +50,20 @@ export const effectCategoryEnum = pgEnum('effect_category', [
   'none'                     // S=1: No discernible effect
 ]);
 
+// Document Control Enums
+export const documentTypeEnum = pgEnum('document_type', [
+  'procedure',
+  'work_instruction',
+  'form',
+  'specification',
+  'standard',
+  'drawing',
+  'customer_spec',
+  'external',
+  'policy',
+  'record',
+]);
+
 // NEW: Auto-Review Finding Level
 export const findingLevelEnum = pgEnum('finding_level', ['error', 'warning', 'info']);
 export const findingCategoryEnum = pgEnum('finding_category', ['coverage', 'effectiveness', 'document_control', 'scoring', 'csr']);
@@ -1039,6 +1053,136 @@ export const changePackagePropagationRelations = relations(changePackagePropagat
 }));
 
 // ==========================================
+// Document Control Tables
+// ==========================================
+
+export const document = pgTable('document', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  docNumber: text('doc_number').unique().notNull(),
+  title: text('title').notNull(),
+  type: documentTypeEnum('type').notNull(),
+  category: text('category'),
+  department: text('department'),
+  currentRev: text('current_rev').notNull().default('A'),
+  status: statusEnum('status').notNull().default('draft'),
+  owner: text('owner').notNull(),
+  effectiveDate: timestamp('effective_date'),
+  reviewDueDate: timestamp('review_due_date'),
+  reviewCycleDays: integer('review_cycle_days').default(365),
+  retentionYears: integer('retention_years').default(7),
+  description: text('description'),
+  externalRef: text('external_ref'),
+  isExternal: boolean('is_external').default(false),
+  tags: jsonb('tags').default([]),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index('document_status_idx').on(table.status),
+  typeIdx: index('document_type_idx').on(table.type),
+  docNumberIdx: index('document_doc_number_idx').on(table.docNumber),
+}));
+
+export const documentRevision = pgTable('document_revision', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  rev: text('rev').notNull(),
+  changeDescription: text('change_description').notNull(),
+  status: statusEnum('status').notNull().default('draft'),
+  author: text('author').notNull(),
+  reviewedBy: text('reviewed_by'),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at'),
+  effectiveDate: timestamp('effective_date'),
+  supersededDate: timestamp('superseded_date'),
+  contentHash: text('content_hash'),
+  attachmentUrl: text('attachment_url'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  documentIdIdx: index('doc_revision_document_id_idx').on(table.documentId),
+}));
+
+export const documentDistribution = pgTable('document_distribution', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').notNull().references(() => documentRevision.id, { onDelete: 'cascade' }),
+  recipientName: text('recipient_name').notNull(),
+  recipientRole: text('recipient_role'),
+  distributedAt: timestamp('distributed_at').notNull().defaultNow(),
+  acknowledgedAt: timestamp('acknowledged_at'),
+  method: text('method').default('electronic'),
+  copyNumber: integer('copy_number'),
+}, (table) => ({
+  documentIdIdx: index('doc_distribution_document_id_idx').on(table.documentId),
+}));
+
+export const documentReview = pgTable('document_review', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').references(() => documentRevision.id, { onDelete: 'set null' }),
+  reviewerName: text('reviewer_name').notNull(),
+  reviewerRole: text('reviewer_role'),
+  status: text('status').notNull().default('pending'),
+  comments: text('comments'),
+  reviewedAt: timestamp('reviewed_at'),
+  dueDate: timestamp('due_date'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  documentIdIdx: index('doc_review_document_id_idx').on(table.documentId),
+  statusIdx: index('doc_review_status_idx').on(table.status),
+}));
+
+export const documentLink = pgTable('document_link', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceDocId: uuid('source_doc_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  targetType: text('target_type').notNull(),
+  targetId: uuid('target_id').notNull(),
+  linkType: text('link_type').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  sourceDocIdIdx: index('doc_link_source_doc_id_idx').on(table.sourceDocId),
+}));
+
+// Document Control Relations
+export const documentRelations = relations(document, ({ many }) => ({
+  revisions: many(documentRevision),
+  distributions: many(documentDistribution),
+  reviews: many(documentReview),
+  links: many(documentLink),
+}));
+
+export const documentRevisionRelations = relations(documentRevision, ({ one }) => ({
+  document: one(document, {
+    fields: [documentRevision.documentId],
+    references: [document.id],
+  }),
+}));
+
+export const documentDistributionRelations = relations(documentDistribution, ({ one }) => ({
+  document: one(document, {
+    fields: [documentDistribution.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [documentDistribution.revisionId],
+    references: [documentRevision.id],
+  }),
+}));
+
+export const documentReviewRelations = relations(documentReview, ({ one }) => ({
+  document: one(document, {
+    fields: [documentReview.documentId],
+    references: [document.id],
+  }),
+}));
+
+export const documentLinkRelations = relations(documentLink, ({ one }) => ({
+  sourceDoc: one(document, {
+    fields: [documentLink.sourceDocId],
+    references: [document.id],
+  }),
+}));
+
+// ==========================================
 // Insert schemas
 // ==========================================
 
@@ -1072,6 +1216,12 @@ export const insertChangePackageSchema = createInsertSchema(changePackage).omit(
 export const insertChangePackageItemSchema = createInsertSchema(changePackageItem).omit({ id: true });
 export const insertChangePackageApprovalSchema = createInsertSchema(changePackageApproval).omit({ id: true, requestedAt: true });
 export const insertChangePackagePropagationSchema = createInsertSchema(changePackagePropagation).omit({ id: true });
+// Document Control
+export const insertDocumentSchema = createInsertSchema(document).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDocumentRevisionSchema = createInsertSchema(documentRevision).omit({ id: true, createdAt: true });
+export const insertDocumentDistributionSchema = createInsertSchema(documentDistribution).omit({ id: true, distributedAt: true });
+export const insertDocumentReviewSchema = createInsertSchema(documentReview).omit({ id: true, createdAt: true });
+export const insertDocumentLinkSchema = createInsertSchema(documentLink).omit({ id: true, createdAt: true });
 
 // ==========================================
 // Types
@@ -1136,6 +1286,17 @@ export type ChangePackageApproval = typeof changePackageApproval.$inferSelect;
 export type InsertChangePackageApproval = z.infer<typeof insertChangePackageApprovalSchema>;
 export type ChangePackagePropagation = typeof changePackagePropagation.$inferSelect;
 export type InsertChangePackagePropagation = z.infer<typeof insertChangePackagePropagationSchema>;
+// Document Control
+export type Document = typeof document.$inferSelect;
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type DocumentRevision = typeof documentRevision.$inferSelect;
+export type InsertDocumentRevision = z.infer<typeof insertDocumentRevisionSchema>;
+export type DocumentDistribution = typeof documentDistribution.$inferSelect;
+export type InsertDocumentDistribution = z.infer<typeof insertDocumentDistributionSchema>;
+export type DocumentReview = typeof documentReview.$inferSelect;
+export type InsertDocumentReview = z.infer<typeof insertDocumentReviewSchema>;
+export type DocumentLink = typeof documentLink.$inferSelect;
+export type InsertDocumentLink = z.infer<typeof insertDocumentLinkSchema>;
 
 // ==========================================
 // Enum Types
@@ -1154,3 +1315,4 @@ export type EffectCategory = 'safety_no_warning' | 'safety_with_warning' | 'regu
 export type FindingLevel = 'error' | 'warning' | 'info';
 export type FindingCategory = 'coverage' | 'effectiveness' | 'document_control' | 'scoring' | 'csr';
 export type ChangeStatus = 'draft' | 'impact_analysis' | 'auto_review' | 'pending_signatures' | 'effective' | 'cancelled';
+export type DocumentTypeEnum = 'procedure' | 'work_instruction' | 'form' | 'specification' | 'standard' | 'drawing' | 'customer_spec' | 'external' | 'policy' | 'record';

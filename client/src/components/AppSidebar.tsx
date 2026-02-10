@@ -24,6 +24,7 @@ import {
   Settings,
   Upload,
   Target,
+  FileText,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 import NotificationBell from "./NotificationBell";
@@ -68,6 +69,12 @@ const mainNavItems = [
 ];
 
 const qualityNavItems = [
+  {
+    title: "Documents",
+    url: "/documents",
+    icon: FileText,
+    testId: "nav-documents",
+  },
   {
     title: "Auto-Review",
     url: "/auto-review",

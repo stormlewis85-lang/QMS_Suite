@@ -28,6 +28,8 @@ import AutoReview from "@/pages/AutoReview";
 import Import from "@/pages/Import";
 import Actions from "@/pages/Actions";
 import Notifications from "@/pages/Notifications";
+import Documents from "@/pages/Documents";
+import DocumentDetail from "@/pages/DocumentDetail";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -54,6 +56,8 @@ function Router() {
       <Route path="/auto-review" component={AutoReview} />
       <Route path="/import" component={Import} />
       <Route path="/actions" component={Actions} />
+      <Route path="/documents" component={Documents} />
+      <Route path="/documents/:id" component={DocumentDetail} />
       <Route path="/notifications" component={Notifications} />
       <Route component={NotFound} />
     </Switch>
