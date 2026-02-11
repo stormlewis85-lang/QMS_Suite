@@ -32,7 +32,7 @@ import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
 import { eq, desc, and, lt, asc, inArray } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature } from "@shared/schema";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun } from "@shared/schema";
 import { notificationService } from "./services/notification-service";
 import {
   insertPartSchema,
@@ -3461,10 +3461,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // DELETE /api/pfmeas/:id - Delete PFMEA
   app.delete("/api/pfmeas/:id", async (req, res) => {
     try {
-      // First delete associated rows
-      await db.delete(pfmeaRow).where(eq(pfmeaRow.pfmeaId, req.params.id));
-      // Then delete the PFMEA
-      await db.delete(pfmea).where(eq(pfmea.id, req.params.id));
+      const pfmeaId = req.params.id;
+      // Clear lastAutoReviewId on this PFMEA to avoid FK issues
+      await db.update(pfmea).set({ lastAutoReviewId: null }).where(eq(pfmea.id, pfmeaId));
+      // Clear cross-references: control plans pointing to auto_review_runs owned by this PFMEA
+      const runs = await db.select({ id: autoReviewRun.id }).from(autoReviewRun).where(eq(autoReviewRun.pfmeaId, pfmeaId));
+      if (runs.length > 0) {
+        await db.update(controlPlan).set({ lastAutoReviewId: null }).where(inArray(controlPlan.lastAutoReviewId, runs.map(r => r.id)));
+      }
+      // Delete associated rows then the PFMEA (auto_review_runs cascade)
+      await db.delete(pfmeaRow).where(eq(pfmeaRow.pfmeaId, pfmeaId));
+      await db.delete(pfmea).where(eq(pfmea.id, pfmeaId));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting PFMEA:", error);
@@ -3475,10 +3482,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // DELETE /api/control-plans/:id - Delete Control Plan
   app.delete("/api/control-plans/:id", async (req, res) => {
     try {
-      // First delete associated rows
-      await db.delete(controlPlanRow).where(eq(controlPlanRow.controlPlanId, req.params.id));
-      // Then delete the control plan
-      await db.delete(controlPlan).where(eq(controlPlan.id, req.params.id));
+      const cpId = req.params.id;
+      // Clear lastAutoReviewId on this CP to avoid FK issues
+      await db.update(controlPlan).set({ lastAutoReviewId: null }).where(eq(controlPlan.id, cpId));
+      // Clear cross-references: PFMEAs pointing to auto_review_runs owned by this CP
+      const runs = await db.select({ id: autoReviewRun.id }).from(autoReviewRun).where(eq(autoReviewRun.controlPlanId, cpId));
+      if (runs.length > 0) {
+        await db.update(pfmea).set({ lastAutoReviewId: null }).where(inArray(pfmea.lastAutoReviewId, runs.map(r => r.id)));
+      }
+      // Delete associated rows then the control plan (auto_review_runs cascade)
+      await db.delete(controlPlanRow).where(eq(controlPlanRow.controlPlanId, cpId));
+      await db.delete(controlPlan).where(eq(controlPlan.id, cpId));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting control plan:", error);
