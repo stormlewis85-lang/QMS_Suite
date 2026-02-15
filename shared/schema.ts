@@ -68,9 +68,72 @@ export const documentTypeEnum = pgEnum('document_type', [
 export const findingLevelEnum = pgEnum('finding_level', ['error', 'warning', 'info']);
 export const findingCategoryEnum = pgEnum('finding_category', ['coverage', 'effectiveness', 'document_control', 'scoring', 'csr']);
 
+// User role enum for RBAC
+export const userRoleEnum = pgEnum('user_role', [
+  'admin',           // Full organization access
+  'quality_manager', // Approve documents, manage users
+  'engineer',        // Create/edit documents
+  'viewer'           // Read-only access
+]);
+
+// User status
+export const userStatusEnum = pgEnum('user_status', ['active', 'inactive', 'pending']);
+
+// ==========================================
+// Core Platform Tables (Organization, User, Session)
+// ==========================================
+
+export const organization = pgTable('organization', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(), // URL-safe identifier: "acme-corp"
+  settings: jsonb('settings').$type<{
+    defaultTimezone?: string;
+    dateFormat?: string;
+    logoUrl?: string;
+  }>().default({}),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  slugIdx: uniqueIndex('organization_slug_idx').on(table.slug),
+}));
+
+export const user = pgTable('user', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  passwordHash: text('password_hash').notNull(), // bcrypt hash
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  role: userRoleEnum('role').notNull().default('viewer'),
+  status: userStatusEnum('status').notNull().default('active'),
+  lastLoginAt: timestamp('last_login_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  orgEmailIdx: uniqueIndex('user_org_email_idx').on(table.orgId, table.email),
+  orgIdx: index('user_org_idx').on(table.orgId),
+  emailIdx: index('user_email_idx').on(table.email),
+}));
+
+export const session = pgTable('session', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(), // Random 64-char token
+  expiresAt: timestamp('expires_at').notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  tokenIdx: uniqueIndex('session_token_idx').on(table.token),
+  userIdx: index('session_user_idx').on(table.userId),
+  expiresIdx: index('session_expires_idx').on(table.expiresAt),
+}));
+
 // Process Library Tables
 export const processDef = pgTable('process_def', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   rev: text('rev').notNull(),
   status: statusEnum('status').notNull().default('draft'),
@@ -80,8 +143,9 @@ export const processDef = pgTable('process_def', {
   createdBy: uuid('created_by').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => ({
-  nameRevIdx: uniqueIndex('process_def_name_rev_idx').on(table.name, table.rev),
+  nameRevIdx: uniqueIndex('process_def_name_rev_idx').on(table.orgId, table.name, table.rev),
   statusIdx: index('process_def_status_idx').on(table.status),
+  orgIdx: index('process_def_org_idx').on(table.orgId),
 }));
 
 // Step type enum for process steps
@@ -178,27 +242,34 @@ export const controlTemplateRow = pgTable('control_template_row', {
 // Library Tables
 export const gageLibrary = pgTable('gage_library', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   model: text('model'),
   resolution: text('resolution'),
   calibrationIntervalDays: integer('calibration_interval_days'),
   status: text('status').notNull().default('active'),
-});
+}, (table) => ({
+  orgNameIdx: uniqueIndex('gage_library_org_name_idx').on(table.orgId, table.name),
+  orgIdx: index('gage_library_org_idx').on(table.orgId),
+}));
 
 export const ratingScale = pgTable('rating_scale', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   version: text('version').notNull(),
   kind: text('kind').notNull(),
   tableJson: jsonb('table_json').$type<{ rating: number; description: string; criteria: string }[]>().notNull(),
 }, (table) => ({
-  versionKindIdx: uniqueIndex('rating_scale_version_kind_idx').on(table.version, table.kind),
+  versionKindIdx: uniqueIndex('rating_scale_version_kind_idx').on(table.orgId, table.version, table.kind),
+  orgIdx: index('rating_scale_org_idx').on(table.orgId),
 }));
 
 // Equipment Library Tables
 export const equipmentLibrary = pgTable('equipment_library', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   type: text('type').notNull(),
-  name: text('name').notNull().unique(),
+  name: text('name').notNull(),
   manufacturer: text('manufacturer'),
   model: text('model'),
   tonnage: integer('tonnage'),
@@ -208,7 +279,10 @@ export const equipmentLibrary = pgTable('equipment_library', {
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  orgNameIdx: uniqueIndex('equipment_library_org_name_idx').on(table.orgId, table.name),
+  orgIdx: index('equipment_library_org_idx').on(table.orgId),
+}));
 
 export const equipmentErrorProofing = pgTable('equipment_error_proofing', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -240,6 +314,7 @@ export const equipmentControlMethods = pgTable('equipment_control_methods', {
 // Failure Modes Library - ENHANCED with effect category
 export const failureModesLibrary = pgTable('failure_modes_library', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   category: failureModeCategoryEnum('category').notNull(),
   failureMode: text('failure_mode').notNull(),
   genericEffect: text('generic_effect').notNull(),
@@ -262,6 +337,8 @@ export const failureModesLibrary = pgTable('failure_modes_library', {
   categoryIdx: index('failure_modes_category_idx').on(table.category),
   statusIdx: index('failure_modes_status_idx').on(table.status),
   effectCategoryIdx: index('failure_modes_effect_category_idx').on(table.effectCategory),
+  orgNameIdx: uniqueIndex('failure_modes_org_name_idx').on(table.orgId, table.failureMode),
+  orgIdx: index('failure_modes_org_idx').on(table.orgId),
 }));
 
 export const fmeaTemplateCatalogLink = pgTable('fmea_template_catalog_link', {
@@ -278,6 +355,7 @@ export const fmeaTemplateCatalogLink = pgTable('fmea_template_catalog_link', {
 // Controls Library - ENHANCED with control category for auto-detection scoring
 export const controlsLibrary = pgTable('controls_library', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   type: controlTypeEnum('type').notNull(),
   name: text('name').notNull(),
   description: text('description').notNull(),
@@ -315,6 +393,8 @@ export const controlsLibrary = pgTable('controls_library', {
   effectivenessIdx: index('controls_library_effectiveness_idx').on(table.effectiveness),
   statusIdx: index('controls_library_status_idx').on(table.status),
   controlCategoryIdx: index('controls_library_control_category_idx').on(table.controlCategory),
+  orgNameIdx: uniqueIndex('controls_library_org_name_idx').on(table.orgId, table.name),
+  orgIdx: index('controls_library_org_idx').on(table.orgId),
 }));
 
 export const controlPairings = pgTable('control_pairings', {
@@ -334,6 +414,7 @@ export const controlPairings = pgTable('control_pairings', {
 // Part Tables
 export const part = pgTable('part', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   customer: text('customer').notNull(),
   program: text('program').notNull(),
   partNumber: text('part_number').notNull(),
@@ -347,7 +428,8 @@ export const part = pgTable('part', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
-  partNumberIdx: uniqueIndex('part_number_idx').on(table.partNumber),
+  partNumberIdx: uniqueIndex('part_number_idx').on(table.orgId, table.partNumber),
+  orgIdx: index('part_org_idx').on(table.orgId),
 }));
 
 export const partProcessMap = pgTable('part_process_map', {
@@ -410,6 +492,7 @@ export const pfdStep = pgTable('pfd_step', {
 // PFMEA
 export const pfmea = pgTable('pfmea', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   partId: uuid('part_id').notNull().references(() => part.id, { onDelete: 'cascade' }),
   rev: text('rev').notNull(),
   status: statusEnum('status').notNull().default('draft'),
@@ -432,6 +515,7 @@ export const pfmea = pgTable('pfmea', {
 }, (table) => ({
   partRevIdx: uniqueIndex('pfmea_part_rev_idx').on(table.partId, table.rev),
   pfmeaNumberIdx: index('pfmea_number_idx').on(table.pfmeaNumber),
+  orgIdx: index('pfmea_org_idx').on(table.orgId),
 }));
 
 // PFMEA Action Status enum
@@ -489,6 +573,7 @@ export const pfmeaRow = pgTable('pfmea_row', {
 // Control Plan
 export const controlPlan = pgTable('control_plan', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   partId: uuid('part_id').notNull().references(() => part.id, { onDelete: 'cascade' }),
   rev: text('rev').notNull(),
   type: text('type').notNull(),
@@ -516,6 +601,7 @@ export const controlPlan = pgTable('control_plan', {
 }, (table) => ({
   partRevIdx: uniqueIndex('control_plan_part_rev_idx').on(table.partId, table.rev),
   controlPlanNumberIdx: index('control_plan_number_idx').on(table.controlPlanNumber),
+  orgIdx: index('control_plan_org_idx').on(table.orgId),
 }));
 
 export const controlPlanRow = pgTable('control_plan_row', {
@@ -752,6 +838,26 @@ export const ownership = pgTable('ownership', {
 // ==========================================
 // Relations
 // ==========================================
+
+// Core Platform Relations
+export const organizationRelations = relations(organization, ({ many }) => ({
+  users: many(user),
+}));
+
+export const userRelations = relations(user, ({ one, many }) => ({
+  organization: one(organization, {
+    fields: [user.orgId],
+    references: [organization.id],
+  }),
+  sessions: many(session),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, {
+    fields: [session.userId],
+    references: [user.id],
+  }),
+}));
 
 export const processDefRelations = relations(processDef, ({ many, one }) => ({
   steps: many(processStep),
@@ -1216,6 +1322,10 @@ export const insertChangePackageSchema = createInsertSchema(changePackage).omit(
 export const insertChangePackageItemSchema = createInsertSchema(changePackageItem).omit({ id: true });
 export const insertChangePackageApprovalSchema = createInsertSchema(changePackageApproval).omit({ id: true, requestedAt: true });
 export const insertChangePackagePropagationSchema = createInsertSchema(changePackagePropagation).omit({ id: true });
+// Core Platform
+export const insertOrganizationSchema = createInsertSchema(organization).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUserSchema = createInsertSchema(user).omit({ id: true, createdAt: true, updatedAt: true, lastLoginAt: true });
+export const insertSessionSchema = createInsertSchema(session).omit({ id: true, createdAt: true });
 // Document Control
 export const insertDocumentSchema = createInsertSchema(document).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertDocumentRevisionSchema = createInsertSchema(documentRevision).omit({ id: true, createdAt: true });
@@ -1226,6 +1336,14 @@ export const insertDocumentLinkSchema = createInsertSchema(documentLink).omit({ 
 // ==========================================
 // Types
 // ==========================================
+
+// Core Platform
+export type Organization = typeof organization.$inferSelect;
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type User = typeof user.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Session = typeof session.$inferSelect;
+export type InsertSession = z.infer<typeof insertSessionSchema>;
 
 export type Part = typeof part.$inferSelect;
 export type InsertPart = z.infer<typeof insertPartSchema>;
@@ -1316,3 +1434,5 @@ export type FindingLevel = 'error' | 'warning' | 'info';
 export type FindingCategory = 'coverage' | 'effectiveness' | 'document_control' | 'scoring' | 'csr';
 export type ChangeStatus = 'draft' | 'impact_analysis' | 'auto_review' | 'pending_signatures' | 'effective' | 'cancelled';
 export type DocumentTypeEnum = 'procedure' | 'work_instruction' | 'form' | 'specification' | 'standard' | 'drawing' | 'customer_spec' | 'external' | 'policy' | 'record';
+export type UserRole = 'admin' | 'quality_manager' | 'engineer' | 'viewer';
+export type UserStatus = 'active' | 'inactive' | 'pending';

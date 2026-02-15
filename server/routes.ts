@@ -62,6 +62,15 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
+import cookieParser from "cookie-parser";
+import {
+  hashPassword,
+  verifyPassword,
+  generateSessionToken,
+  getSessionExpiry,
+  sanitizeUser,
+} from "./auth";
+import { requireAuth, optionalAuth, requireRole, SESSION_COOKIE, verifyOrgAccess } from "./middleware/auth";
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -85,8 +94,259 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Run seeds on startup
   runAllSeeds().catch(console.error);
 
+  // Add cookie parser middleware
+  app.use(cookieParser());
+
+  // ============================================
+  // AUTH ROUTES (public)
+  // ============================================
+
+  // Register new organization + admin user
+  const registerSchema = z.object({
+    organizationName: z.string().min(2).max(100),
+    email: z.string().email(),
+    password: z.string().min(8).max(100),
+    firstName: z.string().min(1).max(50),
+    lastName: z.string().min(1).max(50),
+  });
+
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const data = registerSchema.parse(req.body);
+
+      // Generate slug from org name
+      const slug = data.organizationName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+
+      // Check if slug already exists
+      const existingOrg = await storage.getOrganizationBySlug(slug);
+      if (existingOrg) {
+        return res.status(409).json({ error: 'Organization name already taken' });
+      }
+
+      // Create organization
+      const org = await storage.createOrganization({
+        name: data.organizationName,
+        slug,
+        settings: {},
+      });
+
+      // Create admin user
+      const passwordHash = await hashPassword(data.password);
+      const user = await storage.createUser({
+        orgId: org.id,
+        email: data.email,
+        passwordHash,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: 'admin',
+        status: 'active',
+      });
+
+      // Create session
+      const token = generateSessionToken();
+      const session = await storage.createSession({
+        userId: user.id,
+        token,
+        expiresAt: getSessionExpiry(),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      // Set cookie
+      res.cookie(SESSION_COOKIE, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      // Update last login
+      await storage.updateUserLastLogin(user.id);
+
+      // Return user (without password)
+      const userWithOrg = { ...user, organization: org };
+      res.status(201).json({
+        user: sanitizeUser(userWithOrg as any),
+        token,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error('Register error:', error);
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  // Login
+  const loginSchema = z.object({
+    email: z.string().email(),
+    password: z.string(),
+    orgSlug: z.string().optional(),
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const data = loginSchema.parse(req.body);
+
+      // Find organization (if slug provided) or find user's org
+      let orgId: string | undefined;
+      if (data.orgSlug) {
+        const org = await storage.getOrganizationBySlug(data.orgSlug);
+        if (!org) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        orgId = org.id;
+      }
+
+      // Find user
+      let user;
+      if (orgId) {
+        user = await storage.getUserByEmail(orgId, data.email);
+      } else {
+        // Search all orgs for this email (MVP simplification)
+        const allOrgs = await storage.getAllOrganizations();
+        for (const org of allOrgs) {
+          const found = await storage.getUserByEmail(org.id, data.email);
+          if (found) {
+            user = found;
+            orgId = org.id;
+            break;
+          }
+        }
+      }
+
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Check password
+      const validPassword = await verifyPassword(data.password, user.passwordHash);
+      if (!validPassword) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Check user status
+      if (user.status !== 'active') {
+        return res.status(403).json({ error: 'Account is not active' });
+      }
+
+      // Create session
+      const token = generateSessionToken();
+      await storage.createSession({
+        userId: user.id,
+        token,
+        expiresAt: getSessionExpiry(),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      // Set cookie
+      res.cookie(SESSION_COOKIE, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      // Update last login
+      await storage.updateUserLastLogin(user.id);
+
+      // Get org for response
+      const org = await storage.getOrganizationById(user.orgId);
+      const userWithOrg = { ...user, organization: org! };
+
+      res.json({
+        user: sanitizeUser(userWithOrg as any),
+        token,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  // Logout
+  app.post('/api/auth/logout', requireAuth, async (req, res) => {
+    try {
+      const token = req.cookies?.[SESSION_COOKIE] ||
+                    req.headers.authorization?.replace('Bearer ', '');
+
+      if (token) {
+        await storage.deleteSession(token);
+      }
+
+      res.clearCookie(SESSION_COOKIE);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Logout error:', error);
+      res.status(500).json({ error: 'Logout failed' });
+    }
+  });
+
+  // Get current user
+  app.get('/api/auth/me', requireAuth, async (req, res) => {
+    res.json({ user: req.auth!.user });
+  });
+
+  // Refresh session (extend expiry)
+  app.post('/api/auth/refresh', requireAuth, async (req, res) => {
+    try {
+      const token = req.cookies?.[SESSION_COOKIE] ||
+                    req.headers.authorization?.replace('Bearer ', '');
+
+      if (!token) {
+        return res.status(401).json({ error: 'No session to refresh' });
+      }
+
+      // Delete old session
+      await storage.deleteSession(token);
+
+      // Create new session
+      const newToken = generateSessionToken();
+      await storage.createSession({
+        userId: req.auth!.user.id,
+        token: newToken,
+        expiresAt: getSessionExpiry(),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      // Set new cookie
+      res.cookie(SESSION_COOKIE, newToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.json({
+        user: req.auth!.user,
+        token: newToken,
+      });
+    } catch (error) {
+      console.error('Refresh error:', error);
+      res.status(500).json({ error: 'Session refresh failed' });
+    }
+  });
+
+  // ============================================
+  // GLOBAL AUTH MIDDLEWARE - protects all non-auth API routes
+  // ============================================
+  app.use('/api', (req, res, next) => {
+    // Skip auth routes (public)
+    if (req.path.startsWith('/auth/')) return next();
+    return requireAuth(req, res, next);
+  });
+
   // ========== IMPORT ENDPOINTS ==========
-  
+
   // Upload and analyze file
   app.post('/api/import/analyze', upload.single('file'), async (req, res) => {
     if (!req.file) {
@@ -385,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Parts API
   app.get("/api/parts", async (req, res) => {
     try {
-      const parts = await storage.getAllParts();
+      const parts = await storage.getAllParts(req.orgId!);
       res.json(parts);
     } catch (error) {
       console.error("Error fetching parts:", error);
@@ -438,7 +698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/parts", async (req, res) => {
     try {
-      const validatedData = insertPartSchema.parse(req.body);
+      const validatedData = insertPartSchema.parse({ ...req.body, orgId: req.orgId });
       const newPart = await storage.createPart(validatedData);
       res.status(201).json(newPart);
     } catch (error) {
@@ -479,7 +739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Processes API
   app.get("/api/processes", async (req, res) => {
     try {
-      const processes = await storage.getAllProcesses();
+      const processes = await storage.getAllProcesses(req.orgId!);
       res.json(processes);
     } catch (error) {
       console.error("Error fetching processes:", error);
@@ -511,9 +771,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = createProcessWithStepsSchema.parse(req.body);
       const userId = validatedData.process.createdBy || crypto.randomUUID();
-      
+
       const processData = {
         ...validatedData.process,
+        orgId: req.orgId!,
         createdBy: userId,
       };
 
@@ -862,7 +1123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/pfmeas - Create PFMEA (plural form for compatibility)
   app.post("/api/pfmeas", async (req, res) => {
     try {
-      const validatedData = insertPfmeaSchema.parse(req.body);
+      const validatedData = insertPfmeaSchema.parse({ ...req.body, orgId: req.orgId });
       const newPFMEA = await storage.createPFMEA(validatedData);
       res.status(201).json(newPFMEA);
     } catch (error) {
@@ -877,7 +1138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/pfmea", async (req, res) => {
     try {
-      const validatedData = insertPfmeaSchema.parse(req.body);
+      const validatedData = insertPfmeaSchema.parse({ ...req.body, orgId: req.orgId });
       const newPFMEA = await storage.createPFMEA(validatedData);
       res.status(201).json(newPFMEA);
     } catch (error) {
@@ -1527,7 +1788,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/control-plans", async (req, res) => {
     try {
-      const validatedData = insertControlPlanSchema.parse(req.body);
+      const validatedData = insertControlPlanSchema.parse({ ...req.body, orgId: req.orgId });
       const newControlPlan = await storage.createControlPlan(validatedData);
       res.status(201).json(newControlPlan);
     } catch (error) {
@@ -1717,7 +1978,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Equipment Library API
   app.get("/api/equipment", async (req, res) => {
     try {
-      const equipment = await storage.getAllEquipment();
+      const equipment = await storage.getAllEquipment(req.orgId!);
       res.json(equipment);
     } catch (error) {
       console.error("Error fetching equipment:", error);
@@ -1740,7 +2001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/equipment", async (req, res) => {
     try {
-      const validatedData = insertEquipmentLibrarySchema.parse(req.body);
+      const validatedData = insertEquipmentLibrarySchema.parse({ ...req.body, orgId: req.orgId });
       const newEquipment = await storage.createEquipment(validatedData);
       res.status(201).json(newEquipment);
     } catch (error) {
@@ -1888,8 +2149,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/failure-modes", async (req, res) => {
     try {
       const { category, search, status } = req.query;
-      const filters: { category?: FailureModeCategory; search?: string; status?: string } = {};
-      
+      const filters: { orgId?: string; category?: FailureModeCategory; search?: string; status?: string } = {
+        orgId: req.orgId,
+      };
+
       if (category && typeof category === 'string') {
         filters.category = category as FailureModeCategory;
       }
@@ -1899,10 +2162,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (status && typeof status === 'string') {
         filters.status = status;
       }
-      
-      const failureModes = await storage.getAllFailureModes(
-        Object.keys(filters).length > 0 ? filters : undefined
-      );
+
+      const failureModes = await storage.getAllFailureModes(filters);
       res.json(failureModes);
     } catch (error) {
       console.error("Error fetching failure modes:", error);
@@ -1925,7 +2186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/failure-modes", async (req, res) => {
     try {
-      const validatedData = insertFailureModesLibrarySchema.parse(req.body);
+      const validatedData = insertFailureModesLibrarySchema.parse({ ...req.body, orgId: req.orgId });
       const newFailureMode = await storage.createFailureMode(validatedData);
       res.status(201).json(newFailureMode);
     } catch (error) {
@@ -2020,8 +2281,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/controls-library", async (req, res) => {
     try {
       const { type, effectiveness, search, status } = req.query;
-      const filters: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string } = {};
-      
+      const filters: { orgId?: string; type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string } = {
+        orgId: req.orgId,
+      };
+
       if (type && typeof type === 'string') {
         filters.type = type as ControlType;
       }
@@ -2034,10 +2297,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (status && typeof status === 'string') {
         filters.status = status;
       }
-      
-      const controls = await storage.getAllControls(
-        Object.keys(filters).length > 0 ? filters : undefined
-      );
+
+      const controls = await storage.getAllControls(filters);
       res.json(controls);
     } catch (error) {
       console.error("Error fetching controls:", error);
@@ -2060,7 +2321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/controls-library", async (req, res) => {
     try {
-      const validatedData = insertControlsLibrarySchema.parse(req.body);
+      const validatedData = insertControlsLibrarySchema.parse({ ...req.body, orgId: req.orgId });
       const newControl = await storage.createControl(validatedData);
       res.status(201).json(newControl);
     } catch (error) {

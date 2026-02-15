@@ -6,6 +6,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { Loader2 } from "lucide-react";
+
+// Pages
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
 import Parts from "@/pages/Parts";
 import PartDetail from "@/pages/PartDetail";
@@ -32,63 +39,147 @@ import Documents from "@/pages/Documents";
 import DocumentDetail from "@/pages/DocumentDetail";
 import NotFound from "@/pages/not-found";
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/parts" component={Parts} />
-      <Route path="/parts/:id" component={PartDetail} />
-      <Route path="/processes" component={Processes} />
-      <Route path="/processes/:processId/fmea/:rowId/edit" component={FMEATemplateRowEdit} />
-      <Route path="/processes/:processId/control/:rowId/edit" component={ControlTemplateRowEdit} />
-      <Route path="/processes/:id" component={ProcessDetail} />
-      <Route path="/pfmea" component={PFMEA} />
-      <Route path="/pfmea/:id" component={PFMEADetail} />
-      <Route path="/control-plans" component={ControlPlans} />
-      <Route path="/control-plans/:id" component={ControlPlanDetail} />
-      <Route path="/equipment" component={Equipment} />
-      <Route path="/failure-modes" component={FailureModes} />
-      <Route path="/controls-library" component={ControlsLibrary} />
-      <Route path="/settings" component={Settings} />
-      <Route path="/change-packages" component={ChangePackagesPage} />
-      <Route path="/change-packages/new" component={NewChangePackage} />
-      <Route path="/change-packages/:id" component={ChangePackageDetail} />
-      <Route path="/auto-review" component={AutoReview} />
-      <Route path="/import" component={Import} />
-      <Route path="/actions" component={Actions} />
-      <Route path="/documents" component={Documents} />
-      <Route path="/documents/:id" component={DocumentDetail} />
-      <Route path="/notifications" component={Notifications} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
-
-function App() {
+function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
   return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <header className="flex items-center justify-between p-4 border-b bg-background">
+            <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <ThemeToggle />
+          </header>
+          <main className="flex-1 overflow-auto p-6 bg-background">
+            <div className="max-w-7xl mx-auto">
+              {children}
+            </div>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+function ProtectedPage({ children }: { children: React.ReactNode }) {
+  return (
+    <ProtectedRoute>
+      <AuthenticatedLayout>
+        {children}
+      </AuthenticatedLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AppRoutes() {
+  const { isLoading } = useAuth();
+
+  // Show loading while checking initial auth state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <Switch>
+      {/* Public routes */}
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
+
+      {/* Protected routes */}
+      <Route path="/">
+        <ProtectedPage><Dashboard /></ProtectedPage>
+      </Route>
+      <Route path="/parts">
+        <ProtectedPage><Parts /></ProtectedPage>
+      </Route>
+      <Route path="/parts/:id">
+        <ProtectedPage><PartDetail /></ProtectedPage>
+      </Route>
+      <Route path="/processes">
+        <ProtectedPage><Processes /></ProtectedPage>
+      </Route>
+      <Route path="/processes/:processId/fmea/:rowId/edit">
+        <ProtectedPage><FMEATemplateRowEdit /></ProtectedPage>
+      </Route>
+      <Route path="/processes/:processId/control/:rowId/edit">
+        <ProtectedPage><ControlTemplateRowEdit /></ProtectedPage>
+      </Route>
+      <Route path="/processes/:id">
+        <ProtectedPage><ProcessDetail /></ProtectedPage>
+      </Route>
+      <Route path="/pfmea">
+        <ProtectedPage><PFMEA /></ProtectedPage>
+      </Route>
+      <Route path="/pfmea/:id">
+        <ProtectedPage><PFMEADetail /></ProtectedPage>
+      </Route>
+      <Route path="/control-plans">
+        <ProtectedPage><ControlPlans /></ProtectedPage>
+      </Route>
+      <Route path="/control-plans/:id">
+        <ProtectedPage><ControlPlanDetail /></ProtectedPage>
+      </Route>
+      <Route path="/equipment">
+        <ProtectedPage><Equipment /></ProtectedPage>
+      </Route>
+      <Route path="/failure-modes">
+        <ProtectedPage><FailureModes /></ProtectedPage>
+      </Route>
+      <Route path="/controls-library">
+        <ProtectedPage><ControlsLibrary /></ProtectedPage>
+      </Route>
+      <Route path="/settings">
+        <ProtectedPage><Settings /></ProtectedPage>
+      </Route>
+      <Route path="/change-packages">
+        <ProtectedPage><ChangePackagesPage /></ProtectedPage>
+      </Route>
+      <Route path="/change-packages/new">
+        <ProtectedPage><NewChangePackage /></ProtectedPage>
+      </Route>
+      <Route path="/change-packages/:id">
+        <ProtectedPage><ChangePackageDetail /></ProtectedPage>
+      </Route>
+      <Route path="/auto-review">
+        <ProtectedPage><AutoReview /></ProtectedPage>
+      </Route>
+      <Route path="/import">
+        <ProtectedPage><Import /></ProtectedPage>
+      </Route>
+      <Route path="/actions">
+        <ProtectedPage><Actions /></ProtectedPage>
+      </Route>
+      <Route path="/documents">
+        <ProtectedPage><Documents /></ProtectedPage>
+      </Route>
+      <Route path="/documents/:id">
+        <ProtectedPage><DocumentDetail /></ProtectedPage>
+      </Route>
+      <Route path="/notifications">
+        <ProtectedPage><Notifications /></ProtectedPage>
+      </Route>
+
+      {/* 404 */}
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider style={style as React.CSSProperties}>
-          <div className="flex h-screen w-full">
-            <AppSidebar />
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <header className="flex items-center justify-between p-4 border-b bg-background">
-                <SidebarTrigger data-testid="button-sidebar-toggle" />
-                <ThemeToggle />
-              </header>
-              <main className="flex-1 overflow-auto p-6 bg-background">
-                <div className="max-w-7xl mx-auto">
-                  <Router />
-                </div>
-              </main>
-            </div>
-          </div>
-        </SidebarProvider>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

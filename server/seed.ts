@@ -1,6 +1,81 @@
 import { storage } from "./storage";
 import { db } from "./db";
-import { document, documentRevision, documentReview } from "@shared/schema";
+import { organization, user, document, documentRevision, documentReview } from "@shared/schema";
+import bcrypt from "bcrypt";
+
+// Helper to hash passwords
+async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10);
+}
+
+/**
+ * Seed core platform data: organization and users.
+ * Returns the demo org ID for use by other seed functions.
+ */
+async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string } | null> {
+  // Check if organization already exists
+  const existingOrg = await storage.getOrganizationBySlug('acme-manufacturing');
+  if (existingOrg) {
+    console.log("  Core platform seed data already exists, skipping.");
+    // Return existing IDs for use by other seeds
+    const users = await storage.getUsersByOrgId(existingOrg.id);
+    const admin = users.find(u => u.role === 'admin');
+    return { orgId: existingOrg.id, adminUserId: admin?.id ?? users[0]?.id ?? '' };
+  }
+
+  console.log("  Seeding Core Platform data...");
+
+  // 1. Create demo organization
+  const demoOrg = await storage.createOrganization({
+    name: 'Acme Manufacturing',
+    slug: 'acme-manufacturing',
+    settings: {
+      defaultTimezone: 'America/Detroit',
+      dateFormat: 'MM/DD/YYYY',
+    },
+  });
+  console.log(`  ✓ Created organization: ${demoOrg.name}`);
+
+  // 2. Create demo users
+  const adminPasswordHash = await hashPassword('admin123');
+  const userPasswordHash = await hashPassword('user123');
+
+  const adminUser = await storage.createUser({
+    orgId: demoOrg.id,
+    email: 'admin@acme.com',
+    passwordHash: adminPasswordHash,
+    firstName: 'Admin',
+    lastName: 'User',
+    role: 'admin',
+    status: 'active',
+  });
+  console.log(`  ✓ Created admin user: ${adminUser.email}`);
+
+  const qmUser = await storage.createUser({
+    orgId: demoOrg.id,
+    email: 'quality@acme.com',
+    passwordHash: userPasswordHash,
+    firstName: 'Quality',
+    lastName: 'Manager',
+    role: 'quality_manager',
+    status: 'active',
+  });
+  console.log(`  ✓ Created quality manager: ${qmUser.email}`);
+
+  const engineerUser = await storage.createUser({
+    orgId: demoOrg.id,
+    email: 'engineer@acme.com',
+    passwordHash: userPasswordHash,
+    firstName: 'Process',
+    lastName: 'Engineer',
+    role: 'engineer',
+    status: 'active',
+  });
+  console.log(`  ✓ Created engineer: ${engineerUser.email}`);
+
+  console.log("  ✓ Core Platform seed data created (1 org, 3 users).");
+  return { orgId: demoOrg.id, adminUserId: adminUser.id };
+}
 
 async function seedDocumentControl() {
   // Check if documents already exist
@@ -222,6 +297,7 @@ async function seedDocumentControl() {
 
 export async function runAllSeeds() {
   console.log("Running seeds...");
+  await seedCorePlatform();
   await seedDocumentControl();
   console.log("✓ All seeds completed.");
 }

@@ -11,6 +11,17 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard,
   Package,
@@ -25,6 +36,9 @@ import {
   Upload,
   Target,
   FileText,
+  LogOut,
+  ChevronUp,
+  Building2,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 import NotificationBell from "./NotificationBell";
@@ -116,17 +130,9 @@ const libraryNavItems = [
   },
 ];
 
-const settingsNavItems = [
-  {
-    title: "Settings",
-    url: "/settings",
-    icon: Settings,
-    testId: "nav-settings",
-  },
-];
-
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user, logout } = useAuth();
 
   const isActive = (url: string) => {
     if (url === "/") {
@@ -135,18 +141,36 @@ export function AppSidebar() {
     return location.startsWith(url);
   };
 
+  const getInitials = () => {
+    if (!user) return '??';
+    return `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  };
+
+  const getRoleBadge = () => {
+    if (!user) return '';
+    const roleLabels: Record<string, string> = {
+      admin: 'Admin',
+      quality_manager: 'QM',
+      engineer: 'Eng',
+      viewer: 'View',
+    };
+    return roleLabels[user.role] || user.role;
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <Link href="/">
             <div className="flex items-center gap-2 cursor-pointer">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                <FileWarning className="h-5 w-5 text-primary-foreground" />
-              </div>
+              <Building2 className="h-6 w-6 text-primary" />
               <div className="flex flex-col">
-                <span className="font-semibold text-sm">PFMEA Suite</span>
-                <span className="text-xs text-muted-foreground">QMS Platform</span>
+                <span className="font-semibold text-sm">QMS Suite</span>
+                {user && (
+                  <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                    {user.organization.name}
+                  </span>
+                )}
               </div>
             </div>
           </Link>
@@ -225,23 +249,52 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
-        <SidebarMenu>
-          {settingsNavItems.map((item) => (
-            <SidebarMenuItem key={item.url}>
-              <SidebarMenuButton
-                asChild
-                isActive={isActive(item.url)}
-                data-testid={item.testId}
-              >
-                <Link href={item.url}>
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.title}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
+      <SidebarFooter className="border-t p-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-2 px-2">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="text-xs">
+                  {getInitials()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col items-start text-left flex-1 min-w-0">
+                <span className="text-sm font-medium truncate w-full">
+                  {user?.firstName} {user?.lastName}
+                </span>
+                <span className="text-xs text-muted-foreground truncate w-full">
+                  {user?.email}
+                </span>
+              </div>
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel>
+              <div className="flex items-center gap-2">
+                <span>{user?.firstName} {user?.lastName}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                  {getRoleBadge()}
+                </span>
+              </div>
+              <p className="text-xs font-normal text-muted-foreground mt-1">
+                {user?.email}
+              </p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout} className="text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="px-2 pb-2">
           <KeyboardShortcutsHelp />
         </div>

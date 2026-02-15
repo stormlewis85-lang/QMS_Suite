@@ -1,6 +1,9 @@
 // Phase 6: Complete Storage with FMEA Template Row and Control Template Row support
 // Phase 9: Auto-Review and Change Package Tables
 import {
+  organization,
+  user,
+  session,
   part,
   processDef,
   processStep,
@@ -25,6 +28,12 @@ import {
   changePackageItem,
   changePackageApproval,
   changePackagePropagation,
+  type Organization,
+  type InsertOrganization,
+  type User,
+  type InsertUser,
+  type Session,
+  type InsertSession,
   type Part,
   type InsertPart,
   type ProcessDef,
@@ -97,15 +106,37 @@ import { eq, desc, ilike, and, or, sql, inArray, lt, count } from "drizzle-orm";
 import crypto from "crypto";
 
 export interface IStorage {
+  // Organization
+  getOrganizationById(id: string): Promise<Organization | undefined>;
+  getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
+  getAllOrganizations(): Promise<Organization[]>;
+  createOrganization(data: InsertOrganization): Promise<Organization>;
+  updateOrganization(id: string, data: Partial<InsertOrganization>): Promise<Organization | undefined>;
+
+  // User
+  getUserById(id: string): Promise<User | undefined>;
+  getUserByEmail(orgId: string, email: string): Promise<User | undefined>;
+  getUsersByOrgId(orgId: string): Promise<User[]>;
+  createUser(data: InsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+  updateUserLastLogin(id: string): Promise<void>;
+
+  // Session
+  getSessionByToken(token: string): Promise<(Session & { user: User & { organization: Organization } }) | undefined>;
+  createSession(data: InsertSession): Promise<Session>;
+  deleteSession(token: string): Promise<void>;
+  deleteExpiredSessions(): Promise<number>;
+  deleteUserSessions(userId: string): Promise<void>;
+
   // Parts
-  getAllParts(): Promise<Part[]>;
+  getAllParts(orgId?: string): Promise<Part[]>;
   getPartById(id: string): Promise<Part | undefined>;
   createPart(insertPart: InsertPart): Promise<Part>;
   updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined>;
   deletePart(id: string): Promise<boolean>;
   
   // Processes
-  getAllProcesses(): Promise<ProcessDef[]>;
+  getAllProcesses(orgId?: string): Promise<ProcessDef[]>;
   getProcessById(id: string): Promise<ProcessDef | undefined>;
   getProcessWithSteps(id: string): Promise<(ProcessDef & { steps: ProcessStep[] }) | undefined>;
   createProcess(insertProcess: InsertProcessDef): Promise<ProcessDef>;
@@ -170,7 +201,7 @@ export interface IStorage {
   deleteControlPlanRow(id: string): Promise<boolean>;
   
   // Equipment Library
-  getAllEquipment(): Promise<EquipmentLibrary[]>;
+  getAllEquipment(orgId?: string): Promise<EquipmentLibrary[]>;
   getEquipmentById(id: string): Promise<(EquipmentLibrary & { errorProofingControls: EquipmentErrorProofing[]; controlMethods: EquipmentControlMethods[] }) | undefined>;
   createEquipment(insertEquipment: InsertEquipmentLibrary): Promise<EquipmentLibrary>;
   updateEquipment(id: string, updates: Partial<InsertEquipmentLibrary>): Promise<EquipmentLibrary | undefined>;
@@ -183,7 +214,7 @@ export interface IStorage {
   deleteControlMethod(id: string): Promise<boolean>;
   
   // Failure Modes Library
-  getAllFailureModes(filters?: { category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]>;
+  getAllFailureModes(filters?: { orgId?: string; category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]>;
   getFailureModeById(id: string): Promise<FailureModesLibrary | undefined>;
   createFailureMode(insertFailureMode: InsertFailureModesLibrary): Promise<FailureModesLibrary>;
   updateFailureMode(id: string, updates: Partial<InsertFailureModesLibrary>): Promise<FailureModesLibrary | undefined>;
@@ -196,7 +227,7 @@ export interface IStorage {
   getCatalogLinksByCatalogItemId(catalogItemId: string): Promise<FmeaTemplateCatalogLink[]>;
   
   // Controls Library
-  getAllControls(filters?: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]>;
+  getAllControls(filters?: { orgId?: string; type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]>;
   getControlById(id: string): Promise<ControlsLibrary | undefined>;
   createControl(insertControl: InsertControlsLibrary): Promise<ControlsLibrary>;
   updateControl(id: string, updates: Partial<InsertControlsLibrary>): Promise<ControlsLibrary | undefined>;
@@ -293,8 +324,130 @@ export interface IStorage {
 }
 
 class DatabaseStorage implements IStorage {
+  // ============================================
+  // ORGANIZATION
+  // ============================================
+
+  async getOrganizationById(id: string): Promise<Organization | undefined> {
+    const [org] = await db.select().from(organization).where(eq(organization.id, id));
+    return org;
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
+    const [org] = await db.select().from(organization).where(eq(organization.slug, slug));
+    return org;
+  }
+
+  async getAllOrganizations(): Promise<Organization[]> {
+    return db.select().from(organization);
+  }
+
+  async createOrganization(data: InsertOrganization): Promise<Organization> {
+    const [org] = await db.insert(organization).values(data as any).returning();
+    return org;
+  }
+
+  async updateOrganization(id: string, data: Partial<InsertOrganization>): Promise<Organization | undefined> {
+    const [updated] = await db.update(organization)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(organization.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ============================================
+  // USER
+  // ============================================
+
+  async getUserById(id: string): Promise<User | undefined> {
+    const [u] = await db.select().from(user).where(eq(user.id, id));
+    return u;
+  }
+
+  async getUserByEmail(orgId: string, email: string): Promise<User | undefined> {
+    const [u] = await db.select().from(user)
+      .where(and(eq(user.orgId, orgId), eq(user.email, email.toLowerCase())));
+    return u;
+  }
+
+  async getUsersByOrgId(orgId: string): Promise<User[]> {
+    return db.select().from(user).where(eq(user.orgId, orgId));
+  }
+
+  async createUser(data: InsertUser): Promise<User> {
+    const [u] = await db.insert(user).values({
+      ...data,
+      email: data.email.toLowerCase(),
+    }).returning();
+    return u;
+  }
+
+  async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
+    const updateData: any = { ...data, updatedAt: new Date() };
+    if (data.email) updateData.email = data.email.toLowerCase();
+    const [updated] = await db.update(user)
+      .set(updateData)
+      .where(eq(user.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateUserLastLogin(id: string): Promise<void> {
+    await db.update(user)
+      .set({ lastLoginAt: new Date(), updatedAt: new Date() } as any)
+      .where(eq(user.id, id));
+  }
+
+  // ============================================
+  // SESSION
+  // ============================================
+
+  async getSessionByToken(token: string): Promise<(Session & { user: User & { organization: Organization } }) | undefined> {
+    const result = await db.query.session.findFirst({
+      where: and(
+        eq(session.token, token),
+        sql`${session.expiresAt} > NOW()`
+      ),
+      with: {
+        user: {
+          with: {
+            organization: true,
+          },
+        },
+      },
+    });
+    return result as any;
+  }
+
+  async createSession(data: InsertSession): Promise<Session> {
+    const [s] = await db.insert(session).values(data).returning();
+    return s;
+  }
+
+  async deleteSession(token: string): Promise<void> {
+    await db.delete(session).where(eq(session.token, token));
+  }
+
+  async deleteExpiredSessions(): Promise<number> {
+    const result = await db.delete(session)
+      .where(sql`${session.expiresAt} <= NOW()`)
+      .returning();
+    return result.length;
+  }
+
+  async deleteUserSessions(userId: string): Promise<void> {
+    await db.delete(session).where(eq(session.userId, userId));
+  }
+
+  // ============================================
+  // PARTS
+  // ============================================
+
   // Parts
-  async getAllParts(): Promise<Part[]> {
+  async getAllParts(orgId?: string): Promise<Part[]> {
+    if (orgId) {
+      return await db.select().from(part).where(eq(part.orgId, orgId)).orderBy(desc(part.partNumber));
+    }
     return await db.select().from(part).orderBy(desc(part.partNumber));
   }
 
@@ -319,7 +472,10 @@ class DatabaseStorage implements IStorage {
   }
 
   // Processes
-  async getAllProcesses(): Promise<ProcessDef[]> {
+  async getAllProcesses(orgId?: string): Promise<ProcessDef[]> {
+    if (orgId) {
+      return await db.select().from(processDef).where(eq(processDef.orgId, orgId)).orderBy(desc(processDef.createdAt));
+    }
     return await db.select().from(processDef).orderBy(desc(processDef.createdAt));
   }
 
@@ -671,7 +827,10 @@ class DatabaseStorage implements IStorage {
   }
 
   // Equipment Library
-  async getAllEquipment(): Promise<EquipmentLibrary[]> {
+  async getAllEquipment(orgId?: string): Promise<EquipmentLibrary[]> {
+    if (orgId) {
+      return await db.select().from(equipmentLibrary).where(eq(equipmentLibrary.orgId, orgId)).orderBy(equipmentLibrary.name);
+    }
     return await db.select().from(equipmentLibrary).orderBy(equipmentLibrary.name);
   }
 
@@ -743,17 +902,21 @@ class DatabaseStorage implements IStorage {
   }
 
   // Failure Modes Library
-  async getAllFailureModes(filters?: { category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]> {
+  async getAllFailureModes(filters?: { orgId?: string; category?: FailureModeCategory; search?: string; status?: string }): Promise<FailureModesLibrary[]> {
     const conditions = [];
-    
+
+    if (filters?.orgId) {
+      conditions.push(eq(failureModesLibrary.orgId, filters.orgId));
+    }
+
     if (filters?.category) {
       conditions.push(eq(failureModesLibrary.category, filters.category));
     }
-    
+
     if (filters?.status) {
       conditions.push(eq(failureModesLibrary.status, filters.status));
     }
-    
+
     if (filters?.search) {
       conditions.push(
         or(
@@ -762,13 +925,13 @@ class DatabaseStorage implements IStorage {
         )
       );
     }
-    
+
     if (conditions.length > 0) {
       return await db.select().from(failureModesLibrary)
         .where(and(...conditions))
         .orderBy(desc(failureModesLibrary.createdAt));
     }
-    
+
     return await db.select().from(failureModesLibrary)
       .orderBy(desc(failureModesLibrary.createdAt));
   }
@@ -821,21 +984,25 @@ class DatabaseStorage implements IStorage {
   }
 
   // Controls Library
-  async getAllControls(filters?: { type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]> {
+  async getAllControls(filters?: { orgId?: string; type?: ControlType; effectiveness?: ControlEffectiveness; search?: string; status?: string }): Promise<ControlsLibrary[]> {
     const conditions = [];
-    
+
+    if (filters?.orgId) {
+      conditions.push(eq(controlsLibrary.orgId, filters.orgId));
+    }
+
     if (filters?.type) {
       conditions.push(eq(controlsLibrary.type, filters.type));
     }
-    
+
     if (filters?.effectiveness) {
       conditions.push(eq(controlsLibrary.effectiveness, filters.effectiveness));
     }
-    
+
     if (filters?.status) {
       conditions.push(eq(controlsLibrary.status, filters.status));
     }
-    
+
     if (filters?.search) {
       conditions.push(
         or(
@@ -844,13 +1011,13 @@ class DatabaseStorage implements IStorage {
         )
       );
     }
-    
+
     if (conditions.length > 0) {
       return await db.select().from(controlsLibrary)
         .where(and(...conditions))
         .orderBy(desc(controlsLibrary.createdAt));
     }
-    
+
     return await db.select().from(controlsLibrary)
       .orderBy(desc(controlsLibrary.createdAt));
   }
