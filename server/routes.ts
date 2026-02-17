@@ -5270,7 +5270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userAgent: req.headers['user-agent'],
       });
 
-      res.json(checkout);
+      res.status(201).json(checkout);
     } catch (error) {
       console.error("Error checking out document:", error);
       res.status(500).json({ error: "Failed to checkout document" });
@@ -5382,6 +5382,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // --- APPROVAL WORKFLOW DEFINITIONS CRUD ---
+
+  // GET /api/approval-workflow-definitions
+  app.get("/api/approval-workflow-definitions", requireAuth, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const defs = await storage.getApprovalWorkflowDefinitions(req.orgId!, status);
+      res.json(defs);
+    } catch (error) {
+      console.error("Error getting workflow definitions:", error);
+      res.status(500).json({ error: "Failed to get workflow definitions" });
+    }
+  });
+
+  // GET /api/approval-workflow-definitions/:id
+  app.get("/api/approval-workflow-definitions/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const def = await storage.getApprovalWorkflowDefinition(id);
+      if (!def || def.orgId !== req.orgId) return res.status(404).json({ error: "Workflow definition not found" });
+      res.json(def);
+    } catch (error) {
+      console.error("Error getting workflow definition:", error);
+      res.status(500).json({ error: "Failed to get workflow definition" });
+    }
+  });
+
+  // POST /api/approval-workflow-definitions
+  app.post("/api/approval-workflow-definitions", requireAuth, async (req, res) => {
+    try {
+      const data = { ...req.body, orgId: req.orgId };
+      const def = await storage.createApprovalWorkflowDefinition(data);
+      res.status(201).json(def);
+    } catch (error) {
+      console.error("Error creating workflow definition:", error);
+      res.status(500).json({ error: "Failed to create workflow definition" });
+    }
+  });
+
+  // PATCH /api/approval-workflow-definitions/:id
+  app.patch("/api/approval-workflow-definitions/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const existing = await storage.getApprovalWorkflowDefinition(id);
+      if (!existing || existing.orgId !== req.orgId) return res.status(404).json({ error: "Workflow definition not found" });
+      const updated = await storage.updateApprovalWorkflowDefinition(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating workflow definition:", error);
+      res.status(500).json({ error: "Failed to update workflow definition" });
+    }
+  });
+
+  // DELETE /api/approval-workflow-definitions/:id
+  app.delete("/api/approval-workflow-definitions/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const existing = await storage.getApprovalWorkflowDefinition(id);
+      if (!existing || existing.orgId !== req.orgId) return res.status(404).json({ error: "Workflow definition not found" });
+      await storage.deleteApprovalWorkflowDefinition(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting workflow definition:", error);
+      res.status(500).json({ error: "Failed to delete workflow definition" });
+    }
+  });
+
   // --- APPROVAL WORKFLOWS ---
 
   // POST /api/documents/:documentId/start-workflow - Start approval workflow
@@ -5472,8 +5542,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userAgent: req.headers['user-agent'],
       });
 
+      // Create all remaining steps (not just first) so they're returned
+      const allSteps = [firstStep];
+      for (let i = 1; i < stepDefs.length; i++) {
+        const sDef = stepDefs[i];
+        const step = await storage.createApprovalWorkflowStep({
+          workflowInstanceId: instance.id,
+          stepNumber: i + 1,
+          stepName: sDef.name || `Step ${i + 1}`,
+          assignedTo: null,
+          assignedRole: sDef.requiredRole || null,
+          assignedAt: null,
+          dueDate: null,
+          status: 'pending',
+          signatureRequired: sDef.signatureRequired ? 1 : 0,
+        });
+        allSteps.push(step);
+      }
+
       res.status(201).json({
         workflowInstance: instance,
+        steps: allSteps,
         currentStep: firstStep,
         message: `Workflow started. Assigned to ${assignee || 'pending assignment'} for ${firstStepDef.name || 'review'}.`,
       });
@@ -6697,6 +6786,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error marking link as broken:", error);
       res.status(500).json({ error: "Failed to mark link as broken" });
     }
+  });
+
+  // Catch-all: return 404 for any unmatched /api/* routes so the Vite SPA
+  // handler doesn't swallow them with a 200 HTML response.
+  app.all("/api/*", (_req, res) => {
+    res.status(404).json({ error: "Not found" });
   });
 
   const httpServer = createServer(app);
