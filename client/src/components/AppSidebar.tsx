@@ -39,6 +39,13 @@ import {
   LogOut,
   ChevronUp,
   Building2,
+  CheckSquare,
+  Calendar,
+  Globe,
+  Workflow,
+  FileCog,
+  Users,
+  ScrollText,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 import NotificationBell from "./NotificationBell";
@@ -90,6 +97,24 @@ const qualityNavItems = [
     testId: "nav-documents",
   },
   {
+    title: "My Approvals",
+    url: "/approvals",
+    icon: CheckSquare,
+    testId: "nav-approvals",
+  },
+  {
+    title: "Reviews Due",
+    url: "/document-reviews",
+    icon: Calendar,
+    testId: "nav-document-reviews",
+  },
+  {
+    title: "External Docs",
+    url: "/external-documents",
+    icon: Globe,
+    testId: "nav-external-documents",
+  },
+  {
     title: "Auto-Review",
     url: "/auto-review",
     icon: ShieldCheck,
@@ -106,6 +131,33 @@ const qualityNavItems = [
     url: "/actions",
     icon: Target,
     testId: "nav-actions",
+  },
+];
+
+const adminNavItems = [
+  {
+    title: "Workflows",
+    url: "/admin/workflows",
+    icon: Workflow,
+    testId: "nav-admin-workflows",
+  },
+  {
+    title: "Templates",
+    url: "/admin/document-templates",
+    icon: FileCog,
+    testId: "nav-admin-templates",
+  },
+  {
+    title: "Distribution Lists",
+    url: "/admin/distribution-lists",
+    icon: Users,
+    testId: "nav-admin-distribution-lists",
+  },
+  {
+    title: "Audit Log",
+    url: "/admin/audit-log",
+    icon: ScrollText,
+    testId: "nav-admin-audit-log",
   },
 ];
 
@@ -208,6 +260,29 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {qualityNavItems.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={item.testId}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Admin */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Admin</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminNavItems.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     asChild

@@ -90,6 +90,19 @@ import {
   documentDistribution,
   documentReview,
   documentLink,
+  documentFile,
+  documentTemplate,
+  approvalWorkflowDefinition,
+  approvalWorkflowInstance,
+  approvalWorkflowStep,
+  documentCheckout,
+  distributionList,
+  documentDistributionRecord,
+  documentAccessLog,
+  documentPrintLog,
+  documentComment,
+  externalDocument,
+  documentLinkEnhanced,
   type Document,
   type InsertDocument,
   type DocumentRevision,
@@ -100,9 +113,35 @@ import {
   type InsertDocumentReview,
   type DocumentLink,
   type InsertDocumentLink,
+  type DocumentFile,
+  type InsertDocumentFile,
+  type DocumentTemplate,
+  type InsertDocumentTemplate,
+  type ApprovalWorkflowDefinition,
+  type InsertApprovalWorkflowDefinition,
+  type ApprovalWorkflowInstance,
+  type InsertApprovalWorkflowInstance,
+  type ApprovalWorkflowStep,
+  type InsertApprovalWorkflowStep,
+  type DocumentCheckout,
+  type InsertDocumentCheckout,
+  type DistributionList,
+  type InsertDistributionList,
+  type DocumentDistributionRecord,
+  type InsertDocumentDistributionRecord,
+  type DocumentAccessLog,
+  type InsertDocumentAccessLog,
+  type DocumentPrintLog,
+  type InsertDocumentPrintLog,
+  type DocumentComment,
+  type InsertDocumentComment,
+  type ExternalDocument,
+  type InsertExternalDocument,
+  type DocumentLinkEnhanced,
+  type InsertDocumentLinkEnhanced,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, or, sql, inArray, lt, count } from "drizzle-orm";
+import { eq, desc, ilike, and, or, sql, inArray, lt, gte, lte, isNull, isNotNull, count } from "drizzle-orm";
 import crypto from "crypto";
 
 export interface IStorage {
@@ -321,6 +360,127 @@ export interface IStorage {
     pendingApprovals: number;
     recentChanges: number;
   }>;
+
+  // ============================================
+  // DOCUMENT CONTROL PHASE 2: File, Template, Workflow, Checkout
+  // ============================================
+
+  // Document Files
+  getDocumentFiles(orgId: string, documentId: string): Promise<DocumentFile[]>;
+  getDocumentFilesByRevision(revisionId: string): Promise<DocumentFile[]>;
+  getDocumentFile(id: number): Promise<DocumentFile | undefined>;
+  getDocumentFileByChecksum(checksum: string, documentId: string): Promise<DocumentFile | undefined>;
+  createDocumentFile(data: InsertDocumentFile): Promise<DocumentFile>;
+  updateDocumentFile(id: number, data: Partial<InsertDocumentFile>): Promise<DocumentFile | undefined>;
+  deleteDocumentFile(id: number): Promise<void>;
+  searchDocumentsByText(searchText: string): Promise<DocumentFile[]>;
+
+  // Document Templates
+  getDocumentTemplates(orgId: string, status?: string): Promise<DocumentTemplate[]>;
+  getDocumentTemplate(id: number): Promise<DocumentTemplate | undefined>;
+  getDocumentTemplateByCode(code: string): Promise<DocumentTemplate | undefined>;
+  getDocumentTemplatesByType(orgId: string, docType: string): Promise<DocumentTemplate[]>;
+  createDocumentTemplate(data: InsertDocumentTemplate): Promise<DocumentTemplate>;
+  updateDocumentTemplate(id: number, data: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate | undefined>;
+  deleteDocumentTemplate(id: number): Promise<void>;
+
+  // Approval Workflow Definitions
+  getApprovalWorkflowDefinitions(orgId: string, status?: string): Promise<ApprovalWorkflowDefinition[]>;
+  getApprovalWorkflowDefinition(id: number): Promise<ApprovalWorkflowDefinition | undefined>;
+  getApprovalWorkflowDefinitionByCode(code: string): Promise<ApprovalWorkflowDefinition | undefined>;
+  getWorkflowDefinitionForDocType(orgId: string, docType: string): Promise<ApprovalWorkflowDefinition | undefined>;
+  createApprovalWorkflowDefinition(data: InsertApprovalWorkflowDefinition): Promise<ApprovalWorkflowDefinition>;
+  updateApprovalWorkflowDefinition(id: number, data: Partial<InsertApprovalWorkflowDefinition>): Promise<ApprovalWorkflowDefinition | undefined>;
+  deleteApprovalWorkflowDefinition(id: number): Promise<void>;
+
+  // Approval Workflow Instances
+  getApprovalWorkflowInstances(orgId: string, documentId?: string, status?: string): Promise<ApprovalWorkflowInstance[]>;
+  getApprovalWorkflowInstance(id: number): Promise<ApprovalWorkflowInstance | undefined>;
+  getActiveWorkflowForDocument(documentId: string): Promise<ApprovalWorkflowInstance | undefined>;
+  createApprovalWorkflowInstance(data: InsertApprovalWorkflowInstance): Promise<ApprovalWorkflowInstance>;
+  updateApprovalWorkflowInstance(id: number, data: Partial<InsertApprovalWorkflowInstance>): Promise<ApprovalWorkflowInstance | undefined>;
+  deleteApprovalWorkflowInstance(id: number): Promise<void>;
+
+  // Approval Workflow Steps
+  getApprovalWorkflowSteps(instanceId: number): Promise<ApprovalWorkflowStep[]>;
+  getApprovalWorkflowStep(id: number): Promise<ApprovalWorkflowStep | undefined>;
+  getPendingStepsForUser(userId: string): Promise<ApprovalWorkflowStep[]>;
+  getOverdueSteps(): Promise<ApprovalWorkflowStep[]>;
+  createApprovalWorkflowStep(data: InsertApprovalWorkflowStep): Promise<ApprovalWorkflowStep>;
+  updateApprovalWorkflowStep(id: number, data: Partial<InsertApprovalWorkflowStep>): Promise<ApprovalWorkflowStep | undefined>;
+  deleteApprovalWorkflowStep(id: number): Promise<void>;
+
+  // Document Checkouts
+  getDocumentCheckouts(orgId: string, documentId?: string, status?: string): Promise<DocumentCheckout[]>;
+  getDocumentCheckout(id: number): Promise<DocumentCheckout | undefined>;
+  getActiveCheckout(documentId: string): Promise<DocumentCheckout | undefined>;
+  getCheckoutsByUser(orgId: string, userId: string): Promise<DocumentCheckout[]>;
+  getAllActiveCheckouts(orgId: string): Promise<DocumentCheckout[]>;
+  createDocumentCheckout(data: InsertDocumentCheckout): Promise<DocumentCheckout>;
+  updateDocumentCheckout(id: number, data: Partial<InsertDocumentCheckout>): Promise<DocumentCheckout | undefined>;
+  deleteDocumentCheckout(id: number): Promise<void>;
+
+  // Distribution Lists
+  getDistributionLists(orgId: string, status?: string): Promise<DistributionList[]>;
+  getDistributionList(id: number): Promise<DistributionList | undefined>;
+  getDistributionListByCode(code: string): Promise<DistributionList | undefined>;
+  createDistributionList(data: InsertDistributionList): Promise<DistributionList>;
+  updateDistributionList(id: number, data: Partial<InsertDistributionList>): Promise<DistributionList | undefined>;
+  deleteDistributionList(id: number): Promise<void>;
+
+  // Document Distribution Records
+  getDocumentDistributionRecords(orgId: string, documentId?: string, status?: string): Promise<DocumentDistributionRecord[]>;
+  getDocumentDistributionRecord(id: number): Promise<DocumentDistributionRecord | undefined>;
+  getPendingAcknowledgments(orgId: string, userId: string): Promise<DocumentDistributionRecord[]>;
+  getOverdueAcknowledgments(orgId: string): Promise<DocumentDistributionRecord[]>;
+  createDocumentDistributionRecord(data: InsertDocumentDistributionRecord): Promise<DocumentDistributionRecord>;
+  updateDocumentDistributionRecord(id: number, data: Partial<InsertDocumentDistributionRecord>): Promise<DocumentDistributionRecord | undefined>;
+  deleteDocumentDistributionRecord(id: number): Promise<void>;
+
+  // Document Access Logs (immutable - no update/delete)
+  getDocumentAccessLogs(orgId: string, documentId?: string, action?: string, limit?: number): Promise<DocumentAccessLog[]>;
+  getDocumentAccessLogsByUser(orgId: string, userId: string, limit?: number): Promise<DocumentAccessLog[]>;
+  getDocumentAccessLogsByDateRange(orgId: string, startDate: Date, endDate: Date): Promise<DocumentAccessLog[]>;
+  createDocumentAccessLog(data: InsertDocumentAccessLog): Promise<DocumentAccessLog>;
+  getAccessLogStats(orgId: string, documentId: string): Promise<{ action: string; count: number }[]>;
+
+  // Document Print Logs
+  getDocumentPrintLogs(orgId: string, documentId?: string): Promise<DocumentPrintLog[]>;
+  getDocumentPrintLog(id: number): Promise<DocumentPrintLog | undefined>;
+  getUnrecalledPrintLogs(orgId: string, documentId: string): Promise<DocumentPrintLog[]>;
+  createDocumentPrintLog(data: InsertDocumentPrintLog): Promise<DocumentPrintLog>;
+  updateDocumentPrintLog(id: number, data: Partial<InsertDocumentPrintLog>): Promise<DocumentPrintLog | undefined>;
+  getNextCopyNumber(documentId: string): Promise<number>;
+
+  // Document Comments
+  getDocumentComments(orgId: string, documentId: string, includeDeleted?: boolean): Promise<DocumentComment[]>;
+  getDocumentComment(id: number): Promise<DocumentComment | undefined>;
+  getCommentThread(parentId: number): Promise<DocumentComment[]>;
+  getUnresolvedComments(orgId: string, documentId: string): Promise<DocumentComment[]>;
+  createDocumentComment(data: InsertDocumentComment): Promise<DocumentComment>;
+  updateDocumentComment(id: number, data: Partial<InsertDocumentComment>): Promise<DocumentComment | undefined>;
+  softDeleteDocumentComment(id: number): Promise<void>;
+  resolveCommentThread(id: number, resolvedBy: string): Promise<DocumentComment | undefined>;
+
+  // External Documents
+  getExternalDocuments(orgId: string, source?: string, status?: string): Promise<ExternalDocument[]>;
+  getExternalDocument(id: number): Promise<ExternalDocument | undefined>;
+  getExternalDocumentByNumber(docNumber: string): Promise<ExternalDocument | undefined>;
+  getExternalDocumentsWithUpdates(orgId: string): Promise<ExternalDocument[]>;
+  createExternalDocument(data: InsertExternalDocument): Promise<ExternalDocument>;
+  updateExternalDocument(id: number, data: Partial<InsertExternalDocument>): Promise<ExternalDocument | undefined>;
+  deleteExternalDocument(id: number): Promise<void>;
+
+  // Document Links Enhanced
+  getDocumentLinksFrom(orgId: string, sourceDocumentId: string): Promise<DocumentLinkEnhanced[]>;
+  getDocumentLinksTo(orgId: string, targetType: string, targetId: number): Promise<DocumentLinkEnhanced[]>;
+  getDocumentLinkEnhanced(id: number): Promise<DocumentLinkEnhanced | undefined>;
+  getBrokenLinks(orgId: string): Promise<DocumentLinkEnhanced[]>;
+  createDocumentLinkEnhanced(data: InsertDocumentLinkEnhanced): Promise<DocumentLinkEnhanced>;
+  updateDocumentLinkEnhanced(id: number, data: Partial<InsertDocumentLinkEnhanced>): Promise<DocumentLinkEnhanced | undefined>;
+  deleteDocumentLinkEnhanced(id: number): Promise<void>;
+  verifyDocumentLink(id: number, verifiedBy: string): Promise<DocumentLinkEnhanced | undefined>;
+  markLinkBroken(id: number, reason: string): Promise<DocumentLinkEnhanced | undefined>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -1521,6 +1681,719 @@ class DatabaseStorage implements IStorage {
     const recentChanges = recentRevisions.length;
 
     return { total, byStatus, byType, overdueReviews, pendingApprovals, recentChanges };
+  }
+
+  // ============================================
+  // DOCUMENT FILES
+  // ============================================
+
+  async getDocumentFiles(orgId: string, documentId: string): Promise<DocumentFile[]> {
+    return await db.select().from(documentFile)
+      .where(and(eq(documentFile.orgId, orgId), eq(documentFile.documentId, documentId)))
+      .orderBy(desc(documentFile.uploadedAt));
+  }
+
+  async getDocumentFilesByRevision(revisionId: string): Promise<DocumentFile[]> {
+    return await db.select().from(documentFile)
+      .where(eq(documentFile.revisionId, revisionId));
+  }
+
+  async getDocumentFile(id: number): Promise<DocumentFile | undefined> {
+    const [result] = await db.select().from(documentFile).where(eq(documentFile.id, id));
+    return result;
+  }
+
+  async getDocumentFileByChecksum(checksum: string, documentId: string): Promise<DocumentFile | undefined> {
+    const [result] = await db.select().from(documentFile)
+      .where(and(eq(documentFile.checksumSha256, checksum), eq(documentFile.documentId, documentId)));
+    return result;
+  }
+
+  async createDocumentFile(data: InsertDocumentFile): Promise<DocumentFile> {
+    const [created] = await db.insert(documentFile).values(data as any).returning();
+    return created;
+  }
+
+  async updateDocumentFile(id: number, data: Partial<InsertDocumentFile>): Promise<DocumentFile | undefined> {
+    const [updated] = await db.update(documentFile).set(data as any).where(eq(documentFile.id, id)).returning();
+    return updated;
+  }
+
+  async deleteDocumentFile(id: number): Promise<void> {
+    await db.delete(documentFile).where(eq(documentFile.id, id));
+  }
+
+  async searchDocumentsByText(searchText: string): Promise<DocumentFile[]> {
+    return await db.select().from(documentFile)
+      .where(ilike(documentFile.extractedText, `%${searchText}%`));
+  }
+
+  // ============================================
+  // DOCUMENT TEMPLATES
+  // ============================================
+
+  async getDocumentTemplates(orgId: string, status?: string): Promise<DocumentTemplate[]> {
+    const conditions = [eq(documentTemplate.orgId, orgId)];
+    if (status) conditions.push(eq(documentTemplate.status, status));
+    return await db.select().from(documentTemplate)
+      .where(and(...conditions))
+      .orderBy(documentTemplate.name);
+  }
+
+  async getDocumentTemplate(id: number): Promise<DocumentTemplate | undefined> {
+    const [result] = await db.select().from(documentTemplate).where(eq(documentTemplate.id, id));
+    return result;
+  }
+
+  async getDocumentTemplateByCode(code: string): Promise<DocumentTemplate | undefined> {
+    const [result] = await db.select().from(documentTemplate).where(eq(documentTemplate.code, code));
+    return result;
+  }
+
+  async getDocumentTemplatesByType(orgId: string, docType: string): Promise<DocumentTemplate[]> {
+    return await db.select().from(documentTemplate)
+      .where(and(
+        eq(documentTemplate.orgId, orgId),
+        eq(documentTemplate.docType, docType),
+        eq(documentTemplate.status, 'active')
+      ))
+      .orderBy(documentTemplate.name);
+  }
+
+  async createDocumentTemplate(data: InsertDocumentTemplate): Promise<DocumentTemplate> {
+    const [created] = await db.insert(documentTemplate).values(data as any).returning();
+    return created;
+  }
+
+  async updateDocumentTemplate(id: number, data: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate | undefined> {
+    const [updated] = await db.update(documentTemplate)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(documentTemplate.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocumentTemplate(id: number): Promise<void> {
+    await db.delete(documentTemplate).where(eq(documentTemplate.id, id));
+  }
+
+  // ============================================
+  // APPROVAL WORKFLOW DEFINITIONS
+  // ============================================
+
+  async getApprovalWorkflowDefinitions(orgId: string, status?: string): Promise<ApprovalWorkflowDefinition[]> {
+    const conditions = [eq(approvalWorkflowDefinition.orgId, orgId)];
+    if (status) conditions.push(eq(approvalWorkflowDefinition.status, status));
+    return await db.select().from(approvalWorkflowDefinition)
+      .where(and(...conditions))
+      .orderBy(approvalWorkflowDefinition.name);
+  }
+
+  async getApprovalWorkflowDefinition(id: number): Promise<ApprovalWorkflowDefinition | undefined> {
+    const [result] = await db.select().from(approvalWorkflowDefinition).where(eq(approvalWorkflowDefinition.id, id));
+    return result;
+  }
+
+  async getApprovalWorkflowDefinitionByCode(code: string): Promise<ApprovalWorkflowDefinition | undefined> {
+    const [result] = await db.select().from(approvalWorkflowDefinition).where(eq(approvalWorkflowDefinition.code, code));
+    return result;
+  }
+
+  async getWorkflowDefinitionForDocType(orgId: string, docType: string): Promise<ApprovalWorkflowDefinition | undefined> {
+    const defs = await db.select().from(approvalWorkflowDefinition)
+      .where(and(
+        eq(approvalWorkflowDefinition.orgId, orgId),
+        eq(approvalWorkflowDefinition.status, 'active')
+      ));
+    // Find one whose appliesToDocTypes JSON array includes the docType
+    return defs.find(d => {
+      try {
+        const types = JSON.parse(d.appliesToDocTypes || '[]');
+        return types.includes(docType);
+      } catch { return false; }
+    });
+  }
+
+  async createApprovalWorkflowDefinition(data: InsertApprovalWorkflowDefinition): Promise<ApprovalWorkflowDefinition> {
+    const [created] = await db.insert(approvalWorkflowDefinition).values(data as any).returning();
+    return created;
+  }
+
+  async updateApprovalWorkflowDefinition(id: number, data: Partial<InsertApprovalWorkflowDefinition>): Promise<ApprovalWorkflowDefinition | undefined> {
+    const [updated] = await db.update(approvalWorkflowDefinition)
+      .set(data as any)
+      .where(eq(approvalWorkflowDefinition.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteApprovalWorkflowDefinition(id: number): Promise<void> {
+    await db.delete(approvalWorkflowDefinition).where(eq(approvalWorkflowDefinition.id, id));
+  }
+
+  // ============================================
+  // APPROVAL WORKFLOW INSTANCES
+  // ============================================
+
+  async getApprovalWorkflowInstances(orgId: string, documentId?: string, status?: string): Promise<ApprovalWorkflowInstance[]> {
+    const conditions = [eq(approvalWorkflowInstance.orgId, orgId)];
+    if (documentId) conditions.push(eq(approvalWorkflowInstance.documentId, documentId));
+    if (status) conditions.push(eq(approvalWorkflowInstance.status, status));
+    return await db.select().from(approvalWorkflowInstance)
+      .where(and(...conditions))
+      .orderBy(desc(approvalWorkflowInstance.startedAt));
+  }
+
+  async getApprovalWorkflowInstance(id: number): Promise<ApprovalWorkflowInstance | undefined> {
+    const [result] = await db.select().from(approvalWorkflowInstance).where(eq(approvalWorkflowInstance.id, id));
+    return result;
+  }
+
+  async getActiveWorkflowForDocument(documentId: string): Promise<ApprovalWorkflowInstance | undefined> {
+    const [result] = await db.select().from(approvalWorkflowInstance)
+      .where(and(
+        eq(approvalWorkflowInstance.documentId, documentId),
+        eq(approvalWorkflowInstance.status, 'active')
+      ));
+    return result;
+  }
+
+  async createApprovalWorkflowInstance(data: InsertApprovalWorkflowInstance): Promise<ApprovalWorkflowInstance> {
+    const [created] = await db.insert(approvalWorkflowInstance).values(data as any).returning();
+    return created;
+  }
+
+  async updateApprovalWorkflowInstance(id: number, data: Partial<InsertApprovalWorkflowInstance>): Promise<ApprovalWorkflowInstance | undefined> {
+    const [updated] = await db.update(approvalWorkflowInstance)
+      .set(data as any)
+      .where(eq(approvalWorkflowInstance.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteApprovalWorkflowInstance(id: number): Promise<void> {
+    await db.delete(approvalWorkflowInstance).where(eq(approvalWorkflowInstance.id, id));
+  }
+
+  // ============================================
+  // APPROVAL WORKFLOW STEPS
+  // ============================================
+
+  async getApprovalWorkflowSteps(instanceId: number): Promise<ApprovalWorkflowStep[]> {
+    return await db.select().from(approvalWorkflowStep)
+      .where(eq(approvalWorkflowStep.workflowInstanceId, instanceId))
+      .orderBy(approvalWorkflowStep.stepNumber);
+  }
+
+  async getApprovalWorkflowStep(id: number): Promise<ApprovalWorkflowStep | undefined> {
+    const [result] = await db.select().from(approvalWorkflowStep).where(eq(approvalWorkflowStep.id, id));
+    return result;
+  }
+
+  async getPendingStepsForUser(userId: string): Promise<ApprovalWorkflowStep[]> {
+    return await db.select().from(approvalWorkflowStep)
+      .where(and(
+        eq(approvalWorkflowStep.assignedTo, userId),
+        eq(approvalWorkflowStep.status, 'pending')
+      ))
+      .orderBy(approvalWorkflowStep.dueDate);
+  }
+
+  async getOverdueSteps(): Promise<ApprovalWorkflowStep[]> {
+    return await db.select().from(approvalWorkflowStep)
+      .where(and(
+        eq(approvalWorkflowStep.status, 'pending'),
+        lt(approvalWorkflowStep.dueDate, new Date())
+      ))
+      .orderBy(approvalWorkflowStep.dueDate);
+  }
+
+  async createApprovalWorkflowStep(data: InsertApprovalWorkflowStep): Promise<ApprovalWorkflowStep> {
+    const [created] = await db.insert(approvalWorkflowStep).values(data as any).returning();
+    return created;
+  }
+
+  async updateApprovalWorkflowStep(id: number, data: Partial<InsertApprovalWorkflowStep>): Promise<ApprovalWorkflowStep | undefined> {
+    const [updated] = await db.update(approvalWorkflowStep)
+      .set(data as any)
+      .where(eq(approvalWorkflowStep.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteApprovalWorkflowStep(id: number): Promise<void> {
+    await db.delete(approvalWorkflowStep).where(eq(approvalWorkflowStep.id, id));
+  }
+
+  // ============================================
+  // DOCUMENT CHECKOUTS
+  // ============================================
+
+  async getDocumentCheckouts(orgId: string, documentId?: string, status?: string): Promise<DocumentCheckout[]> {
+    const conditions = [eq(documentCheckout.orgId, orgId)];
+    if (documentId) conditions.push(eq(documentCheckout.documentId, documentId));
+    if (status) conditions.push(eq(documentCheckout.status, status));
+    return await db.select().from(documentCheckout)
+      .where(and(...conditions))
+      .orderBy(desc(documentCheckout.checkedOutAt));
+  }
+
+  async getDocumentCheckout(id: number): Promise<DocumentCheckout | undefined> {
+    const [result] = await db.select().from(documentCheckout).where(eq(documentCheckout.id, id));
+    return result;
+  }
+
+  async getActiveCheckout(documentId: string): Promise<DocumentCheckout | undefined> {
+    const [result] = await db.select().from(documentCheckout)
+      .where(and(
+        eq(documentCheckout.documentId, documentId),
+        eq(documentCheckout.status, 'active')
+      ));
+    return result;
+  }
+
+  async getCheckoutsByUser(orgId: string, userId: string): Promise<DocumentCheckout[]> {
+    return await db.select().from(documentCheckout)
+      .where(and(
+        eq(documentCheckout.orgId, orgId),
+        eq(documentCheckout.checkedOutBy, userId),
+        eq(documentCheckout.status, 'active')
+      ));
+  }
+
+  async getAllActiveCheckouts(orgId: string): Promise<DocumentCheckout[]> {
+    return await db.select().from(documentCheckout)
+      .where(and(
+        eq(documentCheckout.orgId, orgId),
+        eq(documentCheckout.status, 'active')
+      ))
+      .orderBy(desc(documentCheckout.checkedOutAt));
+  }
+
+  async createDocumentCheckout(data: InsertDocumentCheckout): Promise<DocumentCheckout> {
+    const [created] = await db.insert(documentCheckout).values(data as any).returning();
+    return created;
+  }
+
+  async updateDocumentCheckout(id: number, data: Partial<InsertDocumentCheckout>): Promise<DocumentCheckout | undefined> {
+    const [updated] = await db.update(documentCheckout)
+      .set(data as any)
+      .where(eq(documentCheckout.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocumentCheckout(id: number): Promise<void> {
+    await db.delete(documentCheckout).where(eq(documentCheckout.id, id));
+  }
+
+  // ============================================
+  // DISTRIBUTION LISTS
+  // ============================================
+
+  async getDistributionLists(orgId: string, status?: string): Promise<DistributionList[]> {
+    const conditions = [eq(distributionList.orgId, orgId)];
+    if (status) conditions.push(eq(distributionList.status, status));
+    return db.select().from(distributionList).where(and(...conditions));
+  }
+
+  async getDistributionList(id: number): Promise<DistributionList | undefined> {
+    const [result] = await db.select().from(distributionList).where(eq(distributionList.id, id));
+    return result;
+  }
+
+  async getDistributionListByCode(code: string): Promise<DistributionList | undefined> {
+    const [result] = await db.select().from(distributionList).where(eq(distributionList.code, code));
+    return result;
+  }
+
+  async createDistributionList(data: InsertDistributionList): Promise<DistributionList> {
+    const [created] = await db.insert(distributionList).values(data as any).returning();
+    return created;
+  }
+
+  async updateDistributionList(id: number, data: Partial<InsertDistributionList>): Promise<DistributionList | undefined> {
+    const [updated] = await db.update(distributionList)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(distributionList.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDistributionList(id: number): Promise<void> {
+    await db.delete(distributionList).where(eq(distributionList.id, id));
+  }
+
+  // ============================================
+  // DOCUMENT DISTRIBUTION RECORDS
+  // ============================================
+
+  async getDocumentDistributionRecords(orgId: string, documentId?: string, status?: string): Promise<DocumentDistributionRecord[]> {
+    const conditions = [eq(documentDistributionRecord.orgId, orgId)];
+    if (documentId) conditions.push(eq(documentDistributionRecord.documentId, documentId));
+    if (status) conditions.push(eq(documentDistributionRecord.status, status));
+    return db.select().from(documentDistributionRecord).where(and(...conditions));
+  }
+
+  async getDocumentDistributionRecord(id: number): Promise<DocumentDistributionRecord | undefined> {
+    const [result] = await db.select().from(documentDistributionRecord).where(eq(documentDistributionRecord.id, id));
+    return result;
+  }
+
+  async getPendingAcknowledgments(orgId: string, userId: string): Promise<DocumentDistributionRecord[]> {
+    return db.select().from(documentDistributionRecord)
+      .where(and(
+        eq(documentDistributionRecord.orgId, orgId),
+        eq(documentDistributionRecord.recipientUserId, userId),
+        eq(documentDistributionRecord.requiresAcknowledgment, 1),
+        isNull(documentDistributionRecord.acknowledgedAt),
+        eq(documentDistributionRecord.status, 'distributed')
+      ));
+  }
+
+  async getOverdueAcknowledgments(orgId: string): Promise<DocumentDistributionRecord[]> {
+    return db.select().from(documentDistributionRecord)
+      .where(and(
+        eq(documentDistributionRecord.orgId, orgId),
+        eq(documentDistributionRecord.requiresAcknowledgment, 1),
+        isNull(documentDistributionRecord.acknowledgedAt),
+        eq(documentDistributionRecord.status, 'distributed'),
+        lt(documentDistributionRecord.acknowledgmentDueDate, new Date())
+      ));
+  }
+
+  async createDocumentDistributionRecord(data: InsertDocumentDistributionRecord): Promise<DocumentDistributionRecord> {
+    const [created] = await db.insert(documentDistributionRecord).values(data as any).returning();
+    return created;
+  }
+
+  async updateDocumentDistributionRecord(id: number, data: Partial<InsertDocumentDistributionRecord>): Promise<DocumentDistributionRecord | undefined> {
+    const [updated] = await db.update(documentDistributionRecord)
+      .set(data as any)
+      .where(eq(documentDistributionRecord.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocumentDistributionRecord(id: number): Promise<void> {
+    await db.delete(documentDistributionRecord).where(eq(documentDistributionRecord.id, id));
+  }
+
+  // ============================================
+  // DOCUMENT ACCESS LOGS (immutable - no update/delete)
+  // ============================================
+
+  async getDocumentAccessLogs(orgId: string, documentId?: string, action?: string, limit?: number): Promise<DocumentAccessLog[]> {
+    const conditions = [eq(documentAccessLog.orgId, orgId)];
+    if (documentId) conditions.push(eq(documentAccessLog.documentId, documentId));
+    if (action) conditions.push(eq(documentAccessLog.action, action));
+    let query = db.select().from(documentAccessLog).where(and(...conditions)).orderBy(desc(documentAccessLog.timestamp));
+    if (limit) return (query as any).limit(limit);
+    return query;
+  }
+
+  async getDocumentAccessLogsByUser(orgId: string, userId: string, limit?: number): Promise<DocumentAccessLog[]> {
+    let query = db.select().from(documentAccessLog)
+      .where(and(eq(documentAccessLog.orgId, orgId), eq(documentAccessLog.userId, userId)))
+      .orderBy(desc(documentAccessLog.timestamp));
+    if (limit) return (query as any).limit(limit);
+    return query;
+  }
+
+  async getDocumentAccessLogsByDateRange(orgId: string, startDate: Date, endDate: Date): Promise<DocumentAccessLog[]> {
+    return db.select().from(documentAccessLog)
+      .where(and(
+        eq(documentAccessLog.orgId, orgId),
+        gte(documentAccessLog.timestamp, startDate),
+        lte(documentAccessLog.timestamp, endDate)
+      ))
+      .orderBy(desc(documentAccessLog.timestamp));
+  }
+
+  async createDocumentAccessLog(data: InsertDocumentAccessLog): Promise<DocumentAccessLog> {
+    const [created] = await db.insert(documentAccessLog).values(data as any).returning();
+    return created;
+  }
+
+  async getAccessLogStats(orgId: string, documentId: string): Promise<{ action: string; count: number }[]> {
+    const results = await db.select({
+      action: documentAccessLog.action,
+      count: count(),
+    }).from(documentAccessLog)
+      .where(and(
+        eq(documentAccessLog.orgId, orgId),
+        eq(documentAccessLog.documentId, documentId)
+      ))
+      .groupBy(documentAccessLog.action);
+    return results.map(r => ({ action: r.action, count: Number(r.count) }));
+  }
+
+  // ============================================
+  // DOCUMENT PRINT LOGS
+  // ============================================
+
+  async getDocumentPrintLogs(orgId: string, documentId?: string): Promise<DocumentPrintLog[]> {
+    const conditions = [eq(documentPrintLog.orgId, orgId)];
+    if (documentId) conditions.push(eq(documentPrintLog.documentId, documentId));
+    return db.select().from(documentPrintLog).where(and(...conditions)).orderBy(desc(documentPrintLog.printedAt));
+  }
+
+  async getDocumentPrintLog(id: number): Promise<DocumentPrintLog | undefined> {
+    const [result] = await db.select().from(documentPrintLog).where(eq(documentPrintLog.id, id));
+    return result;
+  }
+
+  async getUnrecalledPrintLogs(orgId: string, documentId: string): Promise<DocumentPrintLog[]> {
+    return db.select().from(documentPrintLog)
+      .where(and(
+        eq(documentPrintLog.orgId, orgId),
+        eq(documentPrintLog.documentId, documentId),
+        eq(documentPrintLog.allRecalled, 0)
+      ));
+  }
+
+  async createDocumentPrintLog(data: InsertDocumentPrintLog): Promise<DocumentPrintLog> {
+    const [created] = await db.insert(documentPrintLog).values(data as any).returning();
+    return created;
+  }
+
+  async updateDocumentPrintLog(id: number, data: Partial<InsertDocumentPrintLog>): Promise<DocumentPrintLog | undefined> {
+    const [updated] = await db.update(documentPrintLog)
+      .set(data as any)
+      .where(eq(documentPrintLog.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getNextCopyNumber(documentId: string): Promise<number> {
+    const result = await db.select({
+      maxCopy: sql<number>`COALESCE(MAX(${documentPrintLog.printCopies}), 0)`,
+    }).from(documentPrintLog)
+      .where(eq(documentPrintLog.documentId, documentId));
+    return (result[0]?.maxCopy ?? 0) + 1;
+  }
+
+  // ============================================
+  // DOCUMENT COMMENTS
+  // ============================================
+
+  async getDocumentComments(orgId: string, documentId: string, includeDeleted?: boolean): Promise<DocumentComment[]> {
+    const conditions = [
+      eq(documentComment.orgId, orgId),
+      eq(documentComment.documentId, documentId),
+    ];
+    if (!includeDeleted) conditions.push(isNull(documentComment.deletedAt));
+    return db.select().from(documentComment).where(and(...conditions)).orderBy(documentComment.createdAt);
+  }
+
+  async getDocumentComment(id: number): Promise<DocumentComment | undefined> {
+    const [result] = await db.select().from(documentComment).where(eq(documentComment.id, id));
+    return result;
+  }
+
+  async getCommentThread(parentId: number): Promise<DocumentComment[]> {
+    return db.select().from(documentComment)
+      .where(and(
+        eq(documentComment.parentCommentId, parentId),
+        isNull(documentComment.deletedAt)
+      ))
+      .orderBy(documentComment.createdAt);
+  }
+
+  async getUnresolvedComments(orgId: string, documentId: string): Promise<DocumentComment[]> {
+    return db.select().from(documentComment)
+      .where(and(
+        eq(documentComment.orgId, orgId),
+        eq(documentComment.documentId, documentId),
+        isNull(documentComment.parentCommentId),
+        eq(documentComment.threadResolved, 0),
+        isNull(documentComment.deletedAt)
+      ))
+      .orderBy(documentComment.createdAt);
+  }
+
+  async createDocumentComment(data: InsertDocumentComment): Promise<DocumentComment> {
+    const [created] = await db.insert(documentComment).values(data as any).returning();
+    return created;
+  }
+
+  async updateDocumentComment(id: number, data: Partial<InsertDocumentComment>): Promise<DocumentComment | undefined> {
+    const [updated] = await db.update(documentComment)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(documentComment.id, id))
+      .returning();
+    return updated;
+  }
+
+  async softDeleteDocumentComment(id: number): Promise<void> {
+    await db.update(documentComment)
+      .set({ deletedAt: new Date() } as any)
+      .where(eq(documentComment.id, id));
+  }
+
+  async resolveCommentThread(id: number, resolvedBy: string): Promise<DocumentComment | undefined> {
+    const [updated] = await db.update(documentComment)
+      .set({ threadResolved: 1, resolvedBy, resolvedAt: new Date() } as any)
+      .where(eq(documentComment.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ============================================
+  // EXTERNAL DOCUMENTS
+  // ============================================
+
+  async getExternalDocuments(orgId: string, source?: string, status?: string): Promise<ExternalDocument[]> {
+    const conditions = [eq(externalDocument.orgId, orgId)];
+    if (source) conditions.push(eq(externalDocument.source, source));
+    if (status) conditions.push(eq(externalDocument.status, status));
+    return db.select().from(externalDocument).where(and(...conditions));
+  }
+
+  async getExternalDocument(id: number): Promise<ExternalDocument | undefined> {
+    const [result] = await db.select().from(externalDocument).where(eq(externalDocument.id, id));
+    return result;
+  }
+
+  async getExternalDocumentByNumber(docNumber: string): Promise<ExternalDocument | undefined> {
+    const [result] = await db.select().from(externalDocument).where(eq(externalDocument.docNumber, docNumber));
+    return result;
+  }
+
+  async getExternalDocumentsWithUpdates(orgId: string): Promise<ExternalDocument[]> {
+    return db.select().from(externalDocument)
+      .where(and(
+        eq(externalDocument.orgId, orgId),
+        eq(externalDocument.updateAvailable, 1)
+      ));
+  }
+
+  async createExternalDocument(data: InsertExternalDocument): Promise<ExternalDocument> {
+    const [created] = await db.insert(externalDocument).values(data as any).returning();
+    return created;
+  }
+
+  async updateExternalDocument(id: number, data: Partial<InsertExternalDocument>): Promise<ExternalDocument | undefined> {
+    const [updated] = await db.update(externalDocument)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(externalDocument.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteExternalDocument(id: number): Promise<void> {
+    await db.delete(externalDocument).where(eq(externalDocument.id, id));
+  }
+
+  // ============================================
+  // DOCUMENT LINKS ENHANCED
+  // ============================================
+
+  async getDocumentLinksFrom(orgId: string, sourceDocumentId: string): Promise<DocumentLinkEnhanced[]> {
+    return db.select().from(documentLinkEnhanced)
+      .where(and(
+        eq(documentLinkEnhanced.orgId, orgId),
+        eq(documentLinkEnhanced.sourceDocumentId, sourceDocumentId)
+      ));
+  }
+
+  async getDocumentLinksTo(orgId: string, targetType: string, targetId: number): Promise<DocumentLinkEnhanced[]> {
+    return db.select().from(documentLinkEnhanced)
+      .where(and(
+        eq(documentLinkEnhanced.orgId, orgId),
+        eq(documentLinkEnhanced.targetType, targetType),
+        eq(documentLinkEnhanced.targetId, targetId)
+      ));
+  }
+
+  async getDocumentLinkEnhanced(id: number): Promise<DocumentLinkEnhanced | undefined> {
+    const [result] = await db.select().from(documentLinkEnhanced).where(eq(documentLinkEnhanced.id, id));
+    return result;
+  }
+
+  async getBrokenLinks(orgId: string): Promise<DocumentLinkEnhanced[]> {
+    return db.select().from(documentLinkEnhanced)
+      .where(and(
+        eq(documentLinkEnhanced.orgId, orgId),
+        eq(documentLinkEnhanced.linkBroken, 1)
+      ));
+  }
+
+  async createDocumentLinkEnhanced(data: InsertDocumentLinkEnhanced): Promise<DocumentLinkEnhanced> {
+    const [created] = await db.insert(documentLinkEnhanced).values(data as any).returning();
+
+    // Handle bidirectional linking
+    if (data.bidirectional === 1 && data.targetType === 'internal_document') {
+      // Determine reverse link type
+      const reverseLinkTypes: Record<string, string> = {
+        'supersedes': 'superseded_by',
+        'superseded_by': 'supersedes',
+        'references': 'references',
+        'supports': 'supports',
+        'implements': 'implements',
+        'derived_from': 'derived_from',
+        'related_to': 'related_to',
+        'training_required': 'training_required',
+        'audit_evidence': 'audit_evidence',
+        'capa_evidence': 'capa_evidence',
+      };
+      const reverseLinkType = reverseLinkTypes[data.linkType] || data.linkType;
+
+      // Create reverse link
+      const [reverseCreated] = await db.insert(documentLinkEnhanced).values({
+        orgId: data.orgId,
+        sourceDocumentId: data.targetId as any, // targetId is the doc ID for internal_document
+        targetType: 'internal_document',
+        targetId: created.id, // point back to original
+        linkType: reverseLinkType,
+        linkDescription: data.linkDescription,
+        bidirectional: 1,
+        reverseLinkId: created.id,
+        createdBy: data.createdBy,
+      } as any).returning();
+
+      // Update original link with reverse link ID
+      await db.update(documentLinkEnhanced)
+        .set({ reverseLinkId: reverseCreated.id } as any)
+        .where(eq(documentLinkEnhanced.id, created.id));
+
+      return { ...created, reverseLinkId: reverseCreated.id };
+    }
+
+    return created;
+  }
+
+  async updateDocumentLinkEnhanced(id: number, data: Partial<InsertDocumentLinkEnhanced>): Promise<DocumentLinkEnhanced | undefined> {
+    const [updated] = await db.update(documentLinkEnhanced)
+      .set(data as any)
+      .where(eq(documentLinkEnhanced.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocumentLinkEnhanced(id: number): Promise<void> {
+    // Check for bidirectional - delete reverse link too
+    const [link] = await db.select().from(documentLinkEnhanced).where(eq(documentLinkEnhanced.id, id));
+    if (link?.reverseLinkId) {
+      await db.delete(documentLinkEnhanced).where(eq(documentLinkEnhanced.id, link.reverseLinkId));
+    }
+    await db.delete(documentLinkEnhanced).where(eq(documentLinkEnhanced.id, id));
+  }
+
+  async verifyDocumentLink(id: number, verifiedBy: string): Promise<DocumentLinkEnhanced | undefined> {
+    const [updated] = await db.update(documentLinkEnhanced)
+      .set({ linkVerifiedAt: new Date(), linkVerifiedBy: verifiedBy, linkBroken: 0, linkBrokenReason: null } as any)
+      .where(eq(documentLinkEnhanced.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markLinkBroken(id: number, reason: string): Promise<DocumentLinkEnhanced | undefined> {
+    const [updated] = await db.update(documentLinkEnhanced)
+      .set({ linkBroken: 1, linkBrokenReason: reason } as any)
+      .where(eq(documentLinkEnhanced.id, id))
+      .returning();
+    return updated;
   }
 }
 

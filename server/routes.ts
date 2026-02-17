@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { randomUUID, createHash } from "crypto";
 import multer from "multer";
 import ExcelJS from "exceljs";
+import fs from "fs";
+import path from "path";
 import { storage } from "./storage";
 import { importService } from "./services/import-service";
 import { 
@@ -32,7 +34,7 @@ import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
 import { eq, desc, and, lt, asc, inArray } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun } from "@shared/schema";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced } from "@shared/schema";
 import { notificationService } from "./services/notification-service";
 import {
   insertPartSchema,
@@ -56,6 +58,13 @@ import {
   insertDocumentDistributionSchema,
   insertDocumentReviewSchema,
   insertDocumentLinkSchema,
+  insertDocumentTemplateSchema,
+  insertDocumentCheckoutSchema,
+  insertDistributionListSchema,
+  insertDocumentCommentSchema,
+  insertExternalDocumentSchema,
+  insertDocumentLinkEnhancedSchema,
+  insertDocumentPrintLogSchema,
   type FailureModeCategory,
   type ControlType,
   type ControlEffectiveness,
@@ -89,6 +98,49 @@ const upload = multer({
     }
   },
 });
+
+// Document file upload config (allows all common document types)
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for documents
+});
+
+// ============================================
+// Helper Functions for DC Phase 2 API
+// ============================================
+
+function computeFileChecksum(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
+}
+
+function generateDocNumber(format: string, context: { department?: string; category?: string; seq?: number; year?: number }): string {
+  let result = format;
+  if (context.department) result = result.replace('{department}', context.department.substring(0, 3).toUpperCase());
+  if (context.category) result = result.replace('{category}', context.category.substring(0, 3).toUpperCase());
+  if (context.year) result = result.replace('{year}', String(context.year));
+  // Handle {seq:N} pattern
+  const seqMatch = result.match(/\{seq:(\d+)\}/);
+  if (seqMatch && context.seq !== undefined) {
+    const padLen = parseInt(seqMatch[1]);
+    result = result.replace(seqMatch[0], String(context.seq).padStart(padLen, '0'));
+  }
+  return result;
+}
+
+function resolveWorkflowAssignee(stepDef: any, context: { initiatedBy: string }): string | null {
+  if (!stepDef.assigneeType) return null;
+  switch (stepDef.assigneeType) {
+    case 'initiator': return context.initiatedBy;
+    case 'specific_user': return stepDef.assigneeId || null;
+    case 'role_based': return null; // Assigned at runtime
+    case 'department_head': return null; // Assigned at runtime
+    default: return null;
+  }
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Run seeds on startup
@@ -4100,6 +4152,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // --- Full-text search (placed BEFORE :id route) ---
+  app.get("/api/documents/search", requireAuth, async (req, res) => {
+    try {
+      const q = req.query.q as string;
+      if (!q || q.length < 2) {
+        return res.status(400).json({ error: "Search query must be at least 2 characters" });
+      }
+
+      const docs = await storage.getDocuments();
+      const results: { documentId: string; docNumber: string; title: string; matchingFiles: { fileId: number; snippet: string }[] }[] = [];
+
+      for (const doc of docs) {
+        const files = await storage.getDocumentFiles(req.orgId!, doc.id);
+        const matchingFiles = files
+          .filter(f => f.extractedText && f.extractedText.toLowerCase().includes(q.toLowerCase()))
+          .map(f => {
+            const idx = f.extractedText!.toLowerCase().indexOf(q.toLowerCase());
+            const start = Math.max(0, idx - 50);
+            const end = Math.min(f.extractedText!.length, idx + q.length + 50);
+            return { fileId: f.id, snippet: '...' + f.extractedText!.substring(start, end) + '...' };
+          });
+
+        if (matchingFiles.length > 0) {
+          results.push({ documentId: doc.id, docNumber: doc.docNumber, title: doc.title, matchingFiles });
+        }
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error searching documents:", error);
+      res.status(500).json({ error: "Failed to search documents" });
+    }
+  });
+
   // --- 3. GET /api/documents/:id ---
 
   app.get("/api/documents/:id", async (req, res) => {
@@ -4437,46 +4523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // --- 16. POST /api/documents/:id/distribute ---
-
-  app.post("/api/documents/:id/distribute", async (req, res) => {
-    try {
-      const { recipients } = req.body;
-
-      if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-        return res.status(400).json({ error: "recipients array is required" });
-      }
-
-      const doc = await storage.getDocumentById(req.params.id);
-      if (!doc) {
-        return res.status(404).json({ error: "Document not found" });
-      }
-
-      const revisions = await storage.getDocumentRevisions(req.params.id);
-      const currentRevision = revisions.find(r => r.rev === doc.currentRev);
-
-      if (!currentRevision) {
-        return res.status(400).json({ error: "No current revision found" });
-      }
-
-      const distributions = [];
-      for (const recipient of recipients) {
-        const dist = await storage.createDistribution({
-          documentId: req.params.id,
-          revisionId: currentRevision.id,
-          recipientName: recipient.recipientName,
-          recipientRole: recipient.recipientRole,
-          method: recipient.method || 'electronic',
-        });
-        distributions.push(dist);
-      }
-
-      res.status(201).json(distributions);
-    } catch (error) {
-      console.error("Error distributing document:", error);
-      res.status(500).json({ error: "Failed to distribute document" });
-    }
-  });
+  // --- 16. POST /api/documents/:id/distribute --- (moved to DC Phase 3 section below)
 
   // --- 17. POST /api/document-distributions/:id/acknowledge ---
 
@@ -4578,21 +4625,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // --- 23. GET /api/documents/:id/links ---
-
-  app.get("/api/documents/:id/links", async (req, res) => {
-    try {
-      const doc = await storage.getDocumentById(req.params.id);
-      if (!doc) {
-        return res.status(404).json({ error: "Document not found" });
-      }
-      const links = await storage.getDocumentLinks(req.params.id);
-      res.json(links);
-    } catch (error) {
-      console.error("Error fetching document links:", error);
-      res.status(500).json({ error: "Failed to fetch document links" });
-    }
-  });
+  // --- 23. GET /api/documents/:id/links --- (moved to DC Phase 3 section below)
 
   // --- 24. POST /api/document-links ---
 
@@ -4623,6 +4656,2046 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting document link:", error);
       res.status(500).json({ error: "Failed to delete document link" });
+    }
+  });
+
+  // ============================================
+  // DOCUMENT CONTROL PHASE 2: File Management, Templates, Checkout, Workflows
+  // ============================================
+
+  // --- FILE MANAGEMENT ---
+
+  // GET /api/documents/:documentId/files - List files for a document
+  app.get("/api/documents/:documentId/files", requireAuth, async (req, res) => {
+    try {
+      const files = await storage.getDocumentFiles(req.orgId!, req.params.documentId);
+      res.json(files);
+    } catch (error) {
+      console.error("Error listing document files:", error);
+      res.status(500).json({ error: "Failed to list document files" });
+    }
+  });
+
+  // POST /api/documents/:documentId/files - Upload file to document
+  app.post("/api/documents/:documentId/files", requireAuth, documentUpload.single('file'), async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      // Verify document exists and belongs to org
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      // Check document is editable (draft or checked out to current user)
+      if (doc.status !== 'draft') {
+        const activeCheckout = await storage.getActiveCheckout(documentId);
+        if (!activeCheckout || activeCheckout.checkedOutBy !== user.id) {
+          return res.status(400).json({ error: "Document is not in an editable state. Must be draft or checked out to you." });
+        }
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const buffer = req.file.buffer;
+      const checksum = computeFileChecksum(buffer);
+
+      // Check for duplicate checksum
+      const existingFiles = await storage.getDocumentFiles(req.orgId!, documentId);
+      const duplicate = existingFiles.find(f => f.checksumSha256 === checksum);
+      if (duplicate) {
+        return res.status(409).json({ error: "Duplicate file. A file with the same content already exists.", existingFileId: duplicate.id });
+      }
+
+      // Store file on disk
+      const fileUuid = randomUUID();
+      const sanitized = sanitizeFileName(req.file.originalname);
+      const uploadDir = path.join(process.cwd(), 'uploads', 'documents', documentId, fileUuid);
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const filePath = path.join(uploadDir, sanitized);
+      fs.writeFileSync(filePath, buffer);
+
+      // Determine file type
+      const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
+
+      // Create database record
+      const fileRecord = await storage.createDocumentFile({
+        orgId: req.orgId!,
+        documentId,
+        fileName: sanitized,
+        originalName: req.file.originalname,
+        fileType: ext,
+        mimeType: req.file.mimetype,
+        fileSize: buffer.length,
+        storageProvider: 'local',
+        storagePath: filePath,
+        checksumSha256: checksum,
+        virusScanStatus: 'pending',
+        uploadedBy: user.id,
+      });
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'upload',
+        actionDetails: JSON.stringify({ fileName: req.file.originalname, fileSize: buffer.length, checksum }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.status(201).json(fileRecord);
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      res.status(500).json({ error: "Failed to upload file" });
+    }
+  });
+
+  // GET /api/document-files/:id - Get file metadata
+  app.get("/api/document-files/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid file ID" });
+
+      const file = await storage.getDocumentFile(id);
+      if (!file || file.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      res.json(file);
+    } catch (error) {
+      console.error("Error getting file:", error);
+      res.status(500).json({ error: "Failed to get file" });
+    }
+  });
+
+  // GET /api/document-files/:id/download - Download original file
+  app.get("/api/document-files/:id/download", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid file ID" });
+
+      const file = await storage.getDocumentFile(id);
+      if (!file || file.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      if (!fs.existsSync(file.storagePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      const user = req.auth!.user;
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId: file.documentId!,
+        fileId: file.id,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'download',
+        actionDetails: JSON.stringify({ watermarked: false, fileSize: file.fileSize }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.setHeader('Content-Type', file.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+      const fileStream = fs.createReadStream(file.storagePath);
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      res.status(500).json({ error: "Failed to download file" });
+    }
+  });
+
+  // GET /api/document-files/:id/download-watermarked - Download with watermark
+  app.get("/api/document-files/:id/download-watermarked", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid file ID" });
+
+      const file = await storage.getDocumentFile(id);
+      if (!file || file.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      if (!fs.existsSync(file.storagePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      const user = req.auth!.user;
+      const doc = file.documentId ? await storage.getDocumentById(file.documentId) : null;
+      const now = new Date();
+      const watermarkText = `CONTROLLED COPY\nDownloaded by: ${user.firstName} ${user.lastName}\nDate: ${now.toISOString().substring(0, 16).replace('T', ' ')}\nDoc: ${doc?.docNumber || 'N/A'} Rev ${doc?.currentRev || 'N/A'}`;
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId: file.documentId!,
+        fileId: file.id,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'download',
+        actionDetails: JSON.stringify({ watermarked: true, fileSize: file.fileSize }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      // For non-PDF files, return original with warning header
+      if (file.fileType !== 'pdf') {
+        res.setHeader('X-Watermark-Warning', 'Watermarking only supported for PDF files. Original file returned.');
+        res.setHeader('Content-Type', file.mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+        const fileStream = fs.createReadStream(file.storagePath);
+        return fileStream.pipe(res);
+      }
+
+      // For PDF files, attempt watermarking with pdf-lib
+      try {
+        const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+        const existingPdfBytes = fs.readFileSync(file.storagePath);
+        const pdfDoc = await PDFDocument.load(existingPdfBytes);
+        const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const pages = pdfDoc.getPages();
+
+        for (const page of pages) {
+          const { width, height } = page.getSize();
+          const lines = watermarkText.split('\n');
+          lines.forEach((line, i) => {
+            page.drawText(line, {
+              x: 50,
+              y: height - 30 - (i * 14),
+              size: 9,
+              font: helvetica,
+              color: rgb(0.7, 0.7, 0.7),
+              opacity: 0.5,
+            });
+          });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="watermarked_${file.originalName}"`);
+        res.send(Buffer.from(pdfBytes));
+      } catch {
+        // If pdf-lib fails, return original with warning
+        res.setHeader('X-Watermark-Warning', 'PDF watermarking failed. Original file returned.');
+        res.setHeader('Content-Type', file.mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+        const fileStream = fs.createReadStream(file.storagePath);
+        fileStream.pipe(res);
+      }
+    } catch (error) {
+      console.error("Error downloading watermarked file:", error);
+      res.status(500).json({ error: "Failed to download watermarked file" });
+    }
+  });
+
+  // GET /api/document-files/:id/preview - Get preview
+  app.get("/api/document-files/:id/preview", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid file ID" });
+
+      const file = await storage.getDocumentFile(id);
+      if (!file || file.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      if (file.thumbnailPath && fs.existsSync(file.thumbnailPath)) {
+        res.setHeader('Content-Type', 'image/png');
+        const fileStream = fs.createReadStream(file.thumbnailPath);
+        return fileStream.pipe(res);
+      }
+
+      // No preview available - return file info as JSON fallback
+      res.status(404).json({ error: "Preview not generated for this file" });
+    } catch (error) {
+      console.error("Error getting file preview:", error);
+      res.status(500).json({ error: "Failed to get file preview" });
+    }
+  });
+
+  // DELETE /api/document-files/:id - Delete file
+  app.delete("/api/document-files/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid file ID" });
+
+      const file = await storage.getDocumentFile(id);
+      if (!file || file.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      // Check document is editable
+      if (file.documentId) {
+        const doc = await storage.getDocumentById(file.documentId);
+        if (doc && doc.status !== 'draft') {
+          const activeCheckout = await storage.getActiveCheckout(file.documentId);
+          if (!activeCheckout || activeCheckout.checkedOutBy !== req.auth!.user.id) {
+            return res.status(400).json({ error: "Document is not in an editable state" });
+          }
+        }
+      }
+
+      // Delete from disk
+      try {
+        if (fs.existsSync(file.storagePath)) {
+          fs.unlinkSync(file.storagePath);
+          try { fs.rmdirSync(path.dirname(file.storagePath)); } catch { /* ignore non-empty dir */ }
+        }
+      } catch { /* ignore disk errors - still delete DB record */ }
+
+      // Log access before deleting record (omit fileId to avoid FK constraint blocking deletion)
+      const user = req.auth!.user;
+      if (file.documentId) {
+        await storage.createDocumentAccessLog({
+          orgId: req.orgId!,
+          documentId: file.documentId,
+          userId: user.id,
+          userName: `${user.firstName} ${user.lastName}`,
+          userRole: user.role,
+          action: 'delete',
+          actionDetails: JSON.stringify({ fileId: file.id, fileName: file.originalName }),
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
+
+      // Delete record
+      await storage.deleteDocumentFile(id);
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      res.status(500).json({ error: "Failed to delete file" });
+    }
+  });
+
+  // --- DOCUMENT TEMPLATES ---
+
+  // GET /api/document-templates - List templates
+  app.get("/api/document-templates", requireAuth, async (req, res) => {
+    try {
+      const { status, docType } = req.query;
+      let templates;
+      if (docType) {
+        templates = await storage.getDocumentTemplatesByType(req.orgId!, docType as string);
+        if (status) templates = templates.filter(t => t.status === status);
+      } else {
+        templates = await storage.getDocumentTemplates(req.orgId!, status as string | undefined);
+      }
+      res.json(templates);
+    } catch (error) {
+      console.error("Error listing templates:", error);
+      res.status(500).json({ error: "Failed to list document templates" });
+    }
+  });
+
+  // GET /api/document-templates/:id - Get template by ID
+  app.get("/api/document-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template ID" });
+
+      const template = await storage.getDocumentTemplate(id);
+      if (!template || template.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      // Include default workflow if set
+      let defaultWorkflow = null;
+      if (template.defaultWorkflowId) {
+        defaultWorkflow = await storage.getApprovalWorkflowDefinition(template.defaultWorkflowId);
+      }
+
+      res.json({ ...template, defaultWorkflow });
+    } catch (error) {
+      console.error("Error getting template:", error);
+      res.status(500).json({ error: "Failed to get document template" });
+    }
+  });
+
+  // POST /api/document-templates - Create template
+  app.post("/api/document-templates", requireAuth, async (req, res) => {
+    try {
+      const data = insertDocumentTemplateSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        createdBy: req.auth!.user.id,
+      });
+
+      // Check for duplicate code
+      const existing = await storage.getDocumentTemplateByCode(data.code);
+      if (existing && existing.orgId === req.orgId!) {
+        return res.status(409).json({ error: "Template code already exists" });
+      }
+
+      const template = await storage.createDocumentTemplate(data);
+      res.status(201).json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error creating template:", error);
+      res.status(500).json({ error: "Failed to create document template" });
+    }
+  });
+
+  // PATCH /api/document-templates/:id - Update template
+  app.patch("/api/document-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template ID" });
+
+      const existing = await storage.getDocumentTemplate(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      const updated = await storage.updateDocumentTemplate(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating template:", error);
+      res.status(500).json({ error: "Failed to update document template" });
+    }
+  });
+
+  // DELETE /api/document-templates/:id - Delete template
+  app.delete("/api/document-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template ID" });
+
+      const existing = await storage.getDocumentTemplate(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      // Only delete if draft; for active, deprecate instead
+      if (existing.status === 'draft') {
+        await storage.deleteDocumentTemplate(id);
+        return res.status(204).send();
+      }
+
+      if (existing.status === 'active') {
+        const updated = await storage.updateDocumentTemplate(id, { status: 'deprecated' });
+        return res.json({ message: "Active template has been deprecated", template: updated });
+      }
+
+      return res.status(400).json({ error: "Cannot delete template with status: " + existing.status });
+    } catch (error) {
+      console.error("Error deleting template:", error);
+      res.status(500).json({ error: "Failed to delete document template" });
+    }
+  });
+
+  // POST /api/document-templates/:id/activate - Activate a draft template
+  app.post("/api/document-templates/:id/activate", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template ID" });
+
+      const existing = await storage.getDocumentTemplate(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      if (existing.status !== 'draft') {
+        return res.status(400).json({ error: `Cannot activate template with status '${existing.status}'. Only draft templates can be activated.` });
+      }
+
+      const updated = await storage.updateDocumentTemplate(id, { status: 'active', effectiveFrom: new Date() });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error activating template:", error);
+      res.status(500).json({ error: "Failed to activate document template" });
+    }
+  });
+
+  // POST /api/documents/from-template - Create document from template
+  app.post("/api/documents/from-template", requireAuth, async (req, res) => {
+    try {
+      const { templateId, title, linkedEntityType, linkedEntityId } = req.body;
+
+      if (!templateId || !title) {
+        return res.status(400).json({ error: "templateId and title are required" });
+      }
+
+      const template = await storage.getDocumentTemplate(parseInt(templateId));
+      if (!template || template.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      if (template.status !== 'active') {
+        return res.status(400).json({ error: "Template is not active" });
+      }
+
+      const user = req.auth!.user;
+      const now = new Date();
+
+      // Process field mappings to auto-populate
+      const fieldMappings = template.fieldMappings ? JSON.parse(template.fieldMappings) : [];
+      const appliedFieldValues: Record<string, string> = {};
+
+      // Generate doc number
+      const existingDocs = await storage.getDocuments();
+      const seq = existingDocs.length + 1;
+      const docNumber = generateDocNumber(
+        `${template.docType === 'work_instruction' ? 'WI' : template.docType === 'procedure' ? 'SOP' : 'DOC'}-{department}-{seq:4}`,
+        { department: template.department || 'GEN', seq, year: now.getFullYear() }
+      );
+      appliedFieldValues.doc_number = docNumber;
+      appliedFieldValues.revision = 'A';
+
+      // Create document
+      const doc = await storage.createDocument({
+        docNumber,
+        title,
+        type: template.docType as any,
+        category: template.category,
+        department: template.department,
+        currentRev: 'A',
+        status: 'draft',
+        owner: `${user.firstName} ${user.lastName}`,
+        reviewCycleDays: template.defaultReviewCycleDays,
+        description: `Created from template: ${template.name}`,
+      });
+
+      // Create first revision
+      const revision = await storage.createRevision({
+        documentId: doc.id,
+        rev: 'A',
+        changeDescription: 'Initial draft created from template',
+        status: 'draft',
+        author: `${user.firstName} ${user.lastName}`,
+      });
+
+      res.status(201).json({ document: doc, revision, appliedFieldValues });
+    } catch (error) {
+      console.error("Error creating document from template:", error);
+      res.status(500).json({ error: "Failed to create document from template" });
+    }
+  });
+
+  // --- DOCUMENT CHECKOUT ---
+
+  // GET /api/documents/:documentId/checkout-status - Get checkout status
+  app.get("/api/documents/:documentId/checkout-status", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const activeCheckout = await storage.getActiveCheckout(documentId);
+
+      if (activeCheckout) {
+        res.json({
+          isCheckedOut: true,
+          checkout: {
+            id: activeCheckout.id,
+            checkedOutBy: activeCheckout.checkedOutBy,
+            checkedOutAt: activeCheckout.checkedOutAt,
+            expectedCheckin: activeCheckout.expectedCheckin,
+            purpose: activeCheckout.purpose,
+            status: activeCheckout.status,
+          },
+        });
+      } else {
+        res.json({ isCheckedOut: false, checkout: null });
+      }
+    } catch (error) {
+      console.error("Error getting checkout status:", error);
+      res.status(500).json({ error: "Failed to get checkout status" });
+    }
+  });
+
+  // POST /api/documents/:documentId/checkout - Check out document
+  app.post("/api/documents/:documentId/checkout", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      if (doc.status === 'obsolete') {
+        return res.status(400).json({ error: "Cannot checkout an obsolete document" });
+      }
+
+      // Check if already checked out
+      const existingCheckout = await storage.getActiveCheckout(documentId);
+      if (existingCheckout) {
+        if (existingCheckout.checkedOutBy === user.id) {
+          return res.json(existingCheckout); // Already checked out by same user
+        }
+        return res.status(400).json({
+          error: "Document is already checked out by another user",
+          checkedOutBy: existingCheckout.checkedOutBy,
+          checkedOutAt: existingCheckout.checkedOutAt,
+        });
+      }
+
+      // Default expectedCheckin to 7 days from now
+      const expectedCheckin = req.body.expectedCheckin
+        ? new Date(req.body.expectedCheckin)
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const checkout = await storage.createDocumentCheckout({
+        orgId: req.orgId!,
+        documentId,
+        checkedOutBy: user.id,
+        expectedCheckin,
+        purpose: req.body.purpose || null,
+        status: 'active',
+      });
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'checkout',
+        actionDetails: JSON.stringify({ purpose: req.body.purpose }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json(checkout);
+    } catch (error) {
+      console.error("Error checking out document:", error);
+      res.status(500).json({ error: "Failed to checkout document" });
+    }
+  });
+
+  // POST /api/documents/:documentId/checkin - Check in document
+  app.post("/api/documents/:documentId/checkin", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const activeCheckout = await storage.getActiveCheckout(documentId);
+      if (!activeCheckout) {
+        return res.status(400).json({ error: "Document is not checked out" });
+      }
+
+      if (activeCheckout.checkedOutBy !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: "Document is checked out to a different user" });
+      }
+
+      const updated = await storage.updateDocumentCheckout(activeCheckout.id, {
+        status: 'checked_in',
+        checkedInAt: new Date(),
+        checkedInBy: user.id,
+      } as any);
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'checkin',
+        actionDetails: JSON.stringify({ comments: req.body.comments }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error checking in document:", error);
+      res.status(500).json({ error: "Failed to checkin document" });
+    }
+  });
+
+  // POST /api/documents/:documentId/force-release - Admin: force release checkout
+  app.post("/api/documents/:documentId/force-release", requireAuth, requireRole('admin', 'quality_manager'), async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const activeCheckout = await storage.getActiveCheckout(documentId);
+      if (!activeCheckout) {
+        return res.status(400).json({ error: "Document is not checked out" });
+      }
+
+      if (!req.body.reason) {
+        return res.status(400).json({ error: "Reason is required for force release" });
+      }
+
+      const updated = await storage.updateDocumentCheckout(activeCheckout.id, {
+        status: 'force_released',
+        forceReleasedBy: user.id,
+        forceReleasedAt: new Date(),
+        forceReleaseReason: req.body.reason,
+      } as any);
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'checkin',
+        actionDetails: JSON.stringify({ forceRelease: true, reason: req.body.reason, originalCheckoutBy: activeCheckout.checkedOutBy }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error force releasing checkout:", error);
+      res.status(500).json({ error: "Failed to force release checkout" });
+    }
+  });
+
+  // GET /api/checkouts/my - Current user's active checkouts
+  app.get("/api/checkouts/my", requireAuth, async (req, res) => {
+    try {
+      const checkouts = await storage.getCheckoutsByUser(req.orgId!, req.auth!.user.id);
+      res.json(checkouts);
+    } catch (error) {
+      console.error("Error getting my checkouts:", error);
+      res.status(500).json({ error: "Failed to get checkouts" });
+    }
+  });
+
+  // GET /api/checkouts/all - Admin: all active checkouts
+  app.get("/api/checkouts/all", requireAuth, async (req, res) => {
+    try {
+      const checkouts = await storage.getAllActiveCheckouts(req.orgId!);
+      res.json(checkouts);
+    } catch (error) {
+      console.error("Error getting all checkouts:", error);
+      res.status(500).json({ error: "Failed to get checkouts" });
+    }
+  });
+
+  // --- APPROVAL WORKFLOWS ---
+
+  // POST /api/documents/:documentId/start-workflow - Start approval workflow
+  app.post("/api/documents/:documentId/start-workflow", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      if (doc.status !== 'draft') {
+        return res.status(400).json({ error: "Document must be in draft status to start a workflow" });
+      }
+
+      // Check for existing active workflow
+      const existingInstances = await storage.getApprovalWorkflowInstances(req.orgId!, documentId);
+      const activeInstance = existingInstances.find(i => i.status === 'active');
+      if (activeInstance) {
+        return res.status(400).json({ error: "An approval workflow is already active for this document" });
+      }
+
+      // Find workflow definition
+      let workflowDef;
+      if (req.body.workflowDefinitionId) {
+        workflowDef = await storage.getApprovalWorkflowDefinition(parseInt(req.body.workflowDefinitionId));
+      }
+      if (!workflowDef) {
+        // Try to find by document type
+        workflowDef = await storage.getWorkflowDefinitionForDocType(req.orgId!, doc.type);
+      }
+      if (!workflowDef) {
+        return res.status(404).json({ error: "No matching workflow definition found" });
+      }
+
+      // Get the latest revision
+      const revisions = await storage.getDocumentRevisions(documentId);
+      const latestRevision = revisions[0];
+      if (!latestRevision) {
+        return res.status(400).json({ error: "Document has no revisions" });
+      }
+
+      // Create workflow instance
+      const instance = await storage.createApprovalWorkflowInstance({
+        orgId: req.orgId!,
+        workflowDefinitionId: workflowDef.id,
+        documentId,
+        revisionId: latestRevision.id,
+        status: 'active',
+        currentStep: 1,
+        initiatedBy: user.id,
+      });
+
+      // Parse workflow steps from definition
+      const stepDefs = JSON.parse(workflowDef.steps);
+      const firstStepDef = stepDefs[0];
+
+      // Create first step
+      const assignee = resolveWorkflowAssignee(firstStepDef, { initiatedBy: user.id });
+      const firstStep = await storage.createApprovalWorkflowStep({
+        workflowInstanceId: instance.id,
+        stepNumber: 1,
+        stepName: firstStepDef.name || 'Step 1',
+        assignedTo: assignee,
+        assignedRole: firstStepDef.requiredRole || null,
+        assignedAt: new Date(),
+        dueDate: firstStepDef.dueDays ? new Date(Date.now() + firstStepDef.dueDays * 24 * 60 * 60 * 1000) : null,
+        status: 'pending',
+        signatureRequired: firstStepDef.signatureRequired ? 1 : 0,
+      });
+
+      // Update document status to review
+      await storage.updateDocument(documentId, { status: 'review' } as any);
+
+      // Log access
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        revisionId: latestRevision.id,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'submit',
+        actionDetails: JSON.stringify({ workflowInstanceId: instance.id, workflowName: workflowDef.name }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.status(201).json({
+        workflowInstance: instance,
+        currentStep: firstStep,
+        message: `Workflow started. Assigned to ${assignee || 'pending assignment'} for ${firstStepDef.name || 'review'}.`,
+      });
+    } catch (error) {
+      console.error("Error starting workflow:", error);
+      res.status(500).json({ error: "Failed to start approval workflow" });
+    }
+  });
+
+  // GET /api/documents/:documentId/workflow - Get workflow status
+  app.get("/api/documents/:documentId/workflow", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+
+      const instances = await storage.getApprovalWorkflowInstances(req.orgId!, documentId);
+      const activeInstance = instances.find(i => i.status === 'active');
+
+      if (!activeInstance) {
+        // Return history of completed workflows
+        const history = instances.filter(i => i.status !== 'active');
+        return res.json({
+          hasActiveWorkflow: false,
+          instance: null,
+          steps: [],
+          definition: null,
+          history,
+        });
+      }
+
+      // Get steps for active instance
+      const steps = await storage.getApprovalWorkflowSteps(activeInstance.id);
+      const definition = await storage.getApprovalWorkflowDefinition(activeInstance.workflowDefinitionId);
+
+      res.json({
+        hasActiveWorkflow: true,
+        instance: activeInstance,
+        steps: steps.map(s => ({
+          stepNumber: s.stepNumber,
+          stepName: s.stepName,
+          status: s.status,
+          assignedTo: s.assignedTo,
+          assignedRole: s.assignedRole,
+          actionTaken: s.actionTaken,
+          actionBy: s.actionBy,
+          actionAt: s.actionAt,
+          dueDate: s.dueDate,
+          comments: s.comments,
+        })),
+        definition: definition ? {
+          name: definition.name,
+          totalSteps: JSON.parse(definition.steps).length,
+        } : null,
+      });
+    } catch (error) {
+      console.error("Error getting workflow status:", error);
+      res.status(500).json({ error: "Failed to get workflow status" });
+    }
+  });
+
+  // POST /api/workflow-steps/:stepId/approve - Approve a workflow step
+  app.post("/api/workflow-steps/:stepId/approve", requireAuth, async (req, res) => {
+    try {
+      const stepId = parseInt(req.params.stepId);
+      if (isNaN(stepId)) return res.status(400).json({ error: "Invalid step ID" });
+
+      const step = await storage.getApprovalWorkflowStep(stepId);
+      if (!step) {
+        return res.status(404).json({ error: "Workflow step not found" });
+      }
+
+      if (step.status !== 'pending') {
+        return res.status(400).json({ error: "Step is not in pending status" });
+      }
+
+      const user = req.auth!.user;
+
+      // Update step
+      const updatedStep = await storage.updateApprovalWorkflowStep(stepId, {
+        status: 'approved',
+        actionTaken: 'approved',
+        actionBy: user.id,
+        actionAt: new Date(),
+        comments: req.body.comments || null,
+      } as any);
+
+      // Check if this was the last step - advance workflow
+      const instance = await storage.getApprovalWorkflowInstance(step.workflowInstanceId);
+      if (instance) {
+        const definition = await storage.getApprovalWorkflowDefinition(instance.workflowDefinitionId);
+        const stepDefs = definition ? JSON.parse(definition.steps) : [];
+        const allSteps = await storage.getApprovalWorkflowSteps(instance.id);
+
+        if (step.stepNumber < stepDefs.length) {
+          // Create next step
+          const nextStepDef = stepDefs[step.stepNumber]; // 0-indexed, stepNumber is 1-indexed
+          const nextAssignee = resolveWorkflowAssignee(nextStepDef, { initiatedBy: instance.initiatedBy });
+
+          await storage.createApprovalWorkflowStep({
+            workflowInstanceId: instance.id,
+            stepNumber: step.stepNumber + 1,
+            stepName: nextStepDef.name || `Step ${step.stepNumber + 1}`,
+            assignedTo: nextAssignee,
+            assignedRole: nextStepDef.requiredRole || null,
+            assignedAt: new Date(),
+            dueDate: nextStepDef.dueDays ? new Date(Date.now() + nextStepDef.dueDays * 24 * 60 * 60 * 1000) : null,
+            status: 'pending',
+            signatureRequired: nextStepDef.signatureRequired ? 1 : 0,
+          });
+
+          await storage.updateApprovalWorkflowInstance(instance.id, { currentStep: step.stepNumber + 1 } as any);
+        } else {
+          // All steps complete - mark workflow as completed
+          await storage.updateApprovalWorkflowInstance(instance.id, {
+            status: 'completed',
+            completedAt: new Date(),
+          } as any);
+
+          // Update document status to effective
+          await storage.updateDocument(instance.documentId, { status: 'effective', effectiveDate: new Date() } as any);
+        }
+
+        // Log access
+        await storage.createDocumentAccessLog({
+          orgId: req.orgId!,
+          documentId: instance.documentId,
+          revisionId: instance.revisionId,
+          userId: user.id,
+          userName: `${user.firstName} ${user.lastName}`,
+          userRole: user.role,
+          action: 'approve',
+          actionDetails: JSON.stringify({ stepId, stepNumber: step.stepNumber, stepName: step.stepName, comments: req.body.comments }),
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
+
+      res.json(updatedStep);
+    } catch (error) {
+      console.error("Error approving workflow step:", error);
+      res.status(500).json({ error: "Failed to approve workflow step" });
+    }
+  });
+
+  // POST /api/workflow-steps/:stepId/reject - Reject a workflow step
+  app.post("/api/workflow-steps/:stepId/reject", requireAuth, async (req, res) => {
+    try {
+      const stepId = parseInt(req.params.stepId);
+      if (isNaN(stepId)) return res.status(400).json({ error: "Invalid step ID" });
+
+      const step = await storage.getApprovalWorkflowStep(stepId);
+      if (!step) {
+        return res.status(404).json({ error: "Workflow step not found" });
+      }
+
+      if (step.status !== 'pending') {
+        return res.status(400).json({ error: "Step is not in pending status" });
+      }
+
+      if (!req.body.comments) {
+        return res.status(400).json({ error: "Comments are required when rejecting" });
+      }
+
+      const user = req.auth!.user;
+
+      const updatedStep = await storage.updateApprovalWorkflowStep(stepId, {
+        status: 'rejected',
+        actionTaken: 'rejected',
+        actionBy: user.id,
+        actionAt: new Date(),
+        comments: req.body.comments,
+      } as any);
+
+      // Cancel the workflow instance and revert document to draft
+      const instance = await storage.getApprovalWorkflowInstance(step.workflowInstanceId);
+      if (instance) {
+        await storage.updateApprovalWorkflowInstance(instance.id, {
+          status: 'rejected',
+          completedAt: new Date(),
+        } as any);
+
+        await storage.updateDocument(instance.documentId, { status: 'draft' } as any);
+
+        // Log access
+        await storage.createDocumentAccessLog({
+          orgId: req.orgId!,
+          documentId: instance.documentId,
+          revisionId: instance.revisionId,
+          userId: user.id,
+          userName: `${user.firstName} ${user.lastName}`,
+          userRole: user.role,
+          action: 'reject',
+          actionDetails: JSON.stringify({ stepId, stepNumber: step.stepNumber, comments: req.body.comments }),
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
+
+      res.json(updatedStep);
+    } catch (error) {
+      console.error("Error rejecting workflow step:", error);
+      res.status(500).json({ error: "Failed to reject workflow step" });
+    }
+  });
+
+  // POST /api/workflow-steps/:stepId/delegate - Delegate a workflow step
+  app.post("/api/workflow-steps/:stepId/delegate", requireAuth, async (req, res) => {
+    try {
+      const stepId = parseInt(req.params.stepId);
+      if (isNaN(stepId)) return res.status(400).json({ error: "Invalid step ID" });
+
+      const step = await storage.getApprovalWorkflowStep(stepId);
+      if (!step) {
+        return res.status(404).json({ error: "Workflow step not found" });
+      }
+
+      if (step.status !== 'pending') {
+        return res.status(400).json({ error: "Step is not in pending status" });
+      }
+
+      if (!req.body.delegateTo) {
+        return res.status(400).json({ error: "delegateTo is required" });
+      }
+
+      const user = req.auth!.user;
+
+      const updatedStep = await storage.updateApprovalWorkflowStep(stepId, {
+        assignedTo: req.body.delegateTo,
+        delegatedFrom: user.id,
+        delegatedAt: new Date(),
+        delegationReason: req.body.reason || null,
+      } as any);
+
+      // Log access
+      const instance = await storage.getApprovalWorkflowInstance(step.workflowInstanceId);
+      if (instance) {
+        await storage.createDocumentAccessLog({
+          orgId: req.orgId!,
+          documentId: instance.documentId,
+          revisionId: instance.revisionId,
+          userId: user.id,
+          userName: `${user.firstName} ${user.lastName}`,
+          userRole: user.role,
+          action: 'delegate',
+          actionDetails: JSON.stringify({ stepId, delegatedTo: req.body.delegateTo, reason: req.body.reason }),
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
+
+      res.json(updatedStep);
+    } catch (error) {
+      console.error("Error delegating workflow step:", error);
+      res.status(500).json({ error: "Failed to delegate workflow step" });
+    }
+  });
+
+  // ============================================
+  // DC PHASE 3: Distribution, Audit, Comments, Links
+  // ============================================
+
+  // --- DISTRIBUTION LISTS ---
+
+  // GET /api/distribution-lists
+  app.get("/api/distribution-lists", requireAuth, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const lists = await storage.getDistributionLists(req.orgId!, status);
+      res.json(lists);
+    } catch (error) {
+      console.error("Error fetching distribution lists:", error);
+      res.status(500).json({ error: "Failed to fetch distribution lists" });
+    }
+  });
+
+  // GET /api/distribution-lists/:id
+  app.get("/api/distribution-lists/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const list = await storage.getDistributionList(id);
+      if (!list || list.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Distribution list not found" });
+      }
+      res.json(list);
+    } catch (error) {
+      console.error("Error fetching distribution list:", error);
+      res.status(500).json({ error: "Failed to fetch distribution list" });
+    }
+  });
+
+  // POST /api/distribution-lists
+  app.post("/api/distribution-lists", requireAuth, async (req, res) => {
+    try {
+      const data = insertDistributionListSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        createdBy: req.auth!.user.id,
+      });
+      const list = await storage.createDistributionList(data);
+      res.status(201).json(list);
+    } catch (error: any) {
+      if (error?.issues) {
+        return res.status(400).json({ error: "Validation error: " + fromError(error).message });
+      }
+      console.error("Error creating distribution list:", error);
+      res.status(500).json({ error: "Failed to create distribution list" });
+    }
+  });
+
+  // PATCH /api/distribution-lists/:id
+  app.patch("/api/distribution-lists/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getDistributionList(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Distribution list not found" });
+      }
+
+      const updated = await storage.updateDistributionList(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating distribution list:", error);
+      res.status(500).json({ error: "Failed to update distribution list" });
+    }
+  });
+
+  // DELETE /api/distribution-lists/:id
+  app.delete("/api/distribution-lists/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getDistributionList(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Distribution list not found" });
+      }
+
+      await storage.deleteDistributionList(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting distribution list:", error);
+      res.status(500).json({ error: "Failed to delete distribution list" });
+    }
+  });
+
+  // --- DOCUMENT DISTRIBUTION ---
+
+  // POST /api/documents/:documentId/distribute
+  app.post("/api/documents/:documentId/distribute", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      if (doc.status !== 'effective') {
+        return res.status(400).json({ error: "Document must be in effective status to distribute" });
+      }
+
+      const revisions = await storage.getDocumentRevisions(documentId);
+      const latestRevision = revisions[0];
+      if (!latestRevision) {
+        return res.status(400).json({ error: "Document has no revisions" });
+      }
+
+      const { distributionListId, additionalRecipients, comments } = req.body;
+
+      let recipients: { userId?: string; name: string; email?: string; role?: string; department?: string }[] = [];
+      let ackDueDays = 7;
+
+      if (distributionListId) {
+        const list = await storage.getDistributionList(parseInt(distributionListId));
+        if (!list || list.orgId !== req.orgId!) {
+          return res.status(404).json({ error: "Distribution list not found" });
+        }
+        ackDueDays = list.acknowledgmentDueDays || 7;
+        try {
+          recipients = JSON.parse(list.recipients);
+        } catch { recipients = []; }
+      }
+
+      if (additionalRecipients && Array.isArray(additionalRecipients)) {
+        recipients = [...recipients, ...additionalRecipients];
+      }
+
+      if (recipients.length === 0) {
+        return res.status(400).json({ error: "No recipients specified" });
+      }
+
+      const ackDueDate = new Date(Date.now() + ackDueDays * 24 * 60 * 60 * 1000);
+      const records = [];
+
+      for (const recipient of recipients) {
+        const record = await storage.createDocumentDistributionRecord({
+          orgId: req.orgId!,
+          documentId,
+          revisionId: latestRevision.id,
+          distributionListId: distributionListId ? parseInt(distributionListId) : null,
+          recipientUserId: recipient.userId || null,
+          recipientName: recipient.name,
+          recipientEmail: recipient.email || null,
+          recipientRole: recipient.role || null,
+          recipientDepartment: recipient.department || null,
+          distributedBy: user.id,
+          distributionMethod: 'electronic',
+          watermarkApplied: 1,
+          requiresAcknowledgment: 1,
+          acknowledgmentDueDate: ackDueDate,
+          status: 'distributed',
+        } as any);
+        records.push(record);
+      }
+
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        revisionId: latestRevision.id,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'distribute',
+        actionDetails: JSON.stringify({ recipientCount: records.length, distributionListId, comments }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.status(201).json({
+        distributionCount: records.length,
+        records,
+        message: `Distributed to ${records.length} recipients. Acknowledgment due in ${ackDueDays} days.`,
+      });
+    } catch (error) {
+      console.error("Error distributing document:", error);
+      res.status(500).json({ error: "Failed to distribute document" });
+    }
+  });
+
+  // GET /api/documents/:documentId/distributions
+  app.get("/api/documents/:documentId/distributions", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const status = req.query.status as string | undefined;
+      const records = await storage.getDocumentDistributionRecords(req.orgId!, documentId, status);
+      res.json(records);
+    } catch (error) {
+      console.error("Error fetching distributions:", error);
+      res.status(500).json({ error: "Failed to fetch distributions" });
+    }
+  });
+
+  // GET /api/my/acknowledgments
+  app.get("/api/my/acknowledgments", requireAuth, async (req, res) => {
+    try {
+      const userId = req.auth!.user.id;
+      const pending = await storage.getPendingAcknowledgments(req.orgId!, userId);
+
+      const enriched = await Promise.all(pending.map(async (record) => {
+        const doc = await storage.getDocumentById(record.documentId);
+        const isOverdue = record.acknowledgmentDueDate
+          ? new Date(record.acknowledgmentDueDate) < new Date()
+          : false;
+        return {
+          id: record.id,
+          document: doc ? { id: doc.id, docNumber: doc.docNumber, title: doc.title } : null,
+          distributedAt: record.distributedAt,
+          acknowledgmentDueDate: record.acknowledgmentDueDate,
+          isOverdue,
+        };
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error fetching acknowledgments:", error);
+      res.status(500).json({ error: "Failed to fetch acknowledgments" });
+    }
+  });
+
+  // POST /api/distributions/:id/acknowledge
+  app.post("/api/distributions/:id/acknowledge", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const record = await storage.getDocumentDistributionRecord(id);
+      if (!record || record.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Distribution record not found" });
+      }
+
+      const userId = req.auth!.user.id;
+      if (record.recipientUserId && record.recipientUserId !== userId) {
+        return res.status(403).json({ error: "This distribution is not assigned to you" });
+      }
+
+      if (record.acknowledgedAt) {
+        return res.status(409).json({ error: "Already acknowledged" });
+      }
+
+      const { method, comment } = req.body;
+      const user = req.auth!.user;
+
+      const updated = await storage.updateDocumentDistributionRecord(id, {
+        acknowledgedAt: new Date(),
+        acknowledgmentMethod: method || 'click',
+        acknowledgmentIp: req.ip,
+        acknowledgmentComment: comment || null,
+        status: 'acknowledged',
+      } as any);
+
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId: record.documentId,
+        revisionId: record.revisionId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'acknowledge',
+        actionDetails: JSON.stringify({ distributionRecordId: id, method, comment }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error acknowledging distribution:", error);
+      res.status(500).json({ error: "Failed to acknowledge distribution" });
+    }
+  });
+
+  // POST /api/documents/:documentId/recall
+  app.post("/api/documents/:documentId/recall", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+      const { reason } = req.body;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const distributions = await storage.getDocumentDistributionRecords(req.orgId!, documentId);
+      const activeDistributions = distributions.filter(d => d.status === 'distributed' || d.status === 'acknowledged');
+
+      let recalledCount = 0;
+      for (const dist of activeDistributions) {
+        await storage.updateDocumentDistributionRecord(dist.id, {
+          recalledAt: new Date(),
+          recalledBy: user.id,
+          recallReason: reason || null,
+          status: 'recalled',
+        } as any);
+        recalledCount++;
+      }
+
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'recall',
+        actionDetails: JSON.stringify({ reason, recalledCount }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json({
+        recalledCount,
+        message: `Recalled from ${recalledCount} recipients.`,
+      });
+    } catch (error) {
+      console.error("Error recalling document:", error);
+      res.status(500).json({ error: "Failed to recall document" });
+    }
+  });
+
+  // --- ACCESS LOGS (Immutable - no update/delete) ---
+
+  // GET /api/documents/:documentId/access-log
+  app.get("/api/documents/:documentId/access-log", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const action = req.query.action as string | undefined;
+      const userId = req.query.userId as string | undefined;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 100;
+
+      let logs;
+      if (startDate && endDate) {
+        logs = await storage.getDocumentAccessLogsByDateRange(req.orgId!, new Date(startDate), new Date(endDate));
+        logs = logs.filter(l => l.documentId === documentId);
+      } else if (userId) {
+        logs = await storage.getDocumentAccessLogsByUser(req.orgId!, userId, limit);
+        logs = logs.filter(l => l.documentId === documentId);
+      } else {
+        logs = await storage.getDocumentAccessLogs(req.orgId!, documentId, action, limit);
+      }
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching access logs:", error);
+      res.status(500).json({ error: "Failed to fetch access logs" });
+    }
+  });
+
+  // GET /api/documents/:documentId/access-log/stats
+  app.get("/api/documents/:documentId/access-log/stats", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+
+      const byAction = await storage.getAccessLogStats(req.orgId!, documentId);
+      const allLogs = await storage.getDocumentAccessLogs(req.orgId!, documentId);
+
+      const uniqueViewers = new Set(allLogs.filter(l => l.action === 'view').map(l => l.userId)).size;
+      const totalViews = byAction.find(a => a.action === 'view')?.count || 0;
+      const downloads = byAction.find(a => a.action === 'download')?.count || 0;
+      const prints = byAction.find(a => a.action === 'print')?.count || 0;
+
+      // Compute by-user stats
+      const userMap = new Map<string, { userId: string; userName: string; count: number }>();
+      for (const log of allLogs) {
+        const existing = userMap.get(log.userId);
+        if (existing) {
+          existing.count++;
+        } else {
+          userMap.set(log.userId, { userId: log.userId, userName: log.userName || 'Unknown', count: 1 });
+        }
+      }
+
+      res.json({
+        totalViews,
+        uniqueViewers,
+        downloads,
+        prints,
+        byAction,
+        byUser: Array.from(userMap.values()).sort((a, b) => b.count - a.count),
+      });
+    } catch (error) {
+      console.error("Error fetching access log stats:", error);
+      res.status(500).json({ error: "Failed to fetch access log stats" });
+    }
+  });
+
+  // GET /api/audit-log
+  app.get("/api/audit-log", requireAuth, async (req, res) => {
+    try {
+      const documentId = req.query.documentId as string | undefined;
+      const action = req.query.action as string | undefined;
+      const userId = req.query.userId as string | undefined;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 100;
+
+      let logs;
+      if (startDate && endDate) {
+        logs = await storage.getDocumentAccessLogsByDateRange(req.orgId!, new Date(startDate), new Date(endDate));
+      } else if (userId) {
+        logs = await storage.getDocumentAccessLogsByUser(req.orgId!, userId, limit);
+      } else {
+        logs = await storage.getDocumentAccessLogs(req.orgId!, documentId, action, limit);
+      }
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit log:", error);
+      res.status(500).json({ error: "Failed to fetch audit log" });
+    }
+  });
+
+  // GET /api/audit-log/export
+  app.get("/api/audit-log/export", requireAuth, async (req, res) => {
+    try {
+      const documentId = req.query.documentId as string | undefined;
+      const action = req.query.action as string | undefined;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 10000;
+
+      let logs;
+      if (startDate && endDate) {
+        logs = await storage.getDocumentAccessLogsByDateRange(req.orgId!, new Date(startDate), new Date(endDate));
+      } else {
+        logs = await storage.getDocumentAccessLogs(req.orgId!, documentId, action, limit);
+      }
+
+      const csvHeader = 'ID,Timestamp,DocumentID,Action,UserID,UserName,UserRole,IPAddress,Details\n';
+      const csvRows = logs.map(l =>
+        `${l.id},"${l.timestamp || ''}","${l.documentId}","${l.action}","${l.userId}","${(l.userName || '').replace(/"/g, '""')}","${l.userRole || ''}","${l.ipAddress || ''}","${(l.actionDetails || '').replace(/"/g, '""')}"`
+      ).join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csvHeader + csvRows);
+    } catch (error) {
+      console.error("Error exporting audit log:", error);
+      res.status(500).json({ error: "Failed to export audit log" });
+    }
+  });
+
+  // --- PRINT LOGS ---
+
+  // POST /api/documents/:documentId/print
+  app.post("/api/documents/:documentId/print", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const revisions = await storage.getDocumentRevisions(documentId);
+      const latestRevision = revisions[0];
+      if (!latestRevision) {
+        return res.status(400).json({ error: "Document has no revisions" });
+      }
+
+      const { copies, purpose, printerName, locations } = req.body;
+      const numCopies = copies || 1;
+
+      // Get next copy numbers
+      const startCopyNum = await storage.getNextCopyNumber(documentId);
+      const copyNumbers = Array.from({ length: numCopies }, (_, i) => startCopyNum + i);
+
+      // Build controlled copies info from locations
+      const controlledCopies = locations && Array.isArray(locations)
+        ? locations.map((loc: any, i: number) => ({
+            copyNumber: copyNumbers[i] || copyNumbers[copyNumbers.length - 1],
+            location: loc.location,
+            holder: loc.holder,
+          }))
+        : [];
+
+      // Find a file for the document (use first available)
+      const files = await storage.getDocumentFiles(req.orgId!, documentId);
+      const fileId = files.length > 0 ? files[0].id : null;
+
+      if (!fileId) {
+        return res.status(400).json({ error: "Document has no files to print" });
+      }
+
+      const printLog = await storage.createDocumentPrintLog({
+        orgId: req.orgId!,
+        documentId,
+        revisionId: latestRevision.id,
+        fileId,
+        printedBy: user.id,
+        printCopies: numCopies,
+        printPurpose: purpose || null,
+        watermarkApplied: 1,
+        watermarkText: `CONTROLLED COPY - ${doc.docNumber} Rev ${doc.currentRev}`,
+        copyNumbers: JSON.stringify(copyNumbers),
+        printerName: printerName || null,
+        ipAddress: req.ip,
+        controlledCopies: JSON.stringify(controlledCopies),
+      } as any);
+
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId,
+        revisionId: latestRevision.id,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'print',
+        actionDetails: JSON.stringify({ copies: numCopies, copyNumbers, printerName }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.status(201).json({
+        printLog,
+        copyNumbers,
+        watermarkedFileUrl: `/api/document-files/${fileId}/download-watermarked`,
+      });
+    } catch (error) {
+      console.error("Error recording print:", error);
+      res.status(500).json({ error: "Failed to record print" });
+    }
+  });
+
+  // GET /api/documents/:documentId/print-logs
+  app.get("/api/documents/:documentId/print-logs", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const logs = await storage.getDocumentPrintLogs(req.orgId!, documentId);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching print logs:", error);
+      res.status(500).json({ error: "Failed to fetch print logs" });
+    }
+  });
+
+  // POST /api/print-logs/:id/recall-copies
+  app.post("/api/print-logs/:id/recall-copies", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const printLog = await storage.getDocumentPrintLog(id);
+      if (!printLog || printLog.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Print log not found" });
+      }
+
+      const { copyNumbers, verifiedBy } = req.body;
+      const user = req.auth!.user;
+
+      const allCopyNumbers = JSON.parse(printLog.copyNumbers || '[]');
+      const recalledCopyNumbers = copyNumbers || allCopyNumbers;
+      const allRecalled = recalledCopyNumbers.length >= allCopyNumbers.length ? 1 : 0;
+
+      const updated = await storage.updateDocumentPrintLog(id, {
+        copiesRecalled: recalledCopyNumbers.length,
+        allRecalled,
+        recallVerifiedAt: new Date(),
+        recallVerifiedBy: verifiedBy || user.id,
+      } as any);
+
+      await storage.createDocumentAccessLog({
+        orgId: req.orgId!,
+        documentId: printLog.documentId,
+        userId: user.id,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+        action: 'recall_copies',
+        actionDetails: JSON.stringify({ printLogId: id, recalledCopyNumbers }),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error recalling copies:", error);
+      res.status(500).json({ error: "Failed to recall copies" });
+    }
+  });
+
+  // --- COMMENTS ---
+
+  // GET /api/documents/:documentId/comments
+  app.get("/api/documents/:documentId/comments", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const includeDeleted = req.query.includeDeleted === 'true';
+      const comments = await storage.getDocumentComments(req.orgId!, documentId, includeDeleted);
+      res.json(comments);
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+      res.status(500).json({ error: "Failed to fetch comments" });
+    }
+  });
+
+  // POST /api/documents/:documentId/comments
+  app.post("/api/documents/:documentId/comments", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const data = insertDocumentCommentSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        documentId,
+        createdBy: req.body.createdBy || user.id,
+        mentions: req.body.mentions ? JSON.stringify(req.body.mentions) : '[]',
+      });
+
+      const comment = await storage.createDocumentComment(data);
+      res.status(201).json(comment);
+    } catch (error: any) {
+      if (error?.issues) {
+        return res.status(400).json({ error: "Validation error: " + fromError(error).message });
+      }
+      console.error("Error creating comment:", error);
+      res.status(500).json({ error: "Failed to create comment" });
+    }
+  });
+
+  // PATCH /api/comments/:id
+  app.patch("/api/comments/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getDocumentComment(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Comment not found" });
+      }
+
+      // Only author can edit within 24 hours
+      const user = req.auth!.user;
+      if (existing.createdBy !== user.id) {
+        return res.status(403).json({ error: "Only the author can edit this comment" });
+      }
+
+      const createdAt = new Date(existing.createdAt!);
+      const hoursSinceCreation = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceCreation > 24) {
+        return res.status(400).json({ error: "Comments can only be edited within 24 hours of creation" });
+      }
+
+      const updated = await storage.updateDocumentComment(id, {
+        ...req.body,
+        updatedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating comment:", error);
+      res.status(500).json({ error: "Failed to update comment" });
+    }
+  });
+
+  // DELETE /api/comments/:id (soft delete)
+  app.delete("/api/comments/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getDocumentComment(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Comment not found" });
+      }
+
+      await storage.softDeleteDocumentComment(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting comment:", error);
+      res.status(500).json({ error: "Failed to delete comment" });
+    }
+  });
+
+  // POST /api/comments/:id/resolve
+  app.post("/api/comments/:id/resolve", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getDocumentComment(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Comment not found" });
+      }
+
+      if (existing.threadResolved === 1) {
+        return res.status(409).json({ error: "Comment thread already resolved" });
+      }
+
+      const resolved = await storage.resolveCommentThread(id, req.auth!.user.id);
+      res.json(resolved);
+    } catch (error) {
+      console.error("Error resolving comment:", error);
+      res.status(500).json({ error: "Failed to resolve comment" });
+    }
+  });
+
+  // --- EXTERNAL DOCUMENTS ---
+
+  // GET /api/external-documents
+  app.get("/api/external-documents", requireAuth, async (req, res) => {
+    try {
+      const source = req.query.source as string | undefined;
+      const status = req.query.status as string | undefined;
+      const hasUpdates = req.query.hasUpdates as string | undefined;
+
+      if (hasUpdates === 'true') {
+        const docs = await storage.getExternalDocumentsWithUpdates(req.orgId!);
+        return res.json(docs);
+      }
+
+      const docs = await storage.getExternalDocuments(req.orgId!, source, status);
+      res.json(docs);
+    } catch (error) {
+      console.error("Error fetching external documents:", error);
+      res.status(500).json({ error: "Failed to fetch external documents" });
+    }
+  });
+
+  // GET /api/external-documents/:id
+  app.get("/api/external-documents/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const doc = await storage.getExternalDocument(id);
+      if (!doc || doc.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "External document not found" });
+      }
+      res.json(doc);
+    } catch (error) {
+      console.error("Error fetching external document:", error);
+      res.status(500).json({ error: "Failed to fetch external document" });
+    }
+  });
+
+  // POST /api/external-documents
+  app.post("/api/external-documents", requireAuth, async (req, res) => {
+    try {
+      const data = insertExternalDocumentSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        createdBy: req.body.createdBy || req.auth!.user.id,
+      });
+      const doc = await storage.createExternalDocument(data);
+      res.status(201).json(doc);
+    } catch (error: any) {
+      if (error?.issues) {
+        return res.status(400).json({ error: "Validation error: " + fromError(error).message });
+      }
+      console.error("Error creating external document:", error);
+      res.status(500).json({ error: "Failed to create external document" });
+    }
+  });
+
+  // PATCH /api/external-documents/:id
+  app.patch("/api/external-documents/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getExternalDocument(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "External document not found" });
+      }
+
+      const updated = await storage.updateExternalDocument(id, {
+        ...req.body,
+        updatedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating external document:", error);
+      res.status(500).json({ error: "Failed to update external document" });
+    }
+  });
+
+  // DELETE /api/external-documents/:id
+  app.delete("/api/external-documents/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getExternalDocument(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "External document not found" });
+      }
+
+      await storage.deleteExternalDocument(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting external document:", error);
+      res.status(500).json({ error: "Failed to delete external document" });
+    }
+  });
+
+  // POST /api/external-documents/:id/check-update
+  app.post("/api/external-documents/:id/check-update", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const existing = await storage.getExternalDocument(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "External document not found" });
+      }
+
+      const { updateAvailable, updateNotes } = req.body;
+
+      const updated = await storage.updateExternalDocument(id, {
+        lastCheckedAt: new Date(),
+        updateAvailable: updateAvailable ? 1 : 0,
+        updateNotes: updateNotes || null,
+        updatedAt: new Date(),
+      } as any);
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error checking external document update:", error);
+      res.status(500).json({ error: "Failed to check for updates" });
+    }
+  });
+
+  // --- DOCUMENT LINKS ---
+
+  // GET /api/links/broken (must be BEFORE /api/links/:id patterns)
+  app.get("/api/links/broken", requireAuth, async (req, res) => {
+    try {
+      const brokenLinks = await storage.getBrokenLinks(req.orgId!);
+      res.json(brokenLinks);
+    } catch (error) {
+      console.error("Error fetching broken links:", error);
+      res.status(500).json({ error: "Failed to fetch broken links" });
+    }
+  });
+
+  // GET /api/documents/:documentId/links
+  app.get("/api/documents/:documentId/links", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const links = await storage.getDocumentLinksFrom(req.orgId!, documentId);
+      res.json(links);
+    } catch (error) {
+      console.error("Error fetching document links:", error);
+      res.status(500).json({ error: "Failed to fetch document links" });
+    }
+  });
+
+  // GET /api/links/to/:targetType/:targetId
+  app.get("/api/links/to/:targetType/:targetId", requireAuth, async (req, res) => {
+    try {
+      const { targetType } = req.params;
+      const targetId = parseInt(req.params.targetId);
+      if (isNaN(targetId)) return res.status(400).json({ error: "Invalid target ID" });
+
+      const links = await storage.getDocumentLinksTo(req.orgId!, targetType, targetId);
+      res.json(links);
+    } catch (error) {
+      console.error("Error fetching links to target:", error);
+      res.status(500).json({ error: "Failed to fetch links" });
+    }
+  });
+
+  // POST /api/documents/:documentId/links
+  app.post("/api/documents/:documentId/links", requireAuth, async (req, res) => {
+    try {
+      const { documentId } = req.params;
+      const user = req.auth!.user;
+
+      const doc = await storage.getDocumentById(documentId);
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+
+      const data = insertDocumentLinkEnhancedSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        sourceDocumentId: documentId,
+        createdBy: req.body.createdBy || user.id,
+        bidirectional: req.body.bidirectional ? 1 : 0,
+      });
+
+      const link = await storage.createDocumentLinkEnhanced(data);
+      res.status(201).json(link);
+    } catch (error: any) {
+      if (error?.issues) {
+        return res.status(400).json({ error: "Validation error: " + fromError(error).message });
+      }
+      console.error("Error creating document link:", error);
+      res.status(500).json({ error: "Failed to create document link" });
+    }
+  });
+
+  // DELETE /api/links/:id
+  app.delete("/api/links/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const link = await storage.getDocumentLinkEnhanced(id);
+      if (!link || link.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Link not found" });
+      }
+
+      // Delete reverse link if bidirectional
+      if (link.reverseLinkId) {
+        await storage.deleteDocumentLinkEnhanced(link.reverseLinkId);
+      }
+
+      await storage.deleteDocumentLinkEnhanced(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting link:", error);
+      res.status(500).json({ error: "Failed to delete link" });
+    }
+  });
+
+  // POST /api/links/:id/verify
+  app.post("/api/links/:id/verify", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const link = await storage.getDocumentLinkEnhanced(id);
+      if (!link || link.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Link not found" });
+      }
+
+      const verified = await storage.verifyDocumentLink(id, req.auth!.user.id);
+      res.json(verified);
+    } catch (error) {
+      console.error("Error verifying link:", error);
+      res.status(500).json({ error: "Failed to verify link" });
+    }
+  });
+
+  // POST /api/links/:id/mark-broken
+  app.post("/api/links/:id/mark-broken", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const link = await storage.getDocumentLinkEnhanced(id);
+      if (!link || link.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Link not found" });
+      }
+
+      const { reason } = req.body;
+      const broken = await storage.markLinkBroken(id, reason || 'Marked as broken');
+      res.json(broken);
+    } catch (error) {
+      console.error("Error marking link as broken:", error);
+      res.status(500).json({ error: "Failed to mark link as broken" });
     }
   });
 

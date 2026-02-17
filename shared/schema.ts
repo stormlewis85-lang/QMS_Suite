@@ -1,4 +1,4 @@
-import { pgTable, text, integer, jsonb, timestamp, boolean, uuid, pgEnum, index, uniqueIndex, serial } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, jsonb, timestamp, boolean, uuid, pgEnum, index, uniqueIndex, serial } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
 import { z } from 'zod';
@@ -1248,19 +1248,361 @@ export const documentLink = pgTable('document_link', {
   sourceDocIdIdx: index('doc_link_source_doc_id_idx').on(table.sourceDocId),
 }));
 
+// ==========================================
+// Document Control Phase 2: File, Template, Workflow, Checkout
+// ==========================================
+
+export const documentFile = pgTable('document_file', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').references(() => documentRevision.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  originalName: text('original_name').notNull(),
+  fileType: text('file_type').notNull(),
+  mimeType: text('mime_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  storageProvider: text('storage_provider').default('local'),
+  storagePath: text('storage_path').notNull(),
+  storageBucket: text('storage_bucket'),
+  checksumSha256: text('checksum_sha256').notNull(),
+  checksumVerifiedAt: timestamp('checksum_verified_at'),
+  virusScanStatus: text('virus_scan_status').default('pending'),
+  virusScanAt: timestamp('virus_scan_at'),
+  thumbnailPath: text('thumbnail_path'),
+  previewGenerated: integer('preview_generated').default(0),
+  textExtracted: integer('text_extracted').default(0),
+  extractedText: text('extracted_text'),
+  pageCount: integer('page_count'),
+  uploadedBy: text('uploaded_by').notNull(),
+  uploadedAt: timestamp('uploaded_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('document_file_org_idx').on(table.orgId),
+  documentIdx: index('document_file_document_idx').on(table.documentId),
+  revisionIdx: index('document_file_revision_idx').on(table.revisionId),
+}));
+
+export const approvalWorkflowDefinition = pgTable('approval_workflow_definition', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  code: text('code').notNull(),
+  description: text('description'),
+  appliesToDocTypes: text('applies_to_doc_types').default('[]'),
+  appliesToCategories: text('applies_to_categories').default('[]'),
+  steps: text('steps').notNull(),
+  allowParallelSteps: integer('allow_parallel_steps').default(0),
+  requireAllSignatures: integer('require_all_signatures').default(1),
+  autoObsoletePrevious: integer('auto_obsolete_previous').default(1),
+  status: text('status').default('active'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('approval_workflow_def_org_idx').on(table.orgId),
+  orgCodeIdx: uniqueIndex('approval_workflow_def_org_code_idx').on(table.orgId, table.code),
+}));
+
+export const documentTemplate = pgTable('document_template', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  code: text('code').notNull(),
+  description: text('description'),
+  docType: text('doc_type').notNull(),
+  category: text('category'),
+  department: text('department'),
+  templateFileId: integer('template_file_id').references(() => documentFile.id),
+  fieldMappings: text('field_mappings').default('[]'),
+  lockedZones: text('locked_zones').default('[]'),
+  version: text('version').default('1'),
+  status: text('status').default('draft'),
+  effectiveFrom: timestamp('effective_from'),
+  defaultWorkflowId: integer('default_workflow_id').references(() => approvalWorkflowDefinition.id),
+  defaultReviewCycleDays: integer('default_review_cycle_days').default(365),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('document_template_org_idx').on(table.orgId),
+  orgCodeIdx: uniqueIndex('document_template_org_code_idx').on(table.orgId, table.code),
+}));
+
+export const approvalWorkflowInstance = pgTable('approval_workflow_instance', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  workflowDefinitionId: integer('workflow_definition_id').notNull().references(() => approvalWorkflowDefinition.id),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').notNull().references(() => documentRevision.id, { onDelete: 'cascade' }),
+  status: text('status').default('active'),
+  currentStep: integer('current_step').default(1),
+  startedAt: timestamp('started_at').defaultNow(),
+  completedAt: timestamp('completed_at'),
+  dueDate: timestamp('due_date'),
+  initiatedBy: text('initiated_by').notNull(),
+  cancelledBy: text('cancelled_by'),
+  cancelledAt: timestamp('cancelled_at'),
+  cancellationReason: text('cancellation_reason'),
+}, (table) => ({
+  orgIdx: index('approval_workflow_inst_org_idx').on(table.orgId),
+  documentIdx: index('approval_workflow_inst_doc_idx').on(table.documentId),
+  statusIdx: index('approval_workflow_inst_status_idx').on(table.status),
+}));
+
+export const approvalWorkflowStep = pgTable('approval_workflow_step', {
+  id: serial('id').primaryKey(),
+  workflowInstanceId: integer('workflow_instance_id').notNull().references(() => approvalWorkflowInstance.id, { onDelete: 'cascade' }),
+  stepNumber: integer('step_number').notNull(),
+  stepName: text('step_name').notNull(),
+  assignedTo: text('assigned_to'),
+  assignedRole: text('assigned_role'),
+  assignedAt: timestamp('assigned_at'),
+  dueDate: timestamp('due_date'),
+  delegatedFrom: text('delegated_from'),
+  delegatedAt: timestamp('delegated_at'),
+  delegationReason: text('delegation_reason'),
+  status: text('status').default('pending'),
+  actionTaken: text('action_taken'),
+  actionBy: text('action_by'),
+  actionAt: timestamp('action_at'),
+  comments: text('comments'),
+  signatureRequired: integer('signature_required').default(0),
+  signatureCaptured: integer('signature_captured').default(0),
+  signatureData: text('signature_data'),
+  reminderSentAt: timestamp('reminder_sent_at'),
+  escalationSentAt: timestamp('escalation_sent_at'),
+}, (table) => ({
+  instanceIdx: index('approval_workflow_step_instance_idx').on(table.workflowInstanceId),
+  assignedIdx: index('approval_workflow_step_assigned_idx').on(table.assignedTo),
+  statusIdx: index('approval_workflow_step_status_idx').on(table.status),
+}));
+
+export const documentCheckout = pgTable('document_checkout', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  checkedOutBy: text('checked_out_by').notNull(),
+  checkedOutAt: timestamp('checked_out_at').defaultNow(),
+  expectedCheckin: timestamp('expected_checkin'),
+  purpose: text('purpose'),
+  status: text('status').default('active'),
+  checkedInAt: timestamp('checked_in_at'),
+  checkedInBy: text('checked_in_by'),
+  forceReleasedBy: text('force_released_by'),
+  forceReleasedAt: timestamp('force_released_at'),
+  forceReleaseReason: text('force_release_reason'),
+}, (table) => ({
+  orgIdx: index('document_checkout_org_idx').on(table.orgId),
+  documentIdx: index('document_checkout_document_idx').on(table.documentId),
+  statusIdx: index('document_checkout_status_idx').on(table.status),
+}));
+
+// ==========================================
+// Document Control Phase 3: Distribution, Audit, Comments, External, Links
+// ==========================================
+
+export const distributionList = pgTable('distribution_list', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  code: text('code').notNull(),
+  description: text('description'),
+  recipients: text('recipients').notNull().default('[]'),
+  requireAcknowledgment: integer('require_acknowledgment').default(1),
+  acknowledgmentDueDays: integer('acknowledgment_due_days').default(7),
+  sendEmailNotification: integer('send_email_notification').default(1),
+  status: text('status').default('active'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('distribution_list_org_idx').on(table.orgId),
+  orgCodeIdx: uniqueIndex('distribution_list_org_code_idx').on(table.orgId, table.code),
+}));
+
+export const documentDistributionRecord = pgTable('document_distribution_record', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').notNull().references(() => documentRevision.id, { onDelete: 'cascade' }),
+  distributionListId: integer('distribution_list_id').references(() => distributionList.id),
+  recipientUserId: text('recipient_user_id'),
+  recipientName: text('recipient_name').notNull(),
+  recipientEmail: text('recipient_email'),
+  recipientRole: text('recipient_role'),
+  recipientDepartment: text('recipient_department'),
+  distributedAt: timestamp('distributed_at').defaultNow(),
+  distributedBy: text('distributed_by').notNull(),
+  distributionMethod: text('distribution_method').default('electronic'),
+  copyNumber: integer('copy_number'),
+  watermarkApplied: integer('watermark_applied').default(1),
+  watermarkText: text('watermark_text'),
+  watermarkedFileId: integer('watermarked_file_id').references(() => documentFile.id),
+  requiresAcknowledgment: integer('requires_acknowledgment').default(1),
+  acknowledgmentDueDate: timestamp('acknowledgment_due_date'),
+  acknowledgedAt: timestamp('acknowledged_at'),
+  acknowledgmentMethod: text('acknowledgment_method'),
+  acknowledgmentIp: text('acknowledgment_ip'),
+  acknowledgmentComment: text('acknowledgment_comment'),
+  recalledAt: timestamp('recalled_at'),
+  recalledBy: text('recalled_by'),
+  recallReason: text('recall_reason'),
+  recallAcknowledgedAt: timestamp('recall_acknowledged_at'),
+  status: text('status').default('distributed'),
+}, (table) => ({
+  orgIdx: index('document_distribution_record_org_idx').on(table.orgId),
+}));
+
+export const documentAccessLog = pgTable('document_access_log', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').references(() => documentRevision.id, { onDelete: 'cascade' }),
+  fileId: integer('file_id').references(() => documentFile.id),
+  userId: text('user_id').notNull(),
+  userName: text('user_name'),
+  userRole: text('user_role'),
+  userDepartment: text('user_department'),
+  action: text('action').notNull(),
+  actionDetails: text('action_details'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  sessionId: text('session_id'),
+  timestamp: timestamp('timestamp').defaultNow(),
+  durationMs: integer('duration_ms'),
+  logHash: text('log_hash'),
+}, (table) => ({
+  orgIdx: index('document_access_log_org_idx').on(table.orgId),
+}));
+
+export const documentPrintLog = pgTable('document_print_log', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').notNull().references(() => documentRevision.id, { onDelete: 'cascade' }),
+  fileId: integer('file_id').notNull().references(() => documentFile.id),
+  printedBy: text('printed_by').notNull(),
+  printedAt: timestamp('printed_at').defaultNow(),
+  printCopies: integer('print_copies').default(1),
+  printPurpose: text('print_purpose'),
+  watermarkApplied: integer('watermark_applied').default(1),
+  watermarkText: text('watermark_text'),
+  copyNumbers: text('copy_numbers'),
+  printerName: text('printer_name'),
+  ipAddress: text('ip_address'),
+  controlledCopies: text('controlled_copies').default('[]'),
+  copiesRecalled: integer('copies_recalled').default(0),
+  allRecalled: integer('all_recalled').default(0),
+  recallVerifiedAt: timestamp('recall_verified_at'),
+  recallVerifiedBy: text('recall_verified_by'),
+}, (table) => ({
+  orgIdx: index('document_print_log_org_idx').on(table.orgId),
+}));
+
+export const documentComment = pgTable('document_comment', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  revisionId: uuid('revision_id').references(() => documentRevision.id, { onDelete: 'cascade' }),
+  pageNumber: integer('page_number'),
+  positionX: real('position_x'),
+  positionY: real('position_y'),
+  highlightedText: text('highlighted_text'),
+  commentType: text('comment_type').default('general'),
+  content: text('content').notNull(),
+  parentCommentId: integer('parent_comment_id').references((): any => documentComment.id),
+  threadResolved: integer('thread_resolved').default(0),
+  resolvedBy: text('resolved_by'),
+  resolvedAt: timestamp('resolved_at'),
+  mentions: text('mentions').default('[]'),
+  workflowStepId: integer('workflow_step_id').references(() => approvalWorkflowStep.id),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at'),
+  deletedAt: timestamp('deleted_at'),
+}, (table) => ({
+  orgIdx: index('document_comment_org_idx').on(table.orgId),
+}));
+
+export const externalDocument = pgTable('external_document', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  docNumber: text('doc_number').notNull(),
+  title: text('title').notNull(),
+  source: text('source').notNull(),
+  externalUrl: text('external_url'),
+  issuingBody: text('issuing_body'),
+  currentVersion: text('current_version'),
+  versionDate: timestamp('version_date'),
+  previousVersion: text('previous_version'),
+  localFileId: integer('local_file_id').references(() => documentFile.id),
+  subscriptionActive: integer('subscription_active').default(0),
+  subscriptionContact: text('subscription_contact'),
+  lastCheckedAt: timestamp('last_checked_at'),
+  updateAvailable: integer('update_available').default(0),
+  updateNotes: text('update_notes'),
+  affectedInternalDocs: text('affected_internal_docs').default('[]'),
+  category: text('category'),
+  applicability: text('applicability'),
+  status: text('status').default('active'),
+  notes: text('notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at'),
+}, (table) => ({
+  orgIdx: index('external_document_org_idx').on(table.orgId),
+  orgDocNumberIdx: uniqueIndex('external_document_org_doc_number_idx').on(table.orgId, table.docNumber),
+}));
+
+export const documentLinkEnhanced = pgTable('document_link_enhanced', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  sourceDocumentId: uuid('source_document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
+  sourceRevisionId: uuid('source_revision_id').references(() => documentRevision.id),
+  targetType: text('target_type').notNull(),
+  targetId: integer('target_id').notNull(),
+  targetRevision: text('target_revision'),
+  targetTitle: text('target_title'),
+  linkType: text('link_type').notNull(),
+  linkDescription: text('link_description'),
+  bidirectional: integer('bidirectional').default(0),
+  reverseLinkId: integer('reverse_link_id').references((): any => documentLinkEnhanced.id),
+  linkVerifiedAt: timestamp('link_verified_at'),
+  linkVerifiedBy: text('link_verified_by'),
+  linkBroken: integer('link_broken').default(0),
+  linkBrokenReason: text('link_broken_reason'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('document_link_enhanced_org_idx').on(table.orgId),
+}));
+
 // Document Control Relations
 export const documentRelations = relations(document, ({ many }) => ({
   revisions: many(documentRevision),
   distributions: many(documentDistribution),
   reviews: many(documentReview),
   links: many(documentLink),
+  files: many(documentFile),
+  checkouts: many(documentCheckout),
+  workflowInstances: many(approvalWorkflowInstance),
+  distributionRecords: many(documentDistributionRecord),
+  accessLogs: many(documentAccessLog),
+  printLogs: many(documentPrintLog),
+  comments: many(documentComment),
+  linksFrom: many(documentLinkEnhanced),
 }));
 
-export const documentRevisionRelations = relations(documentRevision, ({ one }) => ({
+export const documentRevisionRelations = relations(documentRevision, ({ one, many }) => ({
   document: one(document, {
     fields: [documentRevision.documentId],
     references: [document.id],
   }),
+  files: many(documentFile),
+  workflowInstances: many(approvalWorkflowInstance),
+  distributionRecords: many(documentDistributionRecord),
+  accessLogs: many(documentAccessLog),
+  printLogs: many(documentPrintLog),
+  comments: many(documentComment),
 }));
 
 export const documentDistributionRelations = relations(documentDistribution, ({ one }) => ({
@@ -1285,6 +1627,162 @@ export const documentLinkRelations = relations(documentLink, ({ one }) => ({
   sourceDoc: one(document, {
     fields: [documentLink.sourceDocId],
     references: [document.id],
+  }),
+}));
+
+// Document Control Phase 2 Relations
+export const documentFileRelations = relations(documentFile, ({ one }) => ({
+  document: one(document, {
+    fields: [documentFile.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [documentFile.revisionId],
+    references: [documentRevision.id],
+  }),
+}));
+
+export const documentTemplateRelations = relations(documentTemplate, ({ one }) => ({
+  templateFile: one(documentFile, {
+    fields: [documentTemplate.templateFileId],
+    references: [documentFile.id],
+  }),
+  defaultWorkflow: one(approvalWorkflowDefinition, {
+    fields: [documentTemplate.defaultWorkflowId],
+    references: [approvalWorkflowDefinition.id],
+  }),
+}));
+
+export const approvalWorkflowDefinitionRelations = relations(approvalWorkflowDefinition, ({ many }) => ({
+  instances: many(approvalWorkflowInstance),
+  templates: many(documentTemplate),
+}));
+
+export const approvalWorkflowInstanceRelations = relations(approvalWorkflowInstance, ({ one, many }) => ({
+  definition: one(approvalWorkflowDefinition, {
+    fields: [approvalWorkflowInstance.workflowDefinitionId],
+    references: [approvalWorkflowDefinition.id],
+  }),
+  document: one(document, {
+    fields: [approvalWorkflowInstance.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [approvalWorkflowInstance.revisionId],
+    references: [documentRevision.id],
+  }),
+  steps: many(approvalWorkflowStep),
+}));
+
+export const approvalWorkflowStepRelations = relations(approvalWorkflowStep, ({ one }) => ({
+  workflowInstance: one(approvalWorkflowInstance, {
+    fields: [approvalWorkflowStep.workflowInstanceId],
+    references: [approvalWorkflowInstance.id],
+  }),
+}));
+
+export const documentCheckoutRelations = relations(documentCheckout, ({ one }) => ({
+  document: one(document, {
+    fields: [documentCheckout.documentId],
+    references: [document.id],
+  }),
+}));
+
+// Document Control Phase 3 Relations
+export const distributionListRelations = relations(distributionList, ({ many }) => ({
+  distributionRecords: many(documentDistributionRecord),
+}));
+
+export const documentDistributionRecordRelations = relations(documentDistributionRecord, ({ one }) => ({
+  document: one(document, {
+    fields: [documentDistributionRecord.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [documentDistributionRecord.revisionId],
+    references: [documentRevision.id],
+  }),
+  distributionList: one(distributionList, {
+    fields: [documentDistributionRecord.distributionListId],
+    references: [distributionList.id],
+  }),
+  watermarkedFile: one(documentFile, {
+    fields: [documentDistributionRecord.watermarkedFileId],
+    references: [documentFile.id],
+  }),
+}));
+
+export const documentAccessLogRelations = relations(documentAccessLog, ({ one }) => ({
+  document: one(document, {
+    fields: [documentAccessLog.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [documentAccessLog.revisionId],
+    references: [documentRevision.id],
+  }),
+  file: one(documentFile, {
+    fields: [documentAccessLog.fileId],
+    references: [documentFile.id],
+  }),
+}));
+
+export const documentPrintLogRelations = relations(documentPrintLog, ({ one }) => ({
+  document: one(document, {
+    fields: [documentPrintLog.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [documentPrintLog.revisionId],
+    references: [documentRevision.id],
+  }),
+  file: one(documentFile, {
+    fields: [documentPrintLog.fileId],
+    references: [documentFile.id],
+  }),
+}));
+
+export const documentCommentRelations = relations(documentComment, ({ one, many }) => ({
+  document: one(document, {
+    fields: [documentComment.documentId],
+    references: [document.id],
+  }),
+  revision: one(documentRevision, {
+    fields: [documentComment.revisionId],
+    references: [documentRevision.id],
+  }),
+  parentComment: one(documentComment, {
+    fields: [documentComment.parentCommentId],
+    references: [documentComment.id],
+    relationName: 'commentThread',
+  }),
+  replies: many(documentComment, { relationName: 'commentThread' }),
+  workflowStep: one(approvalWorkflowStep, {
+    fields: [documentComment.workflowStepId],
+    references: [approvalWorkflowStep.id],
+  }),
+}));
+
+export const externalDocumentRelations = relations(externalDocument, ({ one }) => ({
+  localFile: one(documentFile, {
+    fields: [externalDocument.localFileId],
+    references: [documentFile.id],
+  }),
+}));
+
+export const documentLinkEnhancedRelations = relations(documentLinkEnhanced, ({ one }) => ({
+  sourceDocument: one(document, {
+    fields: [documentLinkEnhanced.sourceDocumentId],
+    references: [document.id],
+  }),
+  sourceRevision: one(documentRevision, {
+    fields: [documentLinkEnhanced.sourceRevisionId],
+    references: [documentRevision.id],
+  }),
+  reverseLink: one(documentLinkEnhanced, {
+    fields: [documentLinkEnhanced.reverseLinkId],
+    references: [documentLinkEnhanced.id],
+    relationName: 'reverseLinkPair',
   }),
 }));
 
@@ -1332,6 +1830,21 @@ export const insertDocumentRevisionSchema = createInsertSchema(documentRevision)
 export const insertDocumentDistributionSchema = createInsertSchema(documentDistribution).omit({ id: true, distributedAt: true });
 export const insertDocumentReviewSchema = createInsertSchema(documentReview).omit({ id: true, createdAt: true });
 export const insertDocumentLinkSchema = createInsertSchema(documentLink).omit({ id: true, createdAt: true });
+// Document Control Phase 2
+export const insertDocumentFileSchema = createInsertSchema(documentFile).omit({ id: true, uploadedAt: true });
+export const insertDocumentTemplateSchema = createInsertSchema(documentTemplate).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertApprovalWorkflowDefinitionSchema = createInsertSchema(approvalWorkflowDefinition).omit({ id: true, createdAt: true });
+export const insertApprovalWorkflowInstanceSchema = createInsertSchema(approvalWorkflowInstance).omit({ id: true, startedAt: true });
+export const insertApprovalWorkflowStepSchema = createInsertSchema(approvalWorkflowStep).omit({ id: true });
+export const insertDocumentCheckoutSchema = createInsertSchema(documentCheckout).omit({ id: true, checkedOutAt: true });
+// Document Control Phase 3
+export const insertDistributionListSchema = createInsertSchema(distributionList).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDocumentDistributionRecordSchema = createInsertSchema(documentDistributionRecord).omit({ id: true, distributedAt: true });
+export const insertDocumentAccessLogSchema = createInsertSchema(documentAccessLog).omit({ id: true, timestamp: true });
+export const insertDocumentPrintLogSchema = createInsertSchema(documentPrintLog).omit({ id: true, printedAt: true });
+export const insertDocumentCommentSchema = createInsertSchema(documentComment).omit({ id: true, createdAt: true });
+export const insertExternalDocumentSchema = createInsertSchema(externalDocument).omit({ id: true, createdAt: true });
+export const insertDocumentLinkEnhancedSchema = createInsertSchema(documentLinkEnhanced).omit({ id: true, createdAt: true });
 
 // ==========================================
 // Types
@@ -1415,6 +1928,34 @@ export type DocumentReview = typeof documentReview.$inferSelect;
 export type InsertDocumentReview = z.infer<typeof insertDocumentReviewSchema>;
 export type DocumentLink = typeof documentLink.$inferSelect;
 export type InsertDocumentLink = z.infer<typeof insertDocumentLinkSchema>;
+// Document Control Phase 2
+export type DocumentFile = typeof documentFile.$inferSelect;
+export type InsertDocumentFile = z.infer<typeof insertDocumentFileSchema>;
+export type DocumentTemplate = typeof documentTemplate.$inferSelect;
+export type InsertDocumentTemplate = z.infer<typeof insertDocumentTemplateSchema>;
+export type ApprovalWorkflowDefinition = typeof approvalWorkflowDefinition.$inferSelect;
+export type InsertApprovalWorkflowDefinition = z.infer<typeof insertApprovalWorkflowDefinitionSchema>;
+export type ApprovalWorkflowInstance = typeof approvalWorkflowInstance.$inferSelect;
+export type InsertApprovalWorkflowInstance = z.infer<typeof insertApprovalWorkflowInstanceSchema>;
+export type ApprovalWorkflowStep = typeof approvalWorkflowStep.$inferSelect;
+export type InsertApprovalWorkflowStep = z.infer<typeof insertApprovalWorkflowStepSchema>;
+export type DocumentCheckout = typeof documentCheckout.$inferSelect;
+export type InsertDocumentCheckout = z.infer<typeof insertDocumentCheckoutSchema>;
+// Document Control Phase 3
+export type DistributionList = typeof distributionList.$inferSelect;
+export type InsertDistributionList = z.infer<typeof insertDistributionListSchema>;
+export type DocumentDistributionRecord = typeof documentDistributionRecord.$inferSelect;
+export type InsertDocumentDistributionRecord = z.infer<typeof insertDocumentDistributionRecordSchema>;
+export type DocumentAccessLog = typeof documentAccessLog.$inferSelect;
+export type InsertDocumentAccessLog = z.infer<typeof insertDocumentAccessLogSchema>;
+export type DocumentPrintLog = typeof documentPrintLog.$inferSelect;
+export type InsertDocumentPrintLog = z.infer<typeof insertDocumentPrintLogSchema>;
+export type DocumentComment = typeof documentComment.$inferSelect;
+export type InsertDocumentComment = z.infer<typeof insertDocumentCommentSchema>;
+export type ExternalDocument = typeof externalDocument.$inferSelect;
+export type InsertExternalDocument = z.infer<typeof insertExternalDocumentSchema>;
+export type DocumentLinkEnhanced = typeof documentLinkEnhanced.$inferSelect;
+export type InsertDocumentLinkEnhanced = z.infer<typeof insertDocumentLinkEnhancedSchema>;
 
 // ==========================================
 // Enum Types

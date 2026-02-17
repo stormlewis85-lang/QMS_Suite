@@ -37,6 +37,14 @@ import Actions from "@/pages/Actions";
 import Notifications from "@/pages/Notifications";
 import Documents from "@/pages/Documents";
 import DocumentDetail from "@/pages/DocumentDetail";
+import Approvals from "@/pages/Approvals";
+import DocumentReviews from "@/pages/DocumentReviews";
+import DocumentCompare from "@/pages/DocumentCompare";
+import WorkflowBuilder from "@/pages/WorkflowBuilder";
+import DistributionLists from "@/pages/DistributionLists";
+import DocumentTemplates from "@/pages/DocumentTemplates";
+import AuditLog from "@/pages/AuditLog";
+import ExternalDocuments from "@/pages/ExternalDocuments";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -160,8 +168,32 @@ function AppRoutes() {
       <Route path="/documents">
         <ProtectedPage><Documents /></ProtectedPage>
       </Route>
+      <Route path="/documents/:id/compare">
+        <ProtectedPage><DocumentCompare /></ProtectedPage>
+      </Route>
       <Route path="/documents/:id">
         <ProtectedPage><DocumentDetail /></ProtectedPage>
+      </Route>
+      <Route path="/approvals">
+        <ProtectedPage><Approvals /></ProtectedPage>
+      </Route>
+      <Route path="/document-reviews">
+        <ProtectedPage><DocumentReviews /></ProtectedPage>
+      </Route>
+      <Route path="/external-documents">
+        <ProtectedPage><ExternalDocuments /></ProtectedPage>
+      </Route>
+      <Route path="/admin/workflows">
+        <ProtectedPage><WorkflowBuilder /></ProtectedPage>
+      </Route>
+      <Route path="/admin/document-templates">
+        <ProtectedPage><DocumentTemplates /></ProtectedPage>
+      </Route>
+      <Route path="/admin/distribution-lists">
+        <ProtectedPage><DistributionLists /></ProtectedPage>
+      </Route>
+      <Route path="/admin/audit-log">
+        <ProtectedPage><AuditLog /></ProtectedPage>
       </Route>
       <Route path="/notifications">
         <ProtectedPage><Notifications /></ProtectedPage>
