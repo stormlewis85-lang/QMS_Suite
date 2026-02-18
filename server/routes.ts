@@ -4124,7 +4124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // --- 1. GET /api/documents/metrics (must be before :id route) ---
 
-  app.get("/api/documents/metrics", async (req, res) => {
+  app.get("/api/documents/metrics", requireAuth, async (req, res) => {
     try {
       const metrics = await storage.getDocumentMetrics();
       res.json(metrics);
@@ -4629,7 +4629,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // --- 24. POST /api/document-links ---
 
-  app.post("/api/document-links", async (req, res) => {
+  app.post("/api/document-links", requireAuth, async (req, res) => {
     try {
       const validatedData = insertDocumentLinkSchema.parse(req.body);
       const newLink = await storage.createDocumentLink(validatedData);
@@ -4646,7 +4646,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // --- 25. DELETE /api/document-links/:id ---
 
-  app.delete("/api/document-links/:id", async (req, res) => {
+  app.delete("/api/document-links/:id", requireAuth, async (req, res) => {
     try {
       const success = await storage.deleteDocumentLink(req.params.id);
       if (!success) {

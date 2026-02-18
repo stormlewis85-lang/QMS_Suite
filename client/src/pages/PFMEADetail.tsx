@@ -85,6 +85,8 @@ import {
   Download,
   Lock,
   Printer,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import PrintHeader from "@/components/PrintHeader";
@@ -520,6 +522,17 @@ export default function PFMEADetail() {
   // Fetch action items for this PFMEA
   const { data: allActionItems } = useQuery<any[]>({
     queryKey: [`/api/pfmeas/${id}/action-items`],
+    enabled: !!id,
+  });
+
+  // Fetch related documents linked to this PFMEA
+  const { data: relatedDocuments = [] } = useQuery<any[]>({
+    queryKey: [`/api/links/to/pfmea/${id}`],
+    queryFn: async () => {
+      const res = await fetch(`/api/links/to/pfmea/${id}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!id,
   });
 
@@ -1279,7 +1292,37 @@ export default function PFMEADetail() {
               queryClient.invalidateQueries({ queryKey: ["/api/pfmeas", id, "details"] });
             }}
           />
-          
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                Related Documents ({relatedDocuments.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {relatedDocuments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No linked documents</p>
+              ) : (
+                <div className="space-y-2">
+                  {relatedDocuments.map((link: any) => (
+                    <Link key={link.id} href={`/documents/${link.sourceDocumentId}`}>
+                      <div className="flex items-center justify-between p-2 rounded-md border hover:bg-accent cursor-pointer">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{link.targetTitle || "Untitled"}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">{link.linkType}</Badge>
+                          </div>
+                        </div>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0 ml-2" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Quick Actions</CardTitle>

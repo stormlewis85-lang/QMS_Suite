@@ -2,10 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
-  LayoutDashboard, 
-  Package, 
-  FileText, 
+import {
+  LayoutDashboard,
+  Package,
+  FileText,
   ClipboardList,
   AlertTriangle,
   Clock,
@@ -13,7 +13,8 @@ import {
   ArrowRight,
   Target,
   TrendingUp,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  FolderOpen,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { 
@@ -100,7 +101,24 @@ export default function Dashboard() {
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
-  
+
+  const { data: dcMetrics } = useQuery<{
+    total: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    overdueReviews: number;
+    pendingApprovals: number;
+    recentChanges: number;
+  }>({
+    queryKey: ['/api/documents/metrics'],
+    queryFn: async () => {
+      const res = await fetch('/api/documents/metrics', { credentials: 'include' });
+      if (!res.ok) return { total: 0, byStatus: {}, byType: {}, overdueReviews: 0, pendingApprovals: 0, recentChanges: 0 };
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -332,7 +350,7 @@ export default function Dashboard() {
         </Card>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -414,7 +432,64 @@ export default function Dashboard() {
             </Link>
           </CardContent>
         </Card>
-        
+
+        <Card className={dcMetrics && (dcMetrics.pendingApprovals > 0 || dcMetrics.overdueReviews > 0) ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20' : ''}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FolderOpen className="h-5 w-5" />
+              Document Control
+            </CardTitle>
+            <CardDescription>{dcMetrics?.total || 0} total</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-gray-400"></span>
+                  Draft
+                </span>
+                <span>{dcMetrics?.byStatus?.draft || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
+                  In Review
+                </span>
+                <span>{dcMetrics?.byStatus?.review || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                  Effective
+                </span>
+                <span>{dcMetrics?.byStatus?.effective || 0}</span>
+              </div>
+            </div>
+            {dcMetrics && (dcMetrics.pendingApprovals > 0 || dcMetrics.overdueReviews > 0) && (
+              <div className="flex items-center gap-2 pt-1">
+                {dcMetrics.pendingApprovals > 0 && (
+                  <Badge variant="outline" className="bg-yellow-100 text-yellow-800 text-xs">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {dcMetrics.pendingApprovals} pending
+                  </Badge>
+                )}
+                {dcMetrics.overdueReviews > 0 && (
+                  <Badge variant="destructive" className="text-xs">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    {dcMetrics.overdueReviews} overdue
+                  </Badge>
+                )}
+              </div>
+            )}
+            <Link href="/documents">
+              <Button variant="outline" size="sm" className="w-full mt-2">
+                View All Documents
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">

@@ -87,6 +87,8 @@ import {
   ClipboardCheck,
   Lock,
   Printer,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import PrintHeader from "@/components/PrintHeader";
@@ -478,6 +480,17 @@ export default function ControlPlanDetail() {
       const response = await fetch(`/api/control-plans/${id}/details`);
       if (!response.ok) throw new Error("Failed to fetch Control Plan");
       return response.json();
+    },
+    enabled: !!id,
+  });
+
+  // Fetch related documents linked to this Control Plan
+  const { data: relatedDocuments = [] } = useQuery<any[]>({
+    queryKey: [`/api/links/to/control_plan/${id}`],
+    queryFn: async () => {
+      const res = await fetch(`/api/links/to/control_plan/${id}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
     },
     enabled: !!id,
   });
@@ -1173,7 +1186,37 @@ export default function ControlPlanDetail() {
               queryClient.invalidateQueries({ queryKey: ["/api/control-plans", id, "details"] });
             }}
           />
-          
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                Related Documents ({relatedDocuments.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {relatedDocuments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No linked documents</p>
+              ) : (
+                <div className="space-y-2">
+                  {relatedDocuments.map((link: any) => (
+                    <Link key={link.id} href={`/documents/${link.sourceDocumentId}`}>
+                      <div className="flex items-center justify-between p-2 rounded-md border hover:bg-accent cursor-pointer">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{link.targetTitle || "Untitled"}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">{link.linkType}</Badge>
+                          </div>
+                        </div>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0 ml-2" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Quick Actions</CardTitle>
@@ -1183,9 +1226,9 @@ export default function ControlPlanDetail() {
                 <FileText className="h-4 w-4 mr-2" />
                 Export to PDF
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="w-full justify-start"
                 onClick={() => validateMutation.mutate()}
                 disabled={validateMutation.isPending || isReadOnly}
