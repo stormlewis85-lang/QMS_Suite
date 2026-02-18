@@ -572,14 +572,14 @@ export default function DocumentTemplates() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Default Workflow</label>
                 <Select
-                  value={defaultWorkflowId}
-                  onValueChange={setDefaultWorkflowId}
+                  value={defaultWorkflowId || "__none__"}
+                  onValueChange={(v) => setDefaultWorkflowId(v === "__none__" ? "" : v)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="__none__">None</SelectItem>
                     {workflows.map((w) => (
                       <SelectItem key={w.id} value={String(w.id)}>
                         {w.name}
