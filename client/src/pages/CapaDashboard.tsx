@@ -38,7 +38,7 @@ function daysAgo(dateStr: string | null | undefined) {
 }
 
 export default function CapaDashboard() {
-  const { data: capas, isLoading } = useQuery<any[]>({
+  const { data: capasResponse, isLoading } = useQuery<any>({
     queryKey: ["/api/capas"],
   });
 
@@ -62,7 +62,7 @@ export default function CapaDashboard() {
     );
   }
 
-  const allCapas = capas || [];
+  const allCapas = Array.isArray(capasResponse) ? capasResponse : (capasResponse?.data || []);
   const openCount = allCapas.filter((c: any) => !["closed", "cancelled"].includes(c.status)).length;
   const overdueCapas = overdue || [];
   const closedThisMonth = allCapas.filter((c: any) => {

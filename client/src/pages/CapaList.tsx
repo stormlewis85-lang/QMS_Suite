@@ -55,7 +55,7 @@ export default function CapaList() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
-  const { data: capas, isLoading } = useQuery<any[]>({
+  const { data: capasResponse, isLoading } = useQuery<any>({
     queryKey: ["/api/capas"],
   });
 
@@ -67,7 +67,7 @@ export default function CapaList() {
     );
   }
 
-  const allCapas = capas || [];
+  const allCapas = Array.isArray(capasResponse) ? capasResponse : (capasResponse?.data || []);
 
   // Apply filters
   const filtered = allCapas.filter((c: any) => {
