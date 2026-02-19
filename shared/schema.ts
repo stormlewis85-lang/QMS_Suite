@@ -1787,6 +1787,1004 @@ export const documentLinkEnhancedRelations = relations(documentLinkEnhanced, ({ 
 }));
 
 // ==========================================
+// CAPA/8D Module: Core Tables
+// ==========================================
+
+export const capa = pgTable('capa', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaNumber: text('capa_number').notNull(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  type: text('type').notNull(), // corrective / preventive / both
+  priority: text('priority').notNull().default('medium'), // critical / high / medium / low
+  status: text('status').notNull().default('d0_awareness'),
+  currentDiscipline: text('current_discipline').notNull().default('D0'),
+  sourceType: text('source_type').notNull(), // customer_complaint / internal_ncr / audit_finding / supplier_issue / pfmea_risk / process_deviation / other
+  sourceId: integer('source_id'),
+  category: text('category'), // quality / safety / delivery / cost / environmental
+  subcategory: text('subcategory'),
+  productLine: text('product_line'),
+  partNumbers: text('part_numbers').default('[]'),
+  processIds: text('process_ids').default('[]'),
+  plantLocation: text('plant_location'),
+  customerName: text('customer_name'),
+  customerPartNumber: text('customer_part_number'),
+  dateOccurred: timestamp('date_occurred'),
+  dateDiscovered: timestamp('date_discovered').defaultNow(),
+  dateReported: timestamp('date_reported'),
+  targetClosureDate: timestamp('target_closure_date'),
+  actualClosureDate: timestamp('actual_closure_date'),
+  recurrenceCheck: integer('recurrence_check').default(0),
+  recurrenceCheckDate: timestamp('recurrence_check_date'),
+  recurrenceResult: text('recurrence_result'), // no_recurrence / recurred / pending
+  effectivenessVerified: integer('effectiveness_verified').default(0),
+  effectivenessDate: timestamp('effectiveness_date'),
+  effectivenessResult: text('effectiveness_result'), // effective / not_effective / partially_effective
+  costOfQuality: real('cost_of_quality'),
+  costBreakdown: text('cost_breakdown').default('{}'),
+  riskLevel: text('risk_level'), // high / medium / low
+  approvalStatus: text('approval_status').default('draft'), // draft / pending_review / approved / rejected
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at'),
+  closedBy: text('closed_by'),
+  closedAt: timestamp('closed_at'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  deletedAt: timestamp('deleted_at'),
+}, (table) => ({
+  orgIdx: index('capa_org_idx').on(table.orgId),
+  capaNumberIdx: uniqueIndex('capa_org_number_idx').on(table.orgId, table.capaNumber),
+  statusIdx: index('capa_status_idx').on(table.status),
+  priorityIdx: index('capa_priority_idx').on(table.priority),
+  sourceTypeIdx: index('capa_main_source_type_idx').on(table.sourceType),
+  createdAtIdx: index('capa_created_at_idx').on(table.createdAt),
+}));
+
+export const capaTeamMember = pgTable('capa_team_member', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  userName: text('user_name').notNull(),
+  userEmail: text('user_email'),
+  role: text('role').notNull(), // champion / leader / quality_engineer / process_engineer / manufacturing_engineer / supplier_quality / design_engineer / production_supervisor / operator / maintenance / logistics / customer_contact / subject_matter_expert / observer
+  department: text('department'),
+  expertise: text('expertise'),
+  responsibilities: text('responsibilities'),
+  timeCommitment: text('time_commitment'),
+  isChampion: integer('is_champion').default(0),
+  isLeader: integer('is_leader').default(0),
+  joinedAt: timestamp('joined_at').defaultNow(),
+  leftAt: timestamp('left_at'),
+  leftReason: text('left_reason'),
+  notificationsEnabled: integer('notifications_enabled').default(1),
+  lastActivityAt: timestamp('last_activity_at'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  capaIdx: index('capa_team_member_capa_idx').on(table.capaId),
+  userIdx: index('capa_team_member_user_idx').on(table.userId),
+  roleIdx: index('capa_team_member_role_idx').on(table.role),
+  uniqueMember: uniqueIndex('capa_team_member_unique_idx').on(table.capaId, table.userId),
+}));
+
+export const capaSource = pgTable('capa_source', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  sourceType: text('source_type').notNull(),
+  sourceSystem: text('source_system'), // internal / customer_portal / supplier_portal / qms / erp / manual
+  externalId: text('external_id'),
+  externalUrl: text('external_url'),
+  customerComplaintNumber: text('customer_complaint_number'),
+  ncrNumber: text('ncr_number'),
+  auditId: text('audit_id'),
+  auditType: text('audit_type'), // internal / external / customer / certification
+  auditFindingCategory: text('audit_finding_category'), // major / minor / observation / opportunity
+  supplierName: text('supplier_name'),
+  supplierCode: text('supplier_code'),
+  pfmeaId: integer('pfmea_id'),
+  pfmeaRowId: integer('pfmea_row_id'),
+  controlPlanId: integer('control_plan_id'),
+  processDeviationId: text('process_deviation_id'),
+  originalReportDate: timestamp('original_report_date'),
+  originalReporter: text('original_reporter'),
+  originalReporterContact: text('original_reporter_contact'),
+  quantityAffected: integer('quantity_affected'),
+  lotNumbers: text('lot_numbers').default('[]'),
+  serialNumbers: text('serial_numbers').default('[]'),
+  dateCodeRange: text('date_code_range'),
+  shipmentInfo: text('shipment_info').default('{}'),
+  receivedCondition: text('received_condition'),
+  initialAssessment: text('initial_assessment'),
+  evidenceCollected: text('evidence_collected').default('[]'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: index('capa_source_capa_idx').on(table.capaId),
+  sourceTypeIdx: index('capa_source_type_idx').on(table.sourceType),
+  externalIdIdx: index('capa_source_external_id_idx').on(table.externalId),
+}));
+
+export const capaAttachment = pgTable('capa_attachment', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  discipline: text('discipline'), // D0-D8 or general
+  attachmentType: text('attachment_type').notNull(), // photo / video / document / report / drawing / data / email / presentation / form / certificate / other
+  title: text('title').notNull(),
+  description: text('description'),
+  fileName: text('file_name').notNull(),
+  originalName: text('original_name').notNull(),
+  fileType: text('file_type').notNull(),
+  mimeType: text('mime_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  storagePath: text('storage_path').notNull(),
+  storageProvider: text('storage_provider').default('local'),
+  checksumSha256: text('checksum_sha256').notNull(),
+  thumbnailPath: text('thumbnail_path'),
+  isEvidence: integer('is_evidence').default(0),
+  evidenceDescription: text('evidence_description'),
+  evidenceCollectedAt: timestamp('evidence_collected_at'),
+  evidenceCollectedBy: text('evidence_collected_by'),
+  evidenceChainOfCustody: text('evidence_chain_of_custody').default('[]'),
+  linkedDocumentId: integer('linked_document_id'),
+  uploadedBy: text('uploaded_by').notNull(),
+  uploadedAt: timestamp('uploaded_at').defaultNow(),
+  deletedAt: timestamp('deleted_at'),
+  deletedBy: text('deleted_by'),
+  deletionReason: text('deletion_reason'),
+}, (table) => ({
+  capaIdx: index('capa_attachment_capa_idx').on(table.capaId),
+  disciplineIdx: index('capa_attachment_discipline_idx').on(table.discipline),
+  typeIdx: index('capa_attachment_type_idx').on(table.attachmentType),
+  evidenceIdx: index('capa_attachment_evidence_idx').on(table.isEvidence),
+}));
+
+export const capaRelatedRecord = pgTable('capa_related_record', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  relatedType: text('related_type').notNull(), // capa / document / pfmea / pfmea_row / control_plan / control_plan_row / part / process / equipment / gage / supplier / training_record / audit
+  relatedId: integer('related_id').notNull(),
+  relationshipType: text('relationship_type').notNull(), // caused_by / affected / updated_as_result / evidence_for / similar_issue / duplicate_of / parent / child / reference
+  relationshipDescription: text('relationship_description'),
+  linkedAt: timestamp('linked_at').defaultNow(),
+  linkedBy: text('linked_by').notNull(),
+  verifiedAt: timestamp('verified_at'),
+  verifiedBy: text('verified_by'),
+  notes: text('notes'),
+}, (table) => ({
+  capaIdx: index('capa_related_record_capa_idx').on(table.capaId),
+  relatedIdx: index('capa_related_record_related_idx').on(table.relatedType, table.relatedId),
+  uniqueLink: uniqueIndex('capa_related_record_unique_idx').on(table.capaId, table.relatedType, table.relatedId, table.relationshipType),
+}));
+
+export const capaNumberSequence = pgTable('capa_number_sequence', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  year: integer('year').notNull(),
+  lastNumber: integer('last_number').notNull().default(0),
+  prefix: text('prefix').default('CAPA'),
+  format: text('format').default('{prefix}-{year}-{seq:4}'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  uniqueOrgYear: uniqueIndex('capa_number_sequence_org_year_idx').on(table.orgId, table.year),
+}));
+
+// ==========================================
+// CAPA/8D Module: D0-D3 Discipline Tables
+// ==========================================
+
+export const capaD0Emergency = pgTable('capa_d0_emergency', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  emergencyResponseRequired: integer('emergency_response_required').notNull().default(0),
+  responseType: text('response_type'), // containment / stop_shipment / customer_notification / recall / none
+  immediateThreat: text('immediate_threat'),
+  threatLevel: text('threat_level').default('none'), // critical / high / medium / low / none
+  safetyImpact: integer('safety_impact').default(0),
+  safetyDescription: text('safety_description'),
+  regulatoryImpact: integer('regulatory_impact').default(0),
+  regulatoryBody: text('regulatory_body'),
+  regulatoryDeadline: timestamp('regulatory_deadline'),
+  regulatorySubmittedAt: timestamp('regulatory_submitted_at'),
+  customerNotificationRequired: integer('customer_notification_required').default(0),
+  customerNotifiedAt: timestamp('customer_notified_at'),
+  customerNotifiedBy: text('customer_notified_by'),
+  customerResponse: text('customer_response'),
+  stopShipmentIssued: integer('stop_shipment_issued').default(0),
+  stopShipmentScope: text('stop_shipment_scope'),
+  stopShipmentIssuedAt: timestamp('stop_shipment_issued_at'),
+  stopShipmentIssuedBy: text('stop_shipment_issued_by'),
+  stopShipmentLiftedAt: timestamp('stop_shipment_lifted_at'),
+  stopShipmentLiftedBy: text('stop_shipment_lifted_by'),
+  emergencyActions: text('emergency_actions').default('[]'),
+  quantityAtRisk: integer('quantity_at_risk'),
+  quantityContained: integer('quantity_contained'),
+  containmentLocations: text('containment_locations').default('[]'),
+  initialSortRequired: integer('initial_sort_required').default(0),
+  sortMethod: text('sort_method'),
+  sortResults: text('sort_results').default('{}'),
+  symptomsCaptured: integer('symptoms_captured').default(0),
+  symptomsDescription: text('symptoms_description'),
+  d0CompletedAt: timestamp('d0_completed_at'),
+  d0CompletedBy: text('d0_completed_by'),
+  d0VerifiedAt: timestamp('d0_verified_at'),
+  d0VerifiedBy: text('d0_verified_by'),
+  d0Notes: text('d0_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d0_emergency_capa_idx').on(table.capaId),
+  threatLevelIdx: index('capa_d0_emergency_threat_idx').on(table.threatLevel),
+  safetyIdx: index('capa_d0_emergency_safety_idx').on(table.safetyImpact),
+}));
+
+export const capaD1TeamDetail = pgTable('capa_d1_team_detail', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  teamFormationDate: timestamp('team_formation_date'),
+  teamFormationMethod: text('team_formation_method'), // ad_hoc / standard_roster / cross_functional
+  teamCharterDefined: integer('team_charter_defined').default(0),
+  teamCharterDocument: text('team_charter_document'),
+  teamObjective: text('team_objective'),
+  teamScope: text('team_scope'),
+  teamBoundaries: text('team_boundaries'),
+  communicationPlan: text('communication_plan').default('{}'),
+  meetingSchedule: text('meeting_schedule').default('[]'),
+  escalationPath: text('escalation_path').default('[]'),
+  resourcesRequired: text('resources_required').default('[]'),
+  resourcesApproved: integer('resources_approved').default(0),
+  resourcesApprovedBy: text('resources_approved_by'),
+  resourcesApprovedAt: timestamp('resources_approved_at'),
+  skillsGapIdentified: text('skills_gap_identified').default('[]'),
+  skillsGapAddressed: integer('skills_gap_addressed').default(0),
+  teamEffectivenessScore: integer('team_effectiveness_score'),
+  teamEffectivenessNotes: text('team_effectiveness_notes'),
+  d1CompletedAt: timestamp('d1_completed_at'),
+  d1CompletedBy: text('d1_completed_by'),
+  d1VerifiedAt: timestamp('d1_verified_at'),
+  d1VerifiedBy: text('d1_verified_by'),
+  d1Notes: text('d1_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d1_team_detail_capa_idx').on(table.capaId),
+}));
+
+export const capaD2Problem = pgTable('capa_d2_problem', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  problemStatement: text('problem_statement').notNull(),
+  problemStatementVerified: integer('problem_statement_verified').default(0),
+  problemStatementVerifiedBy: text('problem_statement_verified_by'),
+  objectDescription: text('object_description'),
+  defectDescription: text('defect_description'),
+  isNotWhat: text('is_not_what').default('{}'),
+  whereGeographic: text('where_geographic'),
+  whereOnObject: text('where_on_object'),
+  isNotWhere: text('is_not_where').default('{}'),
+  whenFirstObserved: timestamp('when_first_observed'),
+  whenPattern: text('when_pattern'),
+  whenLifecycle: text('when_lifecycle'),
+  isNotWhen: text('is_not_when').default('{}'),
+  howManyUnits: integer('how_many_units'),
+  howManyDefects: integer('how_many_defects'),
+  howManyTrend: text('how_many_trend'),
+  isNotHowMany: text('is_not_how_many').default('{}'),
+  distinctionsSummary: text('distinctions_summary'),
+  changesSummary: text('changes_summary'),
+  problemExtent: text('problem_extent'),
+  problemImpact: text('problem_impact'),
+  fiveWsComplete: integer('five_ws_complete').default(0),
+  dataCollectionPlan: text('data_collection_plan').default('{}'),
+  dataCollected: text('data_collected').default('[]'),
+  measurementSystemValid: integer('measurement_system_valid').default(0),
+  measurementSystemNotes: text('measurement_system_notes'),
+  d2CompletedAt: timestamp('d2_completed_at'),
+  d2CompletedBy: text('d2_completed_by'),
+  d2VerifiedAt: timestamp('d2_verified_at'),
+  d2VerifiedBy: text('d2_verified_by'),
+  d2Notes: text('d2_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d2_problem_capa_idx').on(table.capaId),
+}));
+
+export const capaD3Containment = pgTable('capa_d3_containment', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  containmentRequired: integer('containment_required').notNull().default(1),
+  containmentNotRequiredReason: text('containment_not_required_reason'),
+  containmentStrategy: text('containment_strategy'),
+  containmentScope: text('containment_scope').default('{}'),
+  containmentLocations: text('containment_locations').default('[]'),
+  actions: text('actions').default('[]'),
+  verificationMethod: text('verification_method'),
+  verificationFrequency: text('verification_frequency'),
+  verificationResults: text('verification_results').default('[]'),
+  containmentEffective: integer('containment_effective').default(0),
+  containmentEffectiveDate: timestamp('containment_effective_date'),
+  containmentEffectiveEvidence: text('containment_effective_evidence'),
+  quantityInspected: integer('quantity_inspected').default(0),
+  quantityPassed: integer('quantity_passed').default(0),
+  quantityFailed: integer('quantity_failed').default(0),
+  quantityReworked: integer('quantity_reworked').default(0),
+  quantityScrapped: integer('quantity_scrapped').default(0),
+  quantityOnHold: integer('quantity_on_hold').default(0),
+  wip: text('wip').default('{}'),
+  finishedGoods: text('finished_goods').default('{}'),
+  inTransit: text('in_transit').default('{}'),
+  atCustomer: text('at_customer').default('{}'),
+  supplierContainment: text('supplier_containment').default('{}'),
+  sortingInstructions: text('sorting_instructions'),
+  sortingTraining: integer('sorting_training').default(0),
+  sortingStartDate: timestamp('sorting_start_date'),
+  sortingEndDate: timestamp('sorting_end_date'),
+  costOfContainment: real('cost_of_containment').default(0),
+  costBreakdown: text('cost_breakdown').default('{}'),
+  customerApprovalRequired: integer('customer_approval_required').default(0),
+  customerApprovalReceived: integer('customer_approval_received').default(0),
+  customerApprovalDate: timestamp('customer_approval_date'),
+  customerApprovalReference: text('customer_approval_reference'),
+  exitCriteria: text('exit_criteria'),
+  exitCriteriaMet: integer('exit_criteria_met').default(0),
+  exitCriteriaMetDate: timestamp('exit_criteria_met_date'),
+  transitionToPermanent: text('transition_to_permanent'),
+  d3CompletedAt: timestamp('d3_completed_at'),
+  d3CompletedBy: text('d3_completed_by'),
+  d3VerifiedAt: timestamp('d3_verified_at'),
+  d3VerifiedBy: text('d3_verified_by'),
+  d3Notes: text('d3_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d3_containment_capa_idx').on(table.capaId),
+  effectiveIdx: index('capa_d3_containment_effective_idx').on(table.containmentEffective),
+}));
+
+// ==========================================
+// CAPA/8D Module: D4-D6 Discipline Tables
+// ==========================================
+
+export const capaD4RootCause = pgTable('capa_d4_root_cause', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  analysisApproach: text('analysis_approach').default('[]'),
+  possibleCauses: text('possible_causes').default('[]'),
+  fiveWhyAnalysis: text('five_why_analysis').default('[]'),
+  fishboneDiagram: text('fishbone_diagram').default('{}'),
+  faultTreeAnalysis: text('fault_tree_analysis').default('{}'),
+  isIsNotConclusions: text('is_is_not_conclusions'),
+  dataAnalysis: text('data_analysis').default('[]'),
+  experimentsConducted: text('experiments_conducted').default('[]'),
+  verificationTests: text('verification_tests').default('[]'),
+  rootCauseOccurrence: text('root_cause_occurrence'),
+  rootCauseOccurrenceEvidence: text('root_cause_occurrence_evidence'),
+  rootCauseOccurrenceVerified: integer('root_cause_occurrence_verified').default(0),
+  rootCauseOccurrenceVerifiedBy: text('root_cause_occurrence_verified_by'),
+  rootCauseOccurrenceVerifiedAt: timestamp('root_cause_occurrence_verified_at'),
+  rootCauseEscape: text('root_cause_escape'),
+  rootCauseEscapeEvidence: text('root_cause_escape_evidence'),
+  rootCauseEscapeVerified: integer('root_cause_escape_verified').default(0),
+  rootCauseEscapeVerifiedBy: text('root_cause_escape_verified_by'),
+  rootCauseEscapeVerifiedAt: timestamp('root_cause_escape_verified_at'),
+  escapePoint: text('escape_point'),
+  escapePointAnalysis: text('escape_point_analysis'),
+  systemicCauses: text('systemic_causes').default('[]'),
+  contributingFactors: text('contributing_factors').default('[]'),
+  humanFactorsAnalysis: text('human_factors_analysis').default('{}'),
+  equipmentFactorsAnalysis: text('equipment_factors_analysis').default('{}'),
+  materialFactorsAnalysis: text('material_factors_analysis').default('{}'),
+  methodFactorsAnalysis: text('method_factors_analysis').default('{}'),
+  environmentFactorsAnalysis: text('environment_factors_analysis').default('{}'),
+  rootCauseSummary: text('root_cause_summary'),
+  confidenceLevel: text('confidence_level'), // high / medium / low
+  additionalInvestigationNeeded: integer('additional_investigation_needed').default(0),
+  additionalInvestigationPlan: text('additional_investigation_plan'),
+  d4CompletedAt: timestamp('d4_completed_at'),
+  d4CompletedBy: text('d4_completed_by'),
+  d4VerifiedAt: timestamp('d4_verified_at'),
+  d4VerifiedBy: text('d4_verified_by'),
+  d4Notes: text('d4_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d4_root_cause_capa_idx').on(table.capaId),
+  confidenceIdx: index('capa_d4_root_cause_confidence_idx').on(table.confidenceLevel),
+}));
+
+export const capaD4RootCauseCandidate = pgTable('capa_d4_root_cause_candidate', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  d4Id: integer('d4_id').notNull().references(() => capaD4RootCause.id, { onDelete: 'cascade' }),
+  causeType: text('cause_type').notNull(), // occurrence / escape / systemic / contributing
+  category: text('category'), // man / machine / material / method / measurement / environment
+  description: text('description').notNull(),
+  source: text('source'), // brainstorm / 5why / fishbone / data_analysis / expert
+  evidenceFor: text('evidence_for').default('[]'),
+  evidenceAgainst: text('evidence_against').default('[]'),
+  likelihood: text('likelihood').default('medium'), // high / medium / low
+  verificationMethod: text('verification_method'),
+  verificationResult: text('verification_result'), // confirmed / refuted / inconclusive
+  verifiedAt: timestamp('verified_at'),
+  verifiedBy: text('verified_by'),
+  isRootCause: integer('is_root_cause').default(0),
+  linkedTo5Why: text('linked_to_5why'),
+  linkedToFishbone: text('linked_to_fishbone'),
+  notes: text('notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: index('capa_d4_candidate_capa_idx').on(table.capaId),
+  d4Idx: index('capa_d4_candidate_d4_idx').on(table.d4Id),
+  rootCauseIdx: index('capa_d4_candidate_root_cause_idx').on(table.isRootCause),
+  verificationIdx: index('capa_d4_candidate_verification_idx').on(table.verificationResult),
+}));
+
+export const capaD5CorrectiveAction = pgTable('capa_d5_corrective_action', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  correctiveActionsSelected: text('corrective_actions_selected').default('[]'),
+  alternativesConsidered: text('alternatives_considered').default('[]'),
+  selectionCriteria: text('selection_criteria').default('{}'),
+  occurrenceActionSummary: text('occurrence_action_summary'),
+  escapeActionSummary: text('escape_action_summary'),
+  riskAssessment: text('risk_assessment').default('{}'),
+  implementationPlan: text('implementation_plan').default('{}'),
+  resourceRequirements: text('resource_requirements').default('{}'),
+  resourcesApproved: integer('resources_approved').default(0),
+  resourcesApprovedBy: text('resources_approved_by'),
+  resourcesApprovedAt: timestamp('resources_approved_at'),
+  timeline: text('timeline').default('[]'),
+  dependencies: text('dependencies').default('[]'),
+  potentialObstacles: text('potential_obstacles').default('[]'),
+  contingencyPlan: text('contingency_plan'),
+  pfmeaUpdatesRequired: integer('pfmea_updates_required').default(0),
+  pfmeaUpdatePlan: text('pfmea_update_plan'),
+  controlPlanUpdatesRequired: integer('control_plan_updates_required').default(0),
+  controlPlanUpdatePlan: text('control_plan_update_plan'),
+  documentUpdatesRequired: integer('document_updates_required').default(0),
+  documentUpdateList: text('document_update_list').default('[]'),
+  trainingRequired: integer('training_required').default(0),
+  trainingPlan: text('training_plan').default('{}'),
+  customerApprovalRequired: integer('customer_approval_required').default(0),
+  customerApprovalStatus: text('customer_approval_status'),
+  customerApprovalDate: timestamp('customer_approval_date'),
+  customerApprovalNotes: text('customer_approval_notes'),
+  managementApprovalRequired: integer('management_approval_required').default(1),
+  managementApprovalStatus: text('management_approval_status'),
+  managementApprovedBy: text('management_approved_by'),
+  managementApprovedAt: timestamp('management_approved_at'),
+  estimatedCost: real('estimated_cost'),
+  estimatedSavings: real('estimated_savings'),
+  estimatedPaybackMonths: integer('estimated_payback_months'),
+  d5CompletedAt: timestamp('d5_completed_at'),
+  d5CompletedBy: text('d5_completed_by'),
+  d5VerifiedAt: timestamp('d5_verified_at'),
+  d5VerifiedBy: text('d5_verified_by'),
+  d5Notes: text('d5_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d5_corrective_action_capa_idx').on(table.capaId),
+  approvalIdx: index('capa_d5_corrective_action_approval_idx').on(table.managementApprovalStatus),
+}));
+
+export const capaD6Validation = pgTable('capa_d6_validation', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  implementationStatus: text('implementation_status').default('not_started'), // not_started / in_progress / complete
+  implementationProgress: integer('implementation_progress').default(0),
+  implementationLog: text('implementation_log').default('[]'),
+  actionsImplemented: text('actions_implemented').default('[]'),
+  actionsPending: text('actions_pending').default('[]'),
+  delaysEncountered: text('delays_encountered').default('[]'),
+  deviationsFromPlan: text('deviations_from_plan').default('[]'),
+  containmentRemoved: integer('containment_removed').default(0),
+  containmentRemovedAt: timestamp('containment_removed_at'),
+  containmentRemovalVerifiedBy: text('containment_removal_verified_by'),
+  preImplementationBaseline: text('pre_implementation_baseline').default('{}'),
+  postImplementationData: text('post_implementation_data').default('{}'),
+  validationPlan: text('validation_plan').default('{}'),
+  validationTests: text('validation_tests').default('[]'),
+  validationResults: text('validation_results').default('[]'),
+  statisticalValidation: text('statistical_validation').default('{}'),
+  effectivenessCheckDate: timestamp('effectiveness_check_date'),
+  effectivenessCheckPeriod: text('effectiveness_check_period'),
+  effectivenessMetric: text('effectiveness_metric'),
+  effectivenessTarget: text('effectiveness_target'),
+  effectivenessActual: text('effectiveness_actual'),
+  effectivenessVerified: integer('effectiveness_verified').default(0),
+  effectivenessVerifiedBy: text('effectiveness_verified_by'),
+  effectivenessVerifiedAt: timestamp('effectiveness_verified_at'),
+  effectivenessResult: text('effectiveness_result'), // effective / partially_effective / not_effective
+  effectivenessEvidence: text('effectiveness_evidence'),
+  reoccurrenceCheck: integer('reoccurrence_check').default(0),
+  reoccurrenceCheckDate: timestamp('reoccurrence_check_date'),
+  reoccurrenceCheckMethod: text('reoccurrence_check_method'),
+  pfmeaUpdated: integer('pfmea_updated').default(0),
+  pfmeaUpdateDetails: text('pfmea_update_details'),
+  controlPlanUpdated: integer('control_plan_updated').default(0),
+  controlPlanUpdateDetails: text('control_plan_update_details'),
+  documentsUpdated: text('documents_updated').default('[]'),
+  trainingCompleted: integer('training_completed').default(0),
+  trainingRecords: text('training_records').default('[]'),
+  customerNotified: integer('customer_notified').default(0),
+  customerNotificationDate: timestamp('customer_notification_date'),
+  customerAcceptance: text('customer_acceptance'), // accepted / pending / rejected
+  lessonsLearned: text('lessons_learned').default('[]'),
+  d6CompletedAt: timestamp('d6_completed_at'),
+  d6CompletedBy: text('d6_completed_by'),
+  d6VerifiedAt: timestamp('d6_verified_at'),
+  d6VerifiedBy: text('d6_verified_by'),
+  d6Notes: text('d6_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d6_validation_capa_idx').on(table.capaId),
+  statusIdx: index('capa_d6_validation_status_idx').on(table.implementationStatus),
+  effectivenessIdx: index('capa_d6_validation_effectiveness_idx').on(table.effectivenessResult),
+}));
+
+// ==========================================
+// CAPA/8D Module: D7-D8 + Audit + Metrics Tables
+// ==========================================
+
+export const capaD7Preventive = pgTable('capa_d7_preventive', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  systemicAnalysisComplete: integer('systemic_analysis_complete').default(0),
+  systemicAnalysisSummary: text('systemic_analysis_summary'),
+  managementSystemsReviewed: text('management_systems_reviewed').default('[]'),
+  similarProcessesIdentified: text('similar_processes_identified').default('[]'),
+  similarProductsIdentified: text('similar_products_identified').default('[]'),
+  otherPlantsIdentified: text('other_plants_identified').default('[]'),
+  horizontalDeploymentPlan: text('horizontal_deployment_plan').default('{}'),
+  preventiveActions: text('preventive_actions').default('[]'),
+  policyChangesRequired: integer('policy_changes_required').default(0),
+  policyChanges: text('policy_changes').default('[]'),
+  procedureChangesRequired: integer('procedure_changes_required').default(0),
+  procedureChanges: text('procedure_changes').default('[]'),
+  systemChangesRequired: integer('system_changes_required').default(0),
+  systemChanges: text('system_changes').default('[]'),
+  designChangesRequired: integer('design_changes_required').default(0),
+  designChanges: text('design_changes').default('[]'),
+  supplierActionsRequired: integer('supplier_actions_required').default(0),
+  supplierActions: text('supplier_actions').default('[]'),
+  fmeaSystemReviewComplete: integer('fmea_system_review_complete').default(0),
+  fmeaSystemReviewNotes: text('fmea_system_review_notes'),
+  lessonLearnedCreated: integer('lesson_learned_created').default(0),
+  lessonLearnedReference: text('lesson_learned_reference'),
+  knowledgeBaseUpdated: integer('knowledge_base_updated').default(0),
+  knowledgeBaseEntries: text('knowledge_base_entries').default('[]'),
+  trainingMaterialsUpdated: integer('training_materials_updated').default(0),
+  trainingMaterialsList: text('training_materials_list').default('[]'),
+  auditChecklistUpdated: integer('audit_checklist_updated').default(0),
+  auditChecklistChanges: text('audit_checklist_changes'),
+  standardizationComplete: integer('standardization_complete').default(0),
+  standardizationSummary: text('standardization_summary'),
+  preventiveActionVerification: text('preventive_action_verification').default('[]'),
+  d7CompletedAt: timestamp('d7_completed_at'),
+  d7CompletedBy: text('d7_completed_by'),
+  d7VerifiedAt: timestamp('d7_verified_at'),
+  d7VerifiedBy: text('d7_verified_by'),
+  d7Notes: text('d7_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d7_preventive_capa_idx').on(table.capaId),
+}));
+
+export const capaD8Closure = pgTable('capa_d8_closure', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  closureCriteriaMet: integer('closure_criteria_met').default(0),
+  closureCriteriaChecklist: text('closure_criteria_checklist').default('{}'),
+  allActionsComplete: integer('all_actions_complete').default(0),
+  actionsCompletionSummary: text('actions_completion_summary'),
+  effectivenessConfirmed: integer('effectiveness_confirmed').default(0),
+  effectivenessSummary: text('effectiveness_summary'),
+  noRecurrence: integer('no_recurrence').default(0),
+  recurrenceMonitoringPeriod: text('recurrence_monitoring_period'),
+  containmentRemoved: integer('containment_removed').default(0),
+  containmentRemovalDate: timestamp('containment_removal_date'),
+  documentationComplete: integer('documentation_complete').default(0),
+  documentationChecklist: text('documentation_checklist').default('{}'),
+  customerClosed: integer('customer_closed').default(0),
+  customerClosureDate: timestamp('customer_closure_date'),
+  customerClosureReference: text('customer_closure_reference'),
+  customerFeedback: text('customer_feedback'),
+  teamRecognition: text('team_recognition').default('{}'),
+  teamRecognitionDate: timestamp('team_recognition_date'),
+  teamRecognitionMethod: text('team_recognition_method'),
+  teamFeedback: text('team_feedback').default('[]'),
+  lessonsLearnedSummary: text('lessons_learned_summary'),
+  lessonsLearnedShared: integer('lessons_learned_shared').default(0),
+  lessonsLearnedAudience: text('lessons_learned_audience').default('[]'),
+  successMetrics: text('success_metrics').default('{}'),
+  costSavingsRealized: real('cost_savings_realized'),
+  costOfQualityReduction: real('cost_of_quality_reduction'),
+  cycleTimeDays: integer('cycle_time_days'),
+  onTimeCompletion: integer('on_time_completion').default(0),
+  finalReport: text('final_report').default('{}'),
+  finalReportDocumentId: integer('final_report_document_id'),
+  archiveComplete: integer('archive_complete').default(0),
+  archiveLocation: text('archive_location'),
+  closedBy: text('closed_by'),
+  closedAt: timestamp('closed_at'),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at'),
+  d8CompletedAt: timestamp('d8_completed_at'),
+  d8CompletedBy: text('d8_completed_by'),
+  d8VerifiedAt: timestamp('d8_verified_at'),
+  d8VerifiedBy: text('d8_verified_by'),
+  d8Notes: text('d8_notes'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  capaIdx: uniqueIndex('capa_d8_closure_capa_idx').on(table.capaId),
+}));
+
+export const capaAuditLog = pgTable('capa_audit_log', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull(), // NO cascade - keep orphan logs
+  discipline: text('discipline'),
+  action: text('action').notNull(),
+  entityType: text('entity_type'),
+  entityId: integer('entity_id'),
+  userId: text('user_id').notNull(),
+  userName: text('user_name'),
+  userRole: text('user_role'),
+  timestamp: timestamp('timestamp').defaultNow(),
+  previousValue: text('previous_value'),
+  newValue: text('new_value'),
+  changeDescription: text('change_description'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  sessionId: text('session_id'),
+  logHash: text('log_hash'),
+  previousLogHash: text('previous_log_hash'),
+}, (table) => ({
+  capaIdx: index('capa_audit_log_capa_idx').on(table.capaId),
+  actionIdx: index('capa_audit_log_action_idx').on(table.action),
+  userIdx: index('capa_audit_log_user_idx').on(table.userId),
+  timestampIdx: index('capa_audit_log_timestamp_idx').on(table.timestamp),
+  disciplineIdx: index('capa_audit_log_discipline_idx').on(table.discipline),
+}));
+
+export const capaMetricSnapshot = pgTable('capa_metric_snapshot', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  snapshotDate: timestamp('snapshot_date').notNull(),
+  snapshotPeriod: text('snapshot_period').notNull(), // daily / weekly / monthly
+  totalCapas: integer('total_capas').default(0),
+  byStatus: text('by_status').default('{}'),
+  byPriority: text('by_priority').default('{}'),
+  bySourceType: text('by_source_type').default('{}'),
+  byCategory: text('by_category').default('{}'),
+  byDiscipline: text('by_discipline').default('{}'),
+  openedThisPeriod: integer('opened_this_period').default(0),
+  closedThisPeriod: integer('closed_this_period').default(0),
+  overdueCount: integer('overdue_count').default(0),
+  avgAgeDays: real('avg_age_days').default(0),
+  avgCycleTimeDays: real('avg_cycle_time_days').default(0),
+  onTimeClosureRate: real('on_time_closure_rate').default(0),
+  effectivenessRate: real('effectiveness_rate').default(0),
+  recurrenceRate: real('recurrence_rate').default(0),
+  containmentEffectivenessRate: real('containment_effectiveness_rate').default(0),
+  customerCapaCount: integer('customer_capa_count').default(0),
+  safetyCapaCount: integer('safety_capa_count').default(0),
+  topFailureModes: text('top_failure_modes').default('[]'),
+  topRootCauses: text('top_root_causes').default('[]'),
+  costOfQuality: real('cost_of_quality').default(0),
+  costSavings: real('cost_savings').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  orgDateIdx: index('capa_metric_snapshot_org_date_idx').on(table.orgId, table.snapshotDate),
+  periodIdx: index('capa_metric_snapshot_period_idx').on(table.snapshotPeriod),
+}));
+
+// ==========================================
+// CAPA/8D Module: Analysis Tools
+// ==========================================
+
+export const capaAnalysisTool = pgTable('capa_analysis_tool', {
+  id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  toolType: text('tool_type').notNull(), // is_is_not / five_why / three_leg_five_why / fishbone / fault_tree / comparative / change_point / pareto
+  name: text('name'),
+  discipline: text('discipline'), // D2, D4, etc.
+  data: text('data').notNull().default('{}'),
+  status: text('status').default('in_progress'), // in_progress / complete / verified
+  conclusion: text('conclusion'),
+  linkedToRootCause: integer('linked_to_root_cause').default(0),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  completedAt: timestamp('completed_at'),
+  completedBy: text('completed_by'),
+  verifiedAt: timestamp('verified_at'),
+  verifiedBy: text('verified_by'),
+}, (table) => ({
+  capaIdx: index('capa_analysis_tool_capa_idx').on(table.capaId),
+  typeIdx: index('capa_analysis_tool_type_idx').on(table.capaId, table.toolType),
+  orgIdx: index('capa_analysis_tool_org_idx').on(table.orgId),
+}));
+
+// CAPA/8D Core Relations
+export const capaRelations = relations(capa, ({ one, many }) => ({
+  organization: one(organization, {
+    fields: [capa.orgId],
+    references: [organization.id],
+  }),
+  teamMembers: many(capaTeamMember),
+  sources: many(capaSource),
+  attachments: many(capaAttachment),
+  relatedRecords: many(capaRelatedRecord),
+  d0Emergency: one(capaD0Emergency, {
+    fields: [capa.id],
+    references: [capaD0Emergency.capaId],
+  }),
+  d1TeamDetail: one(capaD1TeamDetail, {
+    fields: [capa.id],
+    references: [capaD1TeamDetail.capaId],
+  }),
+  d2Problem: one(capaD2Problem, {
+    fields: [capa.id],
+    references: [capaD2Problem.capaId],
+  }),
+  d3Containment: one(capaD3Containment, {
+    fields: [capa.id],
+    references: [capaD3Containment.capaId],
+  }),
+  d4RootCause: one(capaD4RootCause, {
+    fields: [capa.id],
+    references: [capaD4RootCause.capaId],
+  }),
+  d4Candidates: many(capaD4RootCauseCandidate),
+  d5CorrectiveAction: one(capaD5CorrectiveAction, {
+    fields: [capa.id],
+    references: [capaD5CorrectiveAction.capaId],
+  }),
+  d6Validation: one(capaD6Validation, {
+    fields: [capa.id],
+    references: [capaD6Validation.capaId],
+  }),
+  d7Preventive: one(capaD7Preventive, {
+    fields: [capa.id],
+    references: [capaD7Preventive.capaId],
+  }),
+  d8Closure: one(capaD8Closure, {
+    fields: [capa.id],
+    references: [capaD8Closure.capaId],
+  }),
+  auditLogs: many(capaAuditLog),
+  analysisTools: many(capaAnalysisTool),
+}));
+
+export const capaTeamMemberRelations = relations(capaTeamMember, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaTeamMember.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaTeamMember.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaSourceRelations = relations(capaSource, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaSource.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaSource.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaAttachmentRelations = relations(capaAttachment, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaAttachment.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaAttachment.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaRelatedRecordRelations = relations(capaRelatedRecord, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaRelatedRecord.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaRelatedRecord.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaNumberSequenceRelations = relations(capaNumberSequence, ({ one }) => ({
+  organization: one(organization, {
+    fields: [capaNumberSequence.orgId],
+    references: [organization.id],
+  }),
+}));
+
+// D0-D3 Relations
+export const capaD0EmergencyRelations = relations(capaD0Emergency, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD0Emergency.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD0Emergency.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaD1TeamDetailRelations = relations(capaD1TeamDetail, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD1TeamDetail.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD1TeamDetail.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaD2ProblemRelations = relations(capaD2Problem, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD2Problem.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD2Problem.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaD3ContainmentRelations = relations(capaD3Containment, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD3Containment.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD3Containment.orgId],
+    references: [organization.id],
+  }),
+}));
+
+// D4-D6 Relations
+export const capaD4RootCauseRelations = relations(capaD4RootCause, ({ one, many }) => ({
+  capa: one(capa, {
+    fields: [capaD4RootCause.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD4RootCause.orgId],
+    references: [organization.id],
+  }),
+  candidates: many(capaD4RootCauseCandidate),
+}));
+
+export const capaD4RootCauseCandidateRelations = relations(capaD4RootCauseCandidate, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD4RootCauseCandidate.capaId],
+    references: [capa.id],
+  }),
+  d4RootCause: one(capaD4RootCause, {
+    fields: [capaD4RootCauseCandidate.d4Id],
+    references: [capaD4RootCause.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD4RootCauseCandidate.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaD5CorrectiveActionRelations = relations(capaD5CorrectiveAction, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD5CorrectiveAction.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD5CorrectiveAction.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaD6ValidationRelations = relations(capaD6Validation, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD6Validation.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD6Validation.orgId],
+    references: [organization.id],
+  }),
+}));
+
+// D7-D8 + Audit + Metrics Relations
+export const capaD7PreventiveRelations = relations(capaD7Preventive, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD7Preventive.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD7Preventive.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaD8ClosureRelations = relations(capaD8Closure, ({ one }) => ({
+  capa: one(capa, {
+    fields: [capaD8Closure.capaId],
+    references: [capa.id],
+  }),
+  organization: one(organization, {
+    fields: [capaD8Closure.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaAuditLogRelations = relations(capaAuditLog, ({ one }) => ({
+  organization: one(organization, {
+    fields: [capaAuditLog.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaMetricSnapshotRelations = relations(capaMetricSnapshot, ({ one }) => ({
+  organization: one(organization, {
+    fields: [capaMetricSnapshot.orgId],
+    references: [organization.id],
+  }),
+}));
+
+export const capaAnalysisToolRelations = relations(capaAnalysisTool, ({ one }) => ({
+  organization: one(organization, {
+    fields: [capaAnalysisTool.orgId],
+    references: [organization.id],
+  }),
+  capa: one(capa, {
+    fields: [capaAnalysisTool.capaId],
+    references: [capa.id],
+  }),
+}));
+
+// ==========================================
 // Insert schemas
 // ==========================================
 
@@ -1845,6 +2843,27 @@ export const insertDocumentPrintLogSchema = createInsertSchema(documentPrintLog)
 export const insertDocumentCommentSchema = createInsertSchema(documentComment).omit({ id: true, createdAt: true });
 export const insertExternalDocumentSchema = createInsertSchema(externalDocument).omit({ id: true, createdAt: true });
 export const insertDocumentLinkEnhancedSchema = createInsertSchema(documentLinkEnhanced).omit({ id: true, createdAt: true });
+
+// CAPA/8D
+export const insertCapaSchema = createInsertSchema(capa).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaTeamMemberSchema = createInsertSchema(capaTeamMember).omit({ id: true, createdAt: true });
+export const insertCapaSourceSchema = createInsertSchema(capaSource).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaAttachmentSchema = createInsertSchema(capaAttachment).omit({ id: true, uploadedAt: true });
+export const insertCapaRelatedRecordSchema = createInsertSchema(capaRelatedRecord).omit({ id: true, linkedAt: true });
+export const insertCapaNumberSequenceSchema = createInsertSchema(capaNumberSequence).omit({ id: true, updatedAt: true });
+export const insertCapaD0EmergencySchema = createInsertSchema(capaD0Emergency).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD1TeamDetailSchema = createInsertSchema(capaD1TeamDetail).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD2ProblemSchema = createInsertSchema(capaD2Problem).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD3ContainmentSchema = createInsertSchema(capaD3Containment).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD4RootCauseSchema = createInsertSchema(capaD4RootCause).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD4RootCauseCandidateSchema = createInsertSchema(capaD4RootCauseCandidate).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD5CorrectiveActionSchema = createInsertSchema(capaD5CorrectiveAction).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD6ValidationSchema = createInsertSchema(capaD6Validation).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD7PreventiveSchema = createInsertSchema(capaD7Preventive).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaD8ClosureSchema = createInsertSchema(capaD8Closure).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCapaAuditLogSchema = createInsertSchema(capaAuditLog).omit({ id: true, timestamp: true });
+export const insertCapaMetricSnapshotSchema = createInsertSchema(capaMetricSnapshot).omit({ id: true, createdAt: true });
+export const insertCapaAnalysisToolSchema = createInsertSchema(capaAnalysisTool).omit({ id: true, createdAt: true, updatedAt: true });
 
 // ==========================================
 // Types
@@ -1956,6 +2975,46 @@ export type ExternalDocument = typeof externalDocument.$inferSelect;
 export type InsertExternalDocument = z.infer<typeof insertExternalDocumentSchema>;
 export type DocumentLinkEnhanced = typeof documentLinkEnhanced.$inferSelect;
 export type InsertDocumentLinkEnhanced = z.infer<typeof insertDocumentLinkEnhancedSchema>;
+
+// CAPA/8D Module
+export type Capa = typeof capa.$inferSelect;
+export type InsertCapa = z.infer<typeof insertCapaSchema>;
+export type CapaTeamMember = typeof capaTeamMember.$inferSelect;
+export type InsertCapaTeamMember = z.infer<typeof insertCapaTeamMemberSchema>;
+export type CapaSource = typeof capaSource.$inferSelect;
+export type InsertCapaSource = z.infer<typeof insertCapaSourceSchema>;
+export type CapaAttachment = typeof capaAttachment.$inferSelect;
+export type InsertCapaAttachment = z.infer<typeof insertCapaAttachmentSchema>;
+export type CapaRelatedRecord = typeof capaRelatedRecord.$inferSelect;
+export type InsertCapaRelatedRecord = z.infer<typeof insertCapaRelatedRecordSchema>;
+export type CapaNumberSequence = typeof capaNumberSequence.$inferSelect;
+export type InsertCapaNumberSequence = z.infer<typeof insertCapaNumberSequenceSchema>;
+export type CapaD0Emergency = typeof capaD0Emergency.$inferSelect;
+export type InsertCapaD0Emergency = z.infer<typeof insertCapaD0EmergencySchema>;
+export type CapaD1TeamDetail = typeof capaD1TeamDetail.$inferSelect;
+export type InsertCapaD1TeamDetail = z.infer<typeof insertCapaD1TeamDetailSchema>;
+export type CapaD2Problem = typeof capaD2Problem.$inferSelect;
+export type InsertCapaD2Problem = z.infer<typeof insertCapaD2ProblemSchema>;
+export type CapaD3Containment = typeof capaD3Containment.$inferSelect;
+export type InsertCapaD3Containment = z.infer<typeof insertCapaD3ContainmentSchema>;
+export type CapaD4RootCause = typeof capaD4RootCause.$inferSelect;
+export type InsertCapaD4RootCause = z.infer<typeof insertCapaD4RootCauseSchema>;
+export type CapaD4RootCauseCandidate = typeof capaD4RootCauseCandidate.$inferSelect;
+export type InsertCapaD4RootCauseCandidate = z.infer<typeof insertCapaD4RootCauseCandidateSchema>;
+export type CapaD5CorrectiveAction = typeof capaD5CorrectiveAction.$inferSelect;
+export type InsertCapaD5CorrectiveAction = z.infer<typeof insertCapaD5CorrectiveActionSchema>;
+export type CapaD6Validation = typeof capaD6Validation.$inferSelect;
+export type InsertCapaD6Validation = z.infer<typeof insertCapaD6ValidationSchema>;
+export type CapaD7Preventive = typeof capaD7Preventive.$inferSelect;
+export type InsertCapaD7Preventive = z.infer<typeof insertCapaD7PreventiveSchema>;
+export type CapaD8Closure = typeof capaD8Closure.$inferSelect;
+export type InsertCapaD8Closure = z.infer<typeof insertCapaD8ClosureSchema>;
+export type CapaAuditLog = typeof capaAuditLog.$inferSelect;
+export type InsertCapaAuditLog = z.infer<typeof insertCapaAuditLogSchema>;
+export type CapaMetricSnapshot = typeof capaMetricSnapshot.$inferSelect;
+export type InsertCapaMetricSnapshot = z.infer<typeof insertCapaMetricSnapshotSchema>;
+export type CapaAnalysisTool = typeof capaAnalysisTool.$inferSelect;
+export type InsertCapaAnalysisTool = z.infer<typeof insertCapaAnalysisToolSchema>;
 
 // ==========================================
 // Enum Types

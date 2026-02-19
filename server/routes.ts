@@ -34,7 +34,7 @@ import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
 import { eq, desc, and, lt, asc, inArray } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced } from "@shared/schema";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced, capa, capaTeamMember, capaSource, capaAttachment, capaRelatedRecord, capaD0Emergency, capaD1TeamDetail, capaD2Problem, capaD3Containment, capaD4RootCause, capaD4RootCauseCandidate, capaD5CorrectiveAction, capaD6Validation, capaD7Preventive, capaD8Closure, capaAuditLog, capaMetricSnapshot, capaAnalysisTool } from "@shared/schema";
 import { notificationService } from "./services/notification-service";
 import {
   insertPartSchema,
@@ -65,6 +65,24 @@ import {
   insertExternalDocumentSchema,
   insertDocumentLinkEnhancedSchema,
   insertDocumentPrintLogSchema,
+  insertCapaSchema,
+  insertCapaTeamMemberSchema,
+  insertCapaSourceSchema,
+  insertCapaAttachmentSchema,
+  insertCapaRelatedRecordSchema,
+  insertCapaD0EmergencySchema,
+  insertCapaD1TeamDetailSchema,
+  insertCapaD2ProblemSchema,
+  insertCapaD3ContainmentSchema,
+  insertCapaD4RootCauseSchema,
+  insertCapaD4RootCauseCandidateSchema,
+  insertCapaAuditLogSchema,
+  insertCapaD5CorrectiveActionSchema,
+  insertCapaD6ValidationSchema,
+  insertCapaD7PreventiveSchema,
+  insertCapaD8ClosureSchema,
+  insertCapaMetricSnapshotSchema,
+  insertCapaAnalysisToolSchema,
   type FailureModeCategory,
   type ControlType,
   type ControlEffectiveness,
@@ -6785,6 +6803,4821 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error marking link as broken:", error);
       res.status(500).json({ error: "Failed to mark link as broken" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Core CAPA CRUD
+  // =============================================
+
+  // Dashboard - must come BEFORE :id routes
+  app.get("/api/capas/dashboard", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const metrics = await storage.getCapaMetrics(orgId);
+      const capas = await storage.getCapas(orgId);
+      const recentActivity = capas
+        .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())
+        .slice(0, 10);
+      res.json({ metrics, recentActivity });
+    } catch (error) {
+      console.error("Error fetching CAPA dashboard:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard" });
+    }
+  });
+
+  // My assignments
+  app.get("/api/capas/my-assignments", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const userId = req.auth!.user.id;
+      const capas = await storage.getCapasForUser(orgId, userId);
+      res.json(capas);
+    } catch (error) {
+      console.error("Error fetching my CAPA assignments:", error);
+      res.status(500).json({ error: "Failed to fetch assignments" });
+    }
+  });
+
+  // Overdue CAPAs
+  app.get("/api/capas/overdue", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const capas = await storage.getCapas(orgId);
+      const now = new Date();
+      const overdue = capas
+        .filter(c => c.targetClosureDate && new Date(c.targetClosureDate) < now && !c.closedAt && !c.deletedAt)
+        .map(c => ({
+          ...c,
+          daysOverdue: Math.floor((now.getTime() - new Date(c.targetClosureDate!).getTime()) / (1000 * 60 * 60 * 24)),
+        }));
+      res.json(overdue);
+    } catch (error) {
+      console.error("Error fetching overdue CAPAs:", error);
+      res.status(500).json({ error: "Failed to fetch overdue CAPAs" });
+    }
+  });
+
+  // List CAPAs
+  app.get("/api/capas", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const { status, priority, sourceType, search, page, limit } = req.query;
+      const filters: { status?: string; priority?: string; sourceType?: string; search?: string } = {};
+      if (status) filters.status = status as string;
+      if (priority) filters.priority = priority as string;
+      if (sourceType) filters.sourceType = sourceType as string;
+      if (search) filters.search = search as string;
+
+      const capas = await storage.getCapas(orgId, filters);
+      const pageNum = parseInt(page as string) || 1;
+      const pageSize = parseInt(limit as string) || 50;
+      const start = (pageNum - 1) * pageSize;
+      const paginated = capas.slice(start, start + pageSize);
+
+      res.json({
+        data: paginated,
+        pagination: { page: pageNum, limit: pageSize, total: capas.length },
+      });
+    } catch (error) {
+      console.error("Error listing CAPAs:", error);
+      res.status(500).json({ error: "Failed to list CAPAs" });
+    }
+  });
+
+  // Export CAPAs (must come BEFORE :id route)
+  app.get("/api/capas/export", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const capas = await storage.getCapas(orgId);
+      const format = (req.query.format as string) || 'json';
+
+      if (format === 'json') {
+        return res.json(capas.filter(c => !c.deletedAt));
+      }
+
+      const headers = ['ID', 'CAPA Number', 'Title', 'Status', 'Priority', 'Source Type', 'Current Discipline', 'Created At', 'Target Closure', 'Closed At'];
+      const rows = capas.filter(c => !c.deletedAt).map(c => [
+        c.id, c.capaNumber, `"${(c.title || '').replace(/"/g, '""')}"`, c.status, c.priority,
+        c.sourceType, c.currentDiscipline, c.createdAt, c.targetClosureDate || '', c.closedAt || '',
+      ].join(','));
+
+      const csv = [headers.join(','), ...rows].join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename=capas-export.csv');
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting CAPAs:", error);
+      res.status(500).json({ error: "Failed to export CAPAs" });
+    }
+  });
+
+  // Get CAPA by ID
+  app.get("/api/capas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(id);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      // Load discipline data
+      const [d0, d1, d2, d3, d4, team, sources] = await Promise.all([
+        storage.getCapaD0(id),
+        storage.getCapaD1(id),
+        storage.getCapaD2(id),
+        storage.getCapaD3(id),
+        storage.getCapaD4(id),
+        storage.getCapaTeamMembers(id),
+        storage.getCapaSources(id),
+      ]);
+
+      res.json({ ...capaRecord, d0, d1, d2, d3, d4, team, sources });
+    } catch (error) {
+      console.error("Error fetching CAPA:", error);
+      res.status(500).json({ error: "Failed to fetch CAPA" });
+    }
+  });
+
+  // Create CAPA
+  app.post("/api/capas", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const userId = req.auth!.user.id;
+
+      // Auto-generate CAPA number
+      const capaNumber = await storage.getNextCapaNumber(orgId);
+
+      const parsed = insertCapaSchema.parse({
+        ...req.body,
+        orgId,
+        capaNumber,
+        createdBy: userId,
+        status: 'd0_awareness',
+        currentDiscipline: 'D0',
+      });
+
+      const created = await storage.createCapa(parsed);
+
+      // Create audit log
+      await storage.createCapaAuditLog({
+        orgId,
+        capaId: created.id,
+        action: 'created',
+        userId: userId,
+        newValue: JSON.stringify({ title: created.title, capaNumber: created.capaNumber }),
+      });
+
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error creating CAPA:", error);
+      res.status(500).json({ error: "Failed to create CAPA" });
+    }
+  });
+
+  // Update CAPA
+  app.patch("/api/capas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const existing = await storage.getCapa(id);
+      if (!existing || existing.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const updated = await storage.updateCapa(id, req.body);
+
+      // Audit log for update
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId: id,
+        action: 'updated',
+        userId: req.auth!.user.id,
+        previousValue: JSON.stringify(existing),
+        newValue: JSON.stringify(updated),
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating CAPA:", error);
+      res.status(500).json({ error: "Failed to update CAPA" });
+    }
+  });
+
+  // Advance discipline
+  app.post("/api/capas/:id/advance-discipline", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(id);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const disciplineOrder = ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8'];
+      const statusMap: Record<string, string> = {
+        D0: 'd0_awareness', D1: 'd1_team', D2: 'd2_problem',
+        D3: 'd3_containment', D4: 'd4_root_cause', D5: 'd5_corrective',
+        D6: 'd6_validation', D7: 'd7_preventive', D8: 'd8_closure',
+      };
+
+      const currentIdx = disciplineOrder.indexOf(capaRecord.currentDiscipline);
+      if (currentIdx === -1 || currentIdx >= disciplineOrder.length - 1) {
+        return res.status(400).json({ error: "Cannot advance beyond D8" });
+      }
+
+      const nextDiscipline = disciplineOrder[currentIdx + 1];
+      const nextStatus = statusMap[nextDiscipline];
+
+      const updated = await storage.updateCapa(id, {
+        currentDiscipline: nextDiscipline,
+        status: nextStatus,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId: id,
+        action: 'discipline_advanced',
+        userId: req.auth!.user.id,
+        changeDescription: 'Discipline advanced',
+        previousValue: capaRecord.currentDiscipline,
+        newValue: nextDiscipline,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error advancing discipline:", error);
+      res.status(500).json({ error: "Failed to advance discipline" });
+    }
+  });
+
+  // Hold CAPA
+  app.post("/api/capas/:id/hold", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(id);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const { reason } = req.body;
+      if (!reason) return res.status(400).json({ error: "Hold reason is required" });
+
+      const previousStatus = capaRecord.status;
+      const updated = await storage.updateCapa(id, { status: 'on_hold' });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId: id,
+        action: 'status_changed',
+        userId: req.auth!.user.id,
+        changeDescription: `Put on hold: ${reason}`,
+        previousValue: previousStatus,
+        newValue: 'on_hold',
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error putting CAPA on hold:", error);
+      res.status(500).json({ error: "Failed to put CAPA on hold" });
+    }
+  });
+
+  // Resume CAPA
+  app.post("/api/capas/:id/resume", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(id);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      if (capaRecord.status !== 'on_hold') {
+        return res.status(400).json({ error: "CAPA is not on hold" });
+      }
+
+      const statusMap: Record<string, string> = {
+        D0: 'd0_awareness', D1: 'd1_team', D2: 'd2_problem',
+        D3: 'd3_containment', D4: 'd4_root_cause', D5: 'd5_corrective',
+        D6: 'd6_validation', D7: 'd7_preventive', D8: 'd8_closure',
+      };
+
+      const resumeStatus = statusMap[capaRecord.currentDiscipline] || 'd0_awareness';
+      const updated = await storage.updateCapa(id, { status: resumeStatus });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId: id,
+        action: 'status_changed',
+        userId: req.auth!.user.id,
+        changeDescription: 'Status changed',
+        previousValue: 'on_hold',
+        newValue: resumeStatus,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error resuming CAPA:", error);
+      res.status(500).json({ error: "Failed to resume CAPA" });
+    }
+  });
+
+  // Delete CAPA (soft delete)
+  app.delete("/api/capas/:id", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(id);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      await storage.updateCapa(id, { deletedAt: new Date() });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId: id,
+        action: 'deleted',
+        userId: req.auth!.user.id,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting CAPA:", error);
+      res.status(500).json({ error: "Failed to delete CAPA" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Team Members
+  // =============================================
+
+  app.get("/api/capas/:id/team", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const members = await storage.getCapaTeamMembers(capaId);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+      res.status(500).json({ error: "Failed to fetch team members" });
+    }
+  });
+
+  app.post("/api/capas/:id/team", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const parsed = insertCapaTeamMemberSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        capaId,
+        createdBy: req.auth!.user.id,
+      });
+
+      // Enforce constraints: one champion, one leader
+      const existingMembers = await storage.getCapaTeamMembers(capaId);
+      if (parsed.isChampion && existingMembers.some(m => m.isChampion && !m.leftAt)) {
+        return res.status(409).json({ error: "CAPA already has a champion" });
+      }
+      if (parsed.isLeader && existingMembers.some(m => m.isLeader && !m.leftAt)) {
+        return res.status(409).json({ error: "CAPA already has a leader" });
+      }
+
+      const member = await storage.createCapaTeamMember(parsed);
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'team_member_added',
+        userId: req.auth!.user.id,
+        newValue: JSON.stringify({ userId: parsed.userId, role: parsed.role }),
+      });
+
+      res.status(201).json(member);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error adding team member:", error);
+      res.status(500).json({ error: "Failed to add team member" });
+    }
+  });
+
+  app.patch("/api/capas/:id/team/:memberId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const memberId = parseInt(req.params.memberId);
+      if (isNaN(capaId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const existing = await storage.getCapaTeamMember(memberId);
+      if (!existing || existing.capaId !== capaId) {
+        return res.status(404).json({ error: "Team member not found" });
+      }
+
+      const updated = await storage.updateCapaTeamMember(memberId, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating team member:", error);
+      res.status(500).json({ error: "Failed to update team member" });
+    }
+  });
+
+  app.delete("/api/capas/:id/team/:memberId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const memberId = parseInt(req.params.memberId);
+      if (isNaN(capaId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const existing = await storage.getCapaTeamMember(memberId);
+      if (!existing || existing.capaId !== capaId) {
+        return res.status(404).json({ error: "Team member not found" });
+      }
+
+      const reason = req.body?.reason || 'Removed from team';
+      await storage.removeCapaTeamMember(memberId, reason);
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'team_member_removed',
+        userId: req.auth!.user.id,
+        previousValue: JSON.stringify({ userId: existing.userId, role: existing.role }),
+        changeDescription: reason,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing team member:", error);
+      res.status(500).json({ error: "Failed to remove team member" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Sources
+  // =============================================
+
+  app.get("/api/capas/:id/sources", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const sources = await storage.getCapaSources(capaId);
+      res.json(sources);
+    } catch (error) {
+      console.error("Error fetching CAPA sources:", error);
+      res.status(500).json({ error: "Failed to fetch sources" });
+    }
+  });
+
+  app.post("/api/capas/:id/sources", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const parsed = insertCapaSourceSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        capaId,
+        createdBy: req.auth!.user.id,
+      });
+
+      const source = await storage.createCapaSource(parsed);
+      res.status(201).json(source);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error creating CAPA source:", error);
+      res.status(500).json({ error: "Failed to create source" });
+    }
+  });
+
+  app.delete("/api/capas/:id/sources/:sourceId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const sourceId = parseInt(req.params.sourceId);
+      if (isNaN(capaId) || isNaN(sourceId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const existing = await storage.getCapaSource(sourceId);
+      if (!existing || existing.capaId !== capaId) {
+        return res.status(404).json({ error: "Source not found" });
+      }
+
+      await storage.deleteCapaSource(sourceId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting CAPA source:", error);
+      res.status(500).json({ error: "Failed to delete source" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Attachments
+  // =============================================
+
+  app.get("/api/capas/:id/attachments", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const discipline = req.query.discipline as string | undefined;
+      const attachments = await storage.getCapaAttachments(capaId, discipline);
+
+      // Filter by isEvidence if requested
+      const isEvidence = req.query.isEvidence;
+      if (isEvidence !== undefined) {
+        const evidenceVal = isEvidence === 'true' || isEvidence === '1' ? 1 : 0;
+        const filtered = attachments.filter(a => a.isEvidence === evidenceVal);
+        return res.json(filtered);
+      }
+
+      res.json(attachments);
+    } catch (error) {
+      console.error("Error fetching attachments:", error);
+      res.status(500).json({ error: "Failed to fetch attachments" });
+    }
+  });
+
+  app.post("/api/capas/:id/attachments", requireAuth, upload.single('file'), async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+      const checksum = createHash('sha256').update(fs.readFileSync(file.path)).digest('hex');
+
+      const parsed = insertCapaAttachmentSchema.parse({
+        orgId: req.orgId!,
+        capaId,
+        discipline: req.body.discipline || 'general',
+        attachmentType: req.body.attachmentType || 'document',
+        title: req.body.title || file.originalname,
+        description: req.body.description,
+        fileName: file.filename,
+        originalName: file.originalname,
+        fileType: path.extname(file.originalname).replace('.', ''),
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        storagePath: file.path,
+        checksumSha256: checksum,
+        isEvidence: req.body.isEvidence ? parseInt(req.body.isEvidence) : 0,
+        evidenceDescription: req.body.evidenceDescription,
+        uploadedBy: req.auth!.user.id,
+      });
+
+      const attachment = await storage.createCapaAttachment(parsed);
+      res.status(201).json(attachment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error uploading attachment:", error);
+      res.status(500).json({ error: "Failed to upload attachment" });
+    }
+  });
+
+  app.get("/api/capa-attachments/:id/download", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid attachment ID" });
+
+      const attachment = await storage.getCapaAttachment(id);
+      if (!attachment || attachment.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Attachment not found" });
+      }
+
+      if (!fs.existsSync(attachment.storagePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      res.download(attachment.storagePath, attachment.originalName);
+    } catch (error) {
+      console.error("Error downloading attachment:", error);
+      res.status(500).json({ error: "Failed to download attachment" });
+    }
+  });
+
+  app.delete("/api/capa-attachments/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid attachment ID" });
+
+      const attachment = await storage.getCapaAttachment(id);
+      if (!attachment || attachment.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "Attachment not found" });
+      }
+
+      // Soft delete
+      await storage.updateCapaAttachment(id, {
+        deletedAt: new Date(),
+        deletedBy: req.auth!.user.id,
+        deletionReason: req.body?.reason || 'Deleted by user',
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting attachment:", error);
+      res.status(500).json({ error: "Failed to delete attachment" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Related Records
+  // =============================================
+
+  app.get("/api/capas/:id/related", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const relatedType = req.query.relatedType as string | undefined;
+      const records = await storage.getCapaRelatedRecords(capaId, relatedType);
+      res.json(records);
+    } catch (error) {
+      console.error("Error fetching related records:", error);
+      res.status(500).json({ error: "Failed to fetch related records" });
+    }
+  });
+
+  app.post("/api/capas/:id/related", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const parsed = insertCapaRelatedRecordSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        capaId,
+        linkedBy: req.auth!.user.id,
+      });
+
+      const record = await storage.createCapaRelatedRecord(parsed);
+      res.status(201).json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error creating related record:", error);
+      res.status(500).json({ error: "Failed to create related record" });
+    }
+  });
+
+  app.delete("/api/capas/:id/related/:relatedId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const relatedId = parseInt(req.params.relatedId);
+      if (isNaN(capaId) || isNaN(relatedId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const existing = await storage.getCapaRelatedRecord(relatedId);
+      if (!existing || existing.capaId !== capaId) {
+        return res.status(404).json({ error: "Related record not found" });
+      }
+
+      await storage.deleteCapaRelatedRecord(relatedId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting related record:", error);
+      res.status(500).json({ error: "Failed to delete related record" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D0 Emergency Response
+  // =============================================
+
+  app.get("/api/capas/:id/d0", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d0 = await storage.getCapaD0(capaId);
+      res.json(d0 || null);
+    } catch (error) {
+      console.error("Error fetching D0:", error);
+      res.status(500).json({ error: "Failed to fetch D0 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d0", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d0 = await storage.getCapaD0(capaId);
+      if (d0) {
+        d0 = (await storage.updateCapaD0(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD0EmergencySchema.parse({
+          ...req.body,
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        });
+        d0 = await storage.createCapaD0(parsed);
+      }
+
+      res.json(d0);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error updating D0:", error);
+      res.status(500).json({ error: "Failed to update D0 data" });
+    }
+  });
+
+  // D0 emergency actions (stored in emergencyActions JSON array)
+  app.post("/api/capas/:id/d0/emergency-actions", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d0 = await storage.getCapaD0(capaId);
+      if (!d0) {
+        d0 = await storage.createCapaD0({
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+          emergencyResponseRequired: 1,
+        } as any);
+      }
+
+      const actions = JSON.parse(d0.emergencyActions || '[]');
+      const newAction = {
+        id: randomUUID(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        status: 'open',
+      };
+      actions.push(newAction);
+
+      await storage.updateCapaD0(capaId, { emergencyActions: JSON.stringify(actions) });
+
+      res.status(201).json(newAction);
+    } catch (error) {
+      console.error("Error adding emergency action:", error);
+      res.status(500).json({ error: "Failed to add emergency action" });
+    }
+  });
+
+  // Update emergency action by index/id
+  app.patch("/api/capas/:id/d0/emergency-actions/:actionId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d0 = await storage.getCapaD0(capaId);
+      if (!d0) return res.status(404).json({ error: "D0 not found" });
+
+      const actions = JSON.parse(d0.emergencyActions || '[]');
+      const actionId = req.params.actionId;
+      const idx = actions.findIndex((a: any) => a.id === actionId);
+      if (idx === -1) return res.status(404).json({ error: "Action not found" });
+
+      actions[idx] = { ...actions[idx], ...req.body, updatedAt: new Date().toISOString() };
+      await storage.updateCapaD0(capaId, { emergencyActions: JSON.stringify(actions) });
+
+      res.json(actions[idx]);
+    } catch (error) {
+      console.error("Error updating emergency action:", error);
+      res.status(500).json({ error: "Failed to update emergency action" });
+    }
+  });
+
+  // D0 complete
+  app.post("/api/capas/:id/d0/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d0 = await storage.getCapaD0(capaId);
+      if (!d0) return res.status(400).json({ error: "D0 data must be created first" });
+
+      // Validate: symptoms captured, emergency actions completed
+      if (!d0.symptomsCaptured) {
+        return res.status(400).json({ error: "Symptoms must be captured before completing D0" });
+      }
+
+      const actions = JSON.parse(d0.emergencyActions || '[]');
+      const incomplete = actions.filter((a: any) => a.status !== 'completed' && a.status !== 'verified');
+      if (d0.emergencyResponseRequired && incomplete.length > 0) {
+        return res.status(400).json({ error: `${incomplete.length} emergency actions are not complete` });
+      }
+
+      await storage.updateCapaD0(capaId, {
+        d0CompletedAt: new Date(),
+        d0CompletedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_completed',
+        userId: req.auth!.user.id,
+        discipline: 'D0',
+        changeDescription: 'D0 completed',
+      });
+
+      res.json({ message: "D0 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D0:", error);
+      res.status(500).json({ error: "Failed to complete D0" });
+    }
+  });
+
+  // D0 verify
+  app.post("/api/capas/:id/d0/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d0 = await storage.getCapaD0(capaId);
+      if (!d0 || !d0.d0CompletedAt) {
+        return res.status(400).json({ error: "D0 must be completed before verification" });
+      }
+
+      await storage.updateCapaD0(capaId, {
+        d0VerifiedAt: new Date(),
+        d0VerifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_verified',
+        userId: req.auth!.user.id,
+        discipline: 'D0',
+        changeDescription: 'D0 verified',
+      });
+
+      res.json({ message: "D0 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D0:", error);
+      res.status(500).json({ error: "Failed to verify D0" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D1 Team Formation
+  // =============================================
+
+  app.get("/api/capas/:id/d1", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d1 = await storage.getCapaD1(capaId);
+      res.json(d1 || null);
+    } catch (error) {
+      console.error("Error fetching D1:", error);
+      res.status(500).json({ error: "Failed to fetch D1 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d1", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d1 = await storage.getCapaD1(capaId);
+      if (d1) {
+        d1 = (await storage.updateCapaD1(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD1TeamDetailSchema.parse({
+          ...req.body,
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        });
+        d1 = await storage.createCapaD1(parsed);
+      }
+
+      res.json(d1);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error updating D1:", error);
+      res.status(500).json({ error: "Failed to update D1 data" });
+    }
+  });
+
+  // D1 add meeting
+  app.post("/api/capas/:id/d1/meetings", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d1 = await storage.getCapaD1(capaId);
+      if (!d1) {
+        d1 = await storage.createCapaD1({
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        } as any);
+      }
+
+      const meetings = JSON.parse(d1.meetingSchedule || '[]');
+      const newMeeting = {
+        id: randomUUID(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+      };
+      meetings.push(newMeeting);
+
+      await storage.updateCapaD1(capaId, { meetingSchedule: JSON.stringify(meetings) });
+
+      res.status(201).json(newMeeting);
+    } catch (error) {
+      console.error("Error adding meeting:", error);
+      res.status(500).json({ error: "Failed to add meeting" });
+    }
+  });
+
+  // D1 approve resources
+  app.post("/api/capas/:id/d1/approve-resources", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d1 = await storage.getCapaD1(capaId);
+      if (!d1) return res.status(400).json({ error: "D1 data must be created first" });
+
+      await storage.updateCapaD1(capaId, {
+        resourcesApproved: 1,
+        resourcesApprovedBy: req.auth!.user.id,
+        resourcesApprovedAt: new Date(),
+      });
+
+      res.json({ message: "Resources approved" });
+    } catch (error) {
+      console.error("Error approving resources:", error);
+      res.status(500).json({ error: "Failed to approve resources" });
+    }
+  });
+
+  // D1 complete
+  app.post("/api/capas/:id/d1/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d1 = await storage.getCapaD1(capaId);
+      if (!d1) return res.status(400).json({ error: "D1 data must be created first" });
+
+      // Validate: champion, leader, min 3 members, charter
+      const members = await storage.getCapaTeamMembers(capaId);
+      const activeMembers = members.filter(m => !m.leftAt);
+
+      if (!activeMembers.some(m => m.isChampion)) {
+        return res.status(400).json({ error: "A champion must be assigned" });
+      }
+      if (!activeMembers.some(m => m.isLeader)) {
+        return res.status(400).json({ error: "A leader must be assigned" });
+      }
+      if (activeMembers.length < 3) {
+        return res.status(400).json({ error: "At least 3 active team members required" });
+      }
+      if (!d1.teamCharterDefined) {
+        return res.status(400).json({ error: "Team charter must be defined" });
+      }
+
+      await storage.updateCapaD1(capaId, {
+        d1CompletedAt: new Date(),
+        d1CompletedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_completed',
+        userId: req.auth!.user.id,
+        discipline: 'D1',
+        changeDescription: 'D1 completed',
+      });
+
+      res.json({ message: "D1 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D1:", error);
+      res.status(500).json({ error: "Failed to complete D1" });
+    }
+  });
+
+  // D1 verify
+  app.post("/api/capas/:id/d1/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d1 = await storage.getCapaD1(capaId);
+      if (!d1 || !d1.d1CompletedAt) {
+        return res.status(400).json({ error: "D1 must be completed before verification" });
+      }
+
+      await storage.updateCapaD1(capaId, {
+        d1VerifiedAt: new Date(),
+        d1VerifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_verified',
+        userId: req.auth!.user.id,
+        discipline: 'D1',
+        changeDescription: 'D1 verified',
+      });
+
+      res.json({ message: "D1 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D1:", error);
+      res.status(500).json({ error: "Failed to verify D1" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D2 Problem Description
+  // =============================================
+
+  app.get("/api/capas/:id/d2", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      res.json(d2 || null);
+    } catch (error) {
+      console.error("Error fetching D2:", error);
+      res.status(500).json({ error: "Failed to fetch D2 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d2", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d2 = await storage.getCapaD2(capaId);
+      if (d2) {
+        d2 = (await storage.updateCapaD2(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD2ProblemSchema.parse({
+          ...req.body,
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        });
+        d2 = await storage.createCapaD2(parsed);
+      }
+
+      res.json(d2);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error updating D2:", error);
+      res.status(500).json({ error: "Failed to update D2 data" });
+    }
+  });
+
+  // D2 Is/Is Not update by dimension
+  app.put("/api/capas/:id/d2/is-not/:dimension", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const dimension = req.params.dimension;
+      const validDimensions = ['what', 'where', 'when', 'howMany'];
+      if (!validDimensions.includes(dimension)) {
+        return res.status(400).json({ error: `Invalid dimension. Must be one of: ${validDimensions.join(', ')}` });
+      }
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      if (!d2) return res.status(400).json({ error: "D2 data must be created first" });
+
+      const fieldMap: Record<string, string> = {
+        what: 'isNotWhat',
+        where: 'isNotWhere',
+        when: 'isNotWhen',
+        howMany: 'isNotHowMany',
+      };
+
+      const fieldName = fieldMap[dimension];
+      const updateData: Record<string, any> = {};
+      updateData[fieldName] = JSON.stringify(req.body);
+
+      const updated = await storage.updateCapaD2(capaId, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating Is/Is Not:", error);
+      res.status(500).json({ error: "Failed to update Is/Is Not" });
+    }
+  });
+
+  // D2 verify problem statement
+  app.post("/api/capas/:id/d2/verify-problem-statement", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      if (!d2) return res.status(400).json({ error: "D2 data must be created first" });
+
+      await storage.updateCapaD2(capaId, {
+        problemStatementVerified: 1,
+        problemStatementVerifiedBy: req.auth!.user.id,
+      });
+
+      res.json({ message: "Problem statement verified" });
+    } catch (error) {
+      console.error("Error verifying problem statement:", error);
+      res.status(500).json({ error: "Failed to verify problem statement" });
+    }
+  });
+
+  // D2 data points
+  app.post("/api/capas/:id/d2/data-points", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      if (!d2) return res.status(400).json({ error: "D2 data must be created first" });
+
+      const dataPoints = JSON.parse(d2.dataCollected || '[]');
+      const newPoint = {
+        id: randomUUID(),
+        ...req.body,
+        collectedAt: new Date().toISOString(),
+        collectedBy: req.auth!.user.id,
+      };
+      dataPoints.push(newPoint);
+
+      await storage.updateCapaD2(capaId, { dataCollected: JSON.stringify(dataPoints) });
+
+      res.status(201).json(newPoint);
+    } catch (error) {
+      console.error("Error adding data point:", error);
+      res.status(500).json({ error: "Failed to add data point" });
+    }
+  });
+
+  // D2 verify measurement system
+  app.post("/api/capas/:id/d2/verify-measurement-system", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      if (!d2) return res.status(400).json({ error: "D2 data must be created first" });
+
+      await storage.updateCapaD2(capaId, {
+        measurementSystemValid: 1,
+        measurementSystemNotes: req.body.notes || null,
+      });
+
+      res.json({ message: "Measurement system verified" });
+    } catch (error) {
+      console.error("Error verifying measurement system:", error);
+      res.status(500).json({ error: "Failed to verify measurement system" });
+    }
+  });
+
+  // D2 complete
+  app.post("/api/capas/:id/d2/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      if (!d2) return res.status(400).json({ error: "D2 data must be created first" });
+
+      // Validate
+      if (!d2.fiveWsComplete) {
+        return res.status(400).json({ error: "5W+1H must be complete" });
+      }
+      if (!d2.measurementSystemValid) {
+        return res.status(400).json({ error: "Measurement system must be verified" });
+      }
+
+      await storage.updateCapaD2(capaId, {
+        d2CompletedAt: new Date(),
+        d2CompletedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_completed',
+        userId: req.auth!.user.id,
+        discipline: 'D2',
+        changeDescription: 'D2 completed',
+      });
+
+      res.json({ message: "D2 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D2:", error);
+      res.status(500).json({ error: "Failed to complete D2" });
+    }
+  });
+
+  // D2 verify
+  app.post("/api/capas/:id/d2/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d2 = await storage.getCapaD2(capaId);
+      if (!d2 || !d2.d2CompletedAt) {
+        return res.status(400).json({ error: "D2 must be completed before verification" });
+      }
+
+      await storage.updateCapaD2(capaId, {
+        d2VerifiedAt: new Date(),
+        d2VerifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_verified',
+        userId: req.auth!.user.id,
+        discipline: 'D2',
+        changeDescription: 'D2 verified',
+      });
+
+      res.json({ message: "D2 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D2:", error);
+      res.status(500).json({ error: "Failed to verify D2" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D3 Interim Containment
+  // =============================================
+
+  app.get("/api/capas/:id/d3", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      res.json(d3 || null);
+    } catch (error) {
+      console.error("Error fetching D3:", error);
+      res.status(500).json({ error: "Failed to fetch D3 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d3", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d3 = await storage.getCapaD3(capaId);
+      if (d3) {
+        d3 = (await storage.updateCapaD3(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD3ContainmentSchema.parse({
+          ...req.body,
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        });
+        d3 = await storage.createCapaD3(parsed);
+      }
+
+      res.json(d3);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error updating D3:", error);
+      res.status(500).json({ error: "Failed to update D3 data" });
+    }
+  });
+
+  // D3 add containment action
+  app.post("/api/capas/:id/d3/actions", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d3 = await storage.getCapaD3(capaId);
+      if (!d3) {
+        d3 = await storage.createCapaD3({
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        } as any);
+      }
+
+      const actions = JSON.parse(d3.actions || '[]');
+      const newAction = {
+        id: randomUUID(),
+        ...req.body,
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        createdBy: req.auth!.user.id,
+      };
+      actions.push(newAction);
+
+      await storage.updateCapaD3(capaId, { actions: JSON.stringify(actions) });
+
+      res.status(201).json(newAction);
+    } catch (error) {
+      console.error("Error adding containment action:", error);
+      res.status(500).json({ error: "Failed to add containment action" });
+    }
+  });
+
+  // D3 update containment action
+  app.patch("/api/capas/:id/d3/actions/:actionId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      if (!d3) return res.status(404).json({ error: "D3 not found" });
+
+      const actions = JSON.parse(d3.actions || '[]');
+      const actionId = req.params.actionId;
+      const idx = actions.findIndex((a: any) => a.id === actionId);
+      if (idx === -1) return res.status(404).json({ error: "Action not found" });
+
+      actions[idx] = { ...actions[idx], ...req.body, updatedAt: new Date().toISOString() };
+      await storage.updateCapaD3(capaId, { actions: JSON.stringify(actions) });
+
+      res.json(actions[idx]);
+    } catch (error) {
+      console.error("Error updating containment action:", error);
+      res.status(500).json({ error: "Failed to update containment action" });
+    }
+  });
+
+  // D3 verify action effectiveness
+  app.post("/api/capas/:id/d3/actions/:actionId/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      if (!d3) return res.status(404).json({ error: "D3 not found" });
+
+      const actions = JSON.parse(d3.actions || '[]');
+      const actionId = req.params.actionId;
+      const idx = actions.findIndex((a: any) => a.id === actionId);
+      if (idx === -1) return res.status(404).json({ error: "Action not found" });
+
+      actions[idx] = {
+        ...actions[idx],
+        status: 'verified',
+        verifiedAt: new Date().toISOString(),
+        verifiedBy: req.auth!.user.id,
+        verificationNotes: req.body.notes,
+      };
+      await storage.updateCapaD3(capaId, { actions: JSON.stringify(actions) });
+
+      res.json(actions[idx]);
+    } catch (error) {
+      console.error("Error verifying action:", error);
+      res.status(500).json({ error: "Failed to verify action" });
+    }
+  });
+
+  // D3 sort results
+  app.post("/api/capas/:id/d3/sort-results", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      if (!d3) return res.status(400).json({ error: "D3 data must be created first" });
+
+      const { quantityInspected, quantityPassed, quantityFailed, quantityReworked, quantityScrapped } = req.body;
+
+      await storage.updateCapaD3(capaId, {
+        quantityInspected: quantityInspected ?? d3.quantityInspected,
+        quantityPassed: quantityPassed ?? d3.quantityPassed,
+        quantityFailed: quantityFailed ?? d3.quantityFailed,
+        quantityReworked: quantityReworked ?? d3.quantityReworked,
+        quantityScrapped: quantityScrapped ?? d3.quantityScrapped,
+      });
+
+      res.json({ message: "Sort results updated" });
+    } catch (error) {
+      console.error("Error updating sort results:", error);
+      res.status(500).json({ error: "Failed to update sort results" });
+    }
+  });
+
+  // D3 verify effectiveness
+  app.post("/api/capas/:id/d3/verify-effectiveness", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      if (!d3) return res.status(400).json({ error: "D3 data must be created first" });
+
+      await storage.updateCapaD3(capaId, {
+        containmentEffective: 1,
+        containmentEffectiveDate: new Date(),
+        containmentEffectiveEvidence: req.body.evidence || null,
+      });
+
+      res.json({ message: "Containment effectiveness verified" });
+    } catch (error) {
+      console.error("Error verifying effectiveness:", error);
+      res.status(500).json({ error: "Failed to verify effectiveness" });
+    }
+  });
+
+  // D3 complete
+  app.post("/api/capas/:id/d3/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      if (!d3) return res.status(400).json({ error: "D3 data must be created first" });
+
+      // Validate containment actions are complete
+      const actions = JSON.parse(d3.actions || '[]');
+      if (d3.containmentRequired && actions.length === 0) {
+        return res.status(400).json({ error: "At least one containment action is required" });
+      }
+
+      await storage.updateCapaD3(capaId, {
+        d3CompletedAt: new Date(),
+        d3CompletedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_completed',
+        userId: req.auth!.user.id,
+        discipline: 'D3',
+        changeDescription: 'D3 completed',
+      });
+
+      res.json({ message: "D3 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D3:", error);
+      res.status(500).json({ error: "Failed to complete D3" });
+    }
+  });
+
+  // D3 verify
+  app.post("/api/capas/:id/d3/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d3 = await storage.getCapaD3(capaId);
+      if (!d3 || !d3.d3CompletedAt) {
+        return res.status(400).json({ error: "D3 must be completed before verification" });
+      }
+
+      await storage.updateCapaD3(capaId, {
+        d3VerifiedAt: new Date(),
+        d3VerifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_verified',
+        userId: req.auth!.user.id,
+        discipline: 'D3',
+        changeDescription: 'D3 verified',
+      });
+
+      res.json({ message: "D3 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D3:", error);
+      res.status(500).json({ error: "Failed to verify D3" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D4 Root Cause Analysis
+  // =============================================
+
+  app.get("/api/capas/:id/d4", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (d4) {
+        const candidates = await storage.getD4Candidates(capaId);
+        return res.json({ ...d4, candidates });
+      }
+      res.json(null);
+    } catch (error) {
+      console.error("Error fetching D4:", error);
+      res.status(500).json({ error: "Failed to fetch D4 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d4", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d4 = await storage.getCapaD4(capaId);
+      if (d4) {
+        d4 = (await storage.updateCapaD4(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD4RootCauseSchema.parse({
+          ...req.body,
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        });
+        d4 = await storage.createCapaD4(parsed);
+      }
+
+      res.json(d4);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error updating D4:", error);
+      res.status(500).json({ error: "Failed to update D4 data" });
+    }
+  });
+
+  // D4 five-why chain
+  app.post("/api/capas/:id/d4/five-why", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d4 = await storage.getCapaD4(capaId);
+      if (!d4) {
+        d4 = await storage.createCapaD4({
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        } as any);
+      }
+
+      const chains = JSON.parse(d4.fiveWhyAnalysis || '[]');
+      const newChain = {
+        id: randomUUID(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        createdBy: req.auth!.user.id,
+      };
+      chains.push(newChain);
+
+      await storage.updateCapaD4(capaId, { fiveWhyAnalysis: JSON.stringify(chains) });
+
+      res.status(201).json(newChain);
+    } catch (error) {
+      console.error("Error adding 5-Why chain:", error);
+      res.status(500).json({ error: "Failed to add 5-Why chain" });
+    }
+  });
+
+  // D4 update five-why chain
+  app.patch("/api/capas/:id/d4/five-why/:chainId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (!d4) return res.status(404).json({ error: "D4 not found" });
+
+      const chains = JSON.parse(d4.fiveWhyAnalysis || '[]');
+      const chainId = req.params.chainId;
+      const idx = chains.findIndex((c: any) => c.id === chainId);
+      if (idx === -1) return res.status(404).json({ error: "5-Why chain not found" });
+
+      chains[idx] = { ...chains[idx], ...req.body, updatedAt: new Date().toISOString() };
+      await storage.updateCapaD4(capaId, { fiveWhyAnalysis: JSON.stringify(chains) });
+
+      res.json(chains[idx]);
+    } catch (error) {
+      console.error("Error updating 5-Why chain:", error);
+      res.status(500).json({ error: "Failed to update 5-Why chain" });
+    }
+  });
+
+  // D4 fishbone diagram
+  app.put("/api/capas/:id/d4/fishbone", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d4 = await storage.getCapaD4(capaId);
+      if (!d4) {
+        d4 = await storage.createCapaD4({
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        } as any);
+      }
+
+      await storage.updateCapaD4(capaId, { fishboneDiagram: JSON.stringify(req.body) });
+
+      const updated = await storage.getCapaD4(capaId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating fishbone:", error);
+      res.status(500).json({ error: "Failed to update fishbone diagram" });
+    }
+  });
+
+  // D4 root cause candidates
+  app.post("/api/capas/:id/d4/candidates", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      let d4 = await storage.getCapaD4(capaId);
+      if (!d4) {
+        d4 = await storage.createCapaD4({
+          orgId: req.orgId!,
+          capaId,
+          createdBy: req.auth!.user.id,
+        } as any);
+      }
+
+      const parsed = insertCapaD4RootCauseCandidateSchema.parse({
+        ...req.body,
+        orgId: req.orgId!,
+        capaId,
+        d4Id: d4.id,
+        createdBy: req.auth!.user.id,
+      });
+
+      const candidate = await storage.createD4Candidate(parsed);
+      res.status(201).json(candidate);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromError(error).toString() });
+      }
+      console.error("Error adding root cause candidate:", error);
+      res.status(500).json({ error: "Failed to add root cause candidate" });
+    }
+  });
+
+  // D4 update candidate
+  app.patch("/api/capas/:id/d4/candidates/:candidateId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const candidateId = parseInt(req.params.candidateId);
+      if (isNaN(capaId) || isNaN(candidateId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const existing = await storage.getD4Candidate(candidateId);
+      if (!existing || existing.capaId !== capaId) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      const updated = await storage.updateD4Candidate(candidateId, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating candidate:", error);
+      res.status(500).json({ error: "Failed to update candidate" });
+    }
+  });
+
+  // D4 verify candidate as root cause
+  app.post("/api/capas/:id/d4/candidates/:candidateId/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const candidateId = parseInt(req.params.candidateId);
+      if (isNaN(capaId) || isNaN(candidateId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const existing = await storage.getD4Candidate(candidateId);
+      if (!existing || existing.capaId !== capaId) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      const updated = await storage.updateD4Candidate(candidateId, {
+        isRootCause: 1,
+        verificationResult: 'confirmed',
+        verifiedAt: new Date(),
+        verifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'root_cause_verified',
+        userId: req.auth!.user.id,
+        newValue: JSON.stringify({ candidateId, description: existing.description }),
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error verifying candidate:", error);
+      res.status(500).json({ error: "Failed to verify candidate" });
+    }
+  });
+
+  // D4 verification tests
+  app.post("/api/capas/:id/d4/verification-tests", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (!d4) return res.status(400).json({ error: "D4 data must be created first" });
+
+      const tests = JSON.parse(d4.verificationTests || '[]');
+      const newTest = {
+        id: randomUUID(),
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        createdBy: req.auth!.user.id,
+      };
+      tests.push(newTest);
+
+      await storage.updateCapaD4(capaId, { verificationTests: JSON.stringify(tests) });
+
+      res.status(201).json(newTest);
+    } catch (error) {
+      console.error("Error adding verification test:", error);
+      res.status(500).json({ error: "Failed to add verification test" });
+    }
+  });
+
+  // D4 verify occurrence root cause
+  app.post("/api/capas/:id/d4/verify-occurrence", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (!d4) return res.status(400).json({ error: "D4 data must be created first" });
+
+      await storage.updateCapaD4(capaId, {
+        rootCauseOccurrenceVerified: 1,
+        rootCauseOccurrenceVerifiedBy: req.auth!.user.id,
+        rootCauseOccurrenceVerifiedAt: new Date(),
+      });
+
+      res.json({ message: "Occurrence root cause verified" });
+    } catch (error) {
+      console.error("Error verifying occurrence root cause:", error);
+      res.status(500).json({ error: "Failed to verify occurrence root cause" });
+    }
+  });
+
+  // D4 verify escape root cause
+  app.post("/api/capas/:id/d4/verify-escape", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (!d4) return res.status(400).json({ error: "D4 data must be created first" });
+
+      await storage.updateCapaD4(capaId, {
+        rootCauseEscapeVerified: 1,
+        rootCauseEscapeVerifiedBy: req.auth!.user.id,
+        rootCauseEscapeVerifiedAt: new Date(),
+      });
+
+      res.json({ message: "Escape root cause verified" });
+    } catch (error) {
+      console.error("Error verifying escape root cause:", error);
+      res.status(500).json({ error: "Failed to verify escape root cause" });
+    }
+  });
+
+  // D4 complete
+  app.post("/api/capas/:id/d4/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (!d4) return res.status(400).json({ error: "D4 data must be created first" });
+
+      // Validate: both root causes verified
+      if (!d4.rootCauseOccurrenceVerified) {
+        return res.status(400).json({ error: "Occurrence root cause must be verified" });
+      }
+      if (!d4.rootCauseEscapeVerified) {
+        return res.status(400).json({ error: "Escape root cause must be verified" });
+      }
+
+      await storage.updateCapaD4(capaId, {
+        d4CompletedAt: new Date(),
+        d4CompletedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_completed',
+        userId: req.auth!.user.id,
+        discipline: 'D4',
+        changeDescription: 'D4 completed',
+      });
+
+      res.json({ message: "D4 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D4:", error);
+      res.status(500).json({ error: "Failed to complete D4" });
+    }
+  });
+
+  // D4 verify
+  app.post("/api/capas/:id/d4/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) {
+        return res.status(404).json({ error: "CAPA not found" });
+      }
+
+      const d4 = await storage.getCapaD4(capaId);
+      if (!d4 || !d4.d4CompletedAt) {
+        return res.status(400).json({ error: "D4 must be completed before verification" });
+      }
+
+      await storage.updateCapaD4(capaId, {
+        d4VerifiedAt: new Date(),
+        d4VerifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!,
+        capaId,
+        action: 'discipline_verified',
+        userId: req.auth!.user.id,
+        discipline: 'D4',
+        changeDescription: 'D4 verified',
+      });
+
+      res.json({ message: "D4 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D4:", error);
+      res.status(500).json({ error: "Failed to verify D4" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D5 Permanent Corrective Actions
+  // =============================================
+
+  app.get("/api/capas/:id/d5", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+      const d5 = await storage.getCapaD5(capaId);
+      res.json(d5 || null);
+    } catch (error) {
+      console.error("Error fetching D5:", error);
+      res.status(500).json({ error: "Failed to fetch D5 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d5", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d5 = await storage.getCapaD5(capaId);
+      if (d5) {
+        d5 = (await storage.updateCapaD5(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD5CorrectiveActionSchema.parse({
+          ...req.body, orgId: req.orgId!, capaId, createdBy: req.auth!.user.id,
+        });
+        d5 = await storage.createCapaD5(parsed);
+      }
+      res.json(d5);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
+      console.error("Error updating D5:", error);
+      res.status(500).json({ error: "Failed to update D5 data" });
+    }
+  });
+
+  // D5 add corrective action
+  app.post("/api/capas/:id/d5/actions", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d5 = await storage.getCapaD5(capaId);
+      if (!d5) {
+        d5 = await storage.createCapaD5({ orgId: req.orgId!, capaId, createdBy: req.auth!.user.id } as any);
+      }
+
+      const actions = JSON.parse(d5.correctiveActionsSelected || '[]');
+      const newAction = { id: randomUUID(), ...req.body, status: 'open', createdAt: new Date().toISOString(), createdBy: req.auth!.user.id };
+      actions.push(newAction);
+      await storage.updateCapaD5(capaId, { correctiveActionsSelected: JSON.stringify(actions) });
+      res.status(201).json(newAction);
+    } catch (error) {
+      console.error("Error adding corrective action:", error);
+      res.status(500).json({ error: "Failed to add corrective action" });
+    }
+  });
+
+  // D5 update corrective action
+  app.patch("/api/capas/:id/d5/actions/:actionId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d5 = await storage.getCapaD5(capaId);
+      if (!d5) return res.status(404).json({ error: "D5 not found" });
+
+      const actions = JSON.parse(d5.correctiveActionsSelected || '[]');
+      const idx = actions.findIndex((a: any) => a.id === req.params.actionId);
+      if (idx === -1) return res.status(404).json({ error: "Action not found" });
+
+      actions[idx] = { ...actions[idx], ...req.body, updatedAt: new Date().toISOString() };
+      await storage.updateCapaD5(capaId, { correctiveActionsSelected: JSON.stringify(actions) });
+      res.json(actions[idx]);
+    } catch (error) {
+      console.error("Error updating corrective action:", error);
+      res.status(500).json({ error: "Failed to update corrective action" });
+    }
+  });
+
+  // D5 add alternative considered
+  app.post("/api/capas/:id/d5/alternatives", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d5 = await storage.getCapaD5(capaId);
+      if (!d5) {
+        d5 = await storage.createCapaD5({ orgId: req.orgId!, capaId, createdBy: req.auth!.user.id } as any);
+      }
+
+      const alternatives = JSON.parse(d5.alternativesConsidered || '[]');
+      const newAlt = { id: randomUUID(), ...req.body, createdAt: new Date().toISOString() };
+      alternatives.push(newAlt);
+      await storage.updateCapaD5(capaId, { alternativesConsidered: JSON.stringify(alternatives) });
+      res.status(201).json(newAlt);
+    } catch (error) {
+      console.error("Error adding alternative:", error);
+      res.status(500).json({ error: "Failed to add alternative" });
+    }
+  });
+
+  // D5 risk assessment
+  app.put("/api/capas/:id/d5/risk-assessment", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d5 = await storage.getCapaD5(capaId);
+      if (!d5) return res.status(400).json({ error: "D5 data must be created first" });
+
+      await storage.updateCapaD5(capaId, { riskAssessment: JSON.stringify(req.body) });
+      const updated = await storage.getCapaD5(capaId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating risk assessment:", error);
+      res.status(500).json({ error: "Failed to update risk assessment" });
+    }
+  });
+
+  // D5 request approval
+  app.post("/api/capas/:id/d5/request-approval", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d5 = await storage.getCapaD5(capaId);
+      if (!d5) return res.status(400).json({ error: "D5 data must be created first" });
+
+      await storage.updateCapaD5(capaId, { managementApprovalStatus: 'pending' });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'approval_requested', userId: req.auth!.user.id,
+        discipline: 'D5', changeDescription: 'D5 submitted for management approval',
+      });
+
+      res.json({ message: "Approval requested" });
+    } catch (error) {
+      console.error("Error requesting approval:", error);
+      res.status(500).json({ error: "Failed to request approval" });
+    }
+  });
+
+  // D5 approve
+  app.post("/api/capas/:id/d5/approve", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      await storage.updateCapaD5(capaId, {
+        managementApprovalStatus: 'approved',
+        managementApprovedBy: req.auth!.user.id,
+        managementApprovedAt: new Date(),
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'approved', userId: req.auth!.user.id,
+        discipline: 'D5', changeDescription: 'D5 corrective actions approved by management',
+      });
+
+      res.json({ message: "D5 approved" });
+    } catch (error) {
+      console.error("Error approving D5:", error);
+      res.status(500).json({ error: "Failed to approve D5" });
+    }
+  });
+
+  // D5 reject
+  app.post("/api/capas/:id/d5/reject", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const { reason } = req.body;
+      if (!reason) return res.status(400).json({ error: "Rejection reason is required" });
+
+      await storage.updateCapaD5(capaId, { managementApprovalStatus: 'rejected' });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'rejected', userId: req.auth!.user.id,
+        discipline: 'D5', changeDescription: `D5 rejected: ${reason}`,
+      });
+
+      res.json({ message: "D5 rejected" });
+    } catch (error) {
+      console.error("Error rejecting D5:", error);
+      res.status(500).json({ error: "Failed to reject D5" });
+    }
+  });
+
+  // D5 complete
+  app.post("/api/capas/:id/d5/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d5 = await storage.getCapaD5(capaId);
+      if (!d5) return res.status(400).json({ error: "D5 data must be created first" });
+
+      const actions = JSON.parse(d5.correctiveActionsSelected || '[]');
+      if (actions.length === 0) return res.status(400).json({ error: "At least one corrective action must be defined" });
+      if (d5.managementApprovalRequired && d5.managementApprovalStatus !== 'approved') {
+        return res.status(400).json({ error: "Management approval is required" });
+      }
+
+      await storage.updateCapaD5(capaId, { d5CompletedAt: new Date(), d5CompletedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_completed', userId: req.auth!.user.id,
+        discipline: 'D5', changeDescription: 'D5 completed',
+      });
+
+      res.json({ message: "D5 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D5:", error);
+      res.status(500).json({ error: "Failed to complete D5" });
+    }
+  });
+
+  // D5 verify
+  app.post("/api/capas/:id/d5/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d5 = await storage.getCapaD5(capaId);
+      if (!d5 || !d5.d5CompletedAt) return res.status(400).json({ error: "D5 must be completed before verification" });
+
+      await storage.updateCapaD5(capaId, { d5VerifiedAt: new Date(), d5VerifiedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_verified', userId: req.auth!.user.id,
+        discipline: 'D5', changeDescription: 'D5 verified',
+      });
+
+      res.json({ message: "D5 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D5:", error);
+      res.status(500).json({ error: "Failed to verify D5" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D6 Implementation & Validation
+  // =============================================
+
+  app.get("/api/capas/:id/d6", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+      const d6 = await storage.getCapaD6(capaId);
+      res.json(d6 || null);
+    } catch (error) {
+      console.error("Error fetching D6:", error);
+      res.status(500).json({ error: "Failed to fetch D6 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d6", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d6 = await storage.getCapaD6(capaId);
+      if (d6) {
+        d6 = (await storage.updateCapaD6(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD6ValidationSchema.parse({
+          ...req.body, orgId: req.orgId!, capaId, createdBy: req.auth!.user.id,
+        });
+        d6 = await storage.createCapaD6(parsed);
+      }
+      res.json(d6);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
+      console.error("Error updating D6:", error);
+      res.status(500).json({ error: "Failed to update D6 data" });
+    }
+  });
+
+  // D6 implementation log
+  app.post("/api/capas/:id/d6/implementation-log", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d6 = await storage.getCapaD6(capaId);
+      if (!d6) {
+        d6 = await storage.createCapaD6({ orgId: req.orgId!, capaId, createdBy: req.auth!.user.id } as any);
+      }
+
+      const log = JSON.parse(d6.implementationLog || '[]');
+      const entry = { id: randomUUID(), ...req.body, timestamp: new Date().toISOString(), loggedBy: req.auth!.user.id };
+      log.push(entry);
+      await storage.updateCapaD6(capaId, { implementationLog: JSON.stringify(log) });
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error adding implementation log:", error);
+      res.status(500).json({ error: "Failed to add implementation log entry" });
+    }
+  });
+
+  // D6 mark action as implemented
+  app.post("/api/capas/:id/d6/actions/:actionId/implement", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      const implemented = JSON.parse(d6.actionsImplemented || '[]');
+      const pending = JSON.parse(d6.actionsPending || '[]');
+      const actionId = req.params.actionId;
+
+      // Move from pending to implemented
+      const pendingIdx = pending.findIndex((a: any) => a.id === actionId);
+      if (pendingIdx !== -1) pending.splice(pendingIdx, 1);
+
+      implemented.push({
+        id: actionId,
+        ...req.body,
+        implementedAt: new Date().toISOString(),
+        implementedBy: req.auth!.user.id,
+      });
+
+      await storage.updateCapaD6(capaId, {
+        actionsImplemented: JSON.stringify(implemented),
+        actionsPending: JSON.stringify(pending),
+      });
+
+      res.json({ message: "Action marked as implemented" });
+    } catch (error) {
+      console.error("Error implementing action:", error);
+      res.status(500).json({ error: "Failed to mark action as implemented" });
+    }
+  });
+
+  // D6 record delay
+  app.post("/api/capas/:id/d6/delays", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      const delays = JSON.parse(d6.delaysEncountered || '[]');
+      const delay = { id: randomUUID(), ...req.body, reportedAt: new Date().toISOString(), reportedBy: req.auth!.user.id };
+      delays.push(delay);
+      await storage.updateCapaD6(capaId, { delaysEncountered: JSON.stringify(delays) });
+      res.status(201).json(delay);
+    } catch (error) {
+      console.error("Error recording delay:", error);
+      res.status(500).json({ error: "Failed to record delay" });
+    }
+  });
+
+  // D6 validation tests
+  app.post("/api/capas/:id/d6/validation-tests", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d6 = await storage.getCapaD6(capaId);
+      if (!d6) {
+        d6 = await storage.createCapaD6({ orgId: req.orgId!, capaId, createdBy: req.auth!.user.id } as any);
+      }
+
+      const tests = JSON.parse(d6.validationTests || '[]');
+      const newTest = { id: randomUUID(), ...req.body, status: 'pending', createdAt: new Date().toISOString() };
+      tests.push(newTest);
+      await storage.updateCapaD6(capaId, { validationTests: JSON.stringify(tests) });
+      res.status(201).json(newTest);
+    } catch (error) {
+      console.error("Error adding validation test:", error);
+      res.status(500).json({ error: "Failed to add validation test" });
+    }
+  });
+
+  // D6 record validation test result
+  app.post("/api/capas/:id/d6/validation-tests/:testId/result", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      const tests = JSON.parse(d6.validationTests || '[]');
+      const idx = tests.findIndex((t: any) => t.id === req.params.testId);
+      if (idx === -1) return res.status(404).json({ error: "Validation test not found" });
+
+      tests[idx] = { ...tests[idx], ...req.body, status: 'completed', completedAt: new Date().toISOString(), completedBy: req.auth!.user.id };
+      await storage.updateCapaD6(capaId, { validationTests: JSON.stringify(tests) });
+      res.json(tests[idx]);
+    } catch (error) {
+      console.error("Error recording test result:", error);
+      res.status(500).json({ error: "Failed to record test result" });
+    }
+  });
+
+  // D6 statistical validation
+  app.put("/api/capas/:id/d6/statistical-validation", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      await storage.updateCapaD6(capaId, { statisticalValidation: JSON.stringify(req.body) });
+      const updated = await storage.getCapaD6(capaId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating statistical validation:", error);
+      res.status(500).json({ error: "Failed to update statistical validation" });
+    }
+  });
+
+  // D6 remove containment
+  app.post("/api/capas/:id/d6/remove-containment", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+      if (!d6.effectivenessVerified) return res.status(400).json({ error: "Effectiveness must be verified before removing containment" });
+
+      await storage.updateCapaD6(capaId, {
+        containmentRemoved: 1,
+        containmentRemovedAt: new Date(),
+        containmentRemovalVerifiedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'containment_removed', userId: req.auth!.user.id,
+        discipline: 'D6', changeDescription: 'Containment measures removed',
+      });
+
+      res.json({ message: "Containment removed" });
+    } catch (error) {
+      console.error("Error removing containment:", error);
+      res.status(500).json({ error: "Failed to remove containment" });
+    }
+  });
+
+  // D6 verify effectiveness
+  app.post("/api/capas/:id/d6/verify-effectiveness", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      await storage.updateCapaD6(capaId, {
+        effectivenessVerified: 1,
+        effectivenessVerifiedBy: req.auth!.user.id,
+        effectivenessVerifiedAt: new Date(),
+        effectivenessResult: req.body.result || 'effective',
+        effectivenessEvidence: req.body.evidence || null,
+      });
+
+      res.json({ message: "Effectiveness verified" });
+    } catch (error) {
+      console.error("Error verifying effectiveness:", error);
+      res.status(500).json({ error: "Failed to verify effectiveness" });
+    }
+  });
+
+  // D6 reoccurrence check
+  app.post("/api/capas/:id/d6/reoccurrence-check", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      await storage.updateCapaD6(capaId, {
+        reoccurrenceCheck: 1,
+        reoccurrenceCheckDate: new Date(),
+        reoccurrenceCheckMethod: req.body.method || null,
+      });
+
+      res.json({ message: "Reoccurrence check recorded" });
+    } catch (error) {
+      console.error("Error recording reoccurrence check:", error);
+      res.status(500).json({ error: "Failed to record reoccurrence check" });
+    }
+  });
+
+  // D6 complete
+  app.post("/api/capas/:id/d6/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6) return res.status(400).json({ error: "D6 data must be created first" });
+
+      if (!d6.effectivenessVerified) return res.status(400).json({ error: "Effectiveness must be verified" });
+
+      await storage.updateCapaD6(capaId, {
+        implementationStatus: 'complete',
+        d6CompletedAt: new Date(),
+        d6CompletedBy: req.auth!.user.id,
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_completed', userId: req.auth!.user.id,
+        discipline: 'D6', changeDescription: 'D6 completed',
+      });
+
+      res.json({ message: "D6 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D6:", error);
+      res.status(500).json({ error: "Failed to complete D6" });
+    }
+  });
+
+  // D6 verify
+  app.post("/api/capas/:id/d6/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d6 = await storage.getCapaD6(capaId);
+      if (!d6 || !d6.d6CompletedAt) return res.status(400).json({ error: "D6 must be completed before verification" });
+
+      await storage.updateCapaD6(capaId, { d6VerifiedAt: new Date(), d6VerifiedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_verified', userId: req.auth!.user.id,
+        discipline: 'D6', changeDescription: 'D6 verified',
+      });
+
+      res.json({ message: "D6 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D6:", error);
+      res.status(500).json({ error: "Failed to verify D6" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D7 Preventive Actions
+  // =============================================
+
+  app.get("/api/capas/:id/d7", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+      const d7 = await storage.getCapaD7(capaId);
+      res.json(d7 || null);
+    } catch (error) {
+      console.error("Error fetching D7:", error);
+      res.status(500).json({ error: "Failed to fetch D7 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d7", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d7 = await storage.getCapaD7(capaId);
+      if (d7) {
+        d7 = (await storage.updateCapaD7(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD7PreventiveSchema.parse({
+          ...req.body, orgId: req.orgId!, capaId, createdBy: req.auth!.user.id,
+        });
+        d7 = await storage.createCapaD7(parsed);
+      }
+      res.json(d7);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
+      console.error("Error updating D7:", error);
+      res.status(500).json({ error: "Failed to update D7 data" });
+    }
+  });
+
+  // D7 systemic analysis
+  app.post("/api/capas/:id/d7/systemic-analysis", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d7 = await storage.getCapaD7(capaId);
+      if (!d7) {
+        d7 = await storage.createCapaD7({ orgId: req.orgId!, capaId, createdBy: req.auth!.user.id } as any);
+      }
+
+      await storage.updateCapaD7(capaId, {
+        systemicAnalysisComplete: 1,
+        systemicAnalysisSummary: req.body.summary || null,
+        managementSystemsReviewed: JSON.stringify(req.body.systemsReviewed || []),
+      });
+
+      res.json({ message: "Systemic analysis recorded" });
+    } catch (error) {
+      console.error("Error recording systemic analysis:", error);
+      res.status(500).json({ error: "Failed to record systemic analysis" });
+    }
+  });
+
+  // D7 similar processes
+  app.post("/api/capas/:id/d7/similar-processes", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(400).json({ error: "D7 data must be created first" });
+
+      const processes = JSON.parse(d7.similarProcessesIdentified || '[]');
+      const newProcess = { id: randomUUID(), ...req.body, identifiedAt: new Date().toISOString() };
+      processes.push(newProcess);
+      await storage.updateCapaD7(capaId, { similarProcessesIdentified: JSON.stringify(processes) });
+      res.status(201).json(newProcess);
+    } catch (error) {
+      console.error("Error adding similar process:", error);
+      res.status(500).json({ error: "Failed to add similar process" });
+    }
+  });
+
+  // D7 add preventive action
+  app.post("/api/capas/:id/d7/actions", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d7 = await storage.getCapaD7(capaId);
+      if (!d7) {
+        d7 = await storage.createCapaD7({ orgId: req.orgId!, capaId, createdBy: req.auth!.user.id } as any);
+      }
+
+      const actions = JSON.parse(d7.preventiveActions || '[]');
+      const newAction = { id: randomUUID(), ...req.body, status: 'open', createdAt: new Date().toISOString(), createdBy: req.auth!.user.id };
+      actions.push(newAction);
+      await storage.updateCapaD7(capaId, { preventiveActions: JSON.stringify(actions) });
+      res.status(201).json(newAction);
+    } catch (error) {
+      console.error("Error adding preventive action:", error);
+      res.status(500).json({ error: "Failed to add preventive action" });
+    }
+  });
+
+  // D7 update preventive action
+  app.patch("/api/capas/:id/d7/actions/:actionId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(404).json({ error: "D7 not found" });
+
+      const actions = JSON.parse(d7.preventiveActions || '[]');
+      const idx = actions.findIndex((a: any) => a.id === req.params.actionId);
+      if (idx === -1) return res.status(404).json({ error: "Action not found" });
+
+      actions[idx] = { ...actions[idx], ...req.body, updatedAt: new Date().toISOString() };
+      await storage.updateCapaD7(capaId, { preventiveActions: JSON.stringify(actions) });
+      res.json(actions[idx]);
+    } catch (error) {
+      console.error("Error updating preventive action:", error);
+      res.status(500).json({ error: "Failed to update preventive action" });
+    }
+  });
+
+  // D7 verify preventive action
+  app.post("/api/capas/:id/d7/actions/:actionId/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(404).json({ error: "D7 not found" });
+
+      const actions = JSON.parse(d7.preventiveActions || '[]');
+      const idx = actions.findIndex((a: any) => a.id === req.params.actionId);
+      if (idx === -1) return res.status(404).json({ error: "Action not found" });
+
+      actions[idx] = { ...actions[idx], status: 'verified', verifiedAt: new Date().toISOString(), verifiedBy: req.auth!.user.id };
+      await storage.updateCapaD7(capaId, { preventiveActions: JSON.stringify(actions) });
+      res.json(actions[idx]);
+    } catch (error) {
+      console.error("Error verifying preventive action:", error);
+      res.status(500).json({ error: "Failed to verify preventive action" });
+    }
+  });
+
+  // D7 horizontal deployment
+  app.put("/api/capas/:id/d7/horizontal-deployment", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(400).json({ error: "D7 data must be created first" });
+
+      await storage.updateCapaD7(capaId, { horizontalDeploymentPlan: JSON.stringify(req.body) });
+      const updated = await storage.getCapaD7(capaId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating horizontal deployment:", error);
+      res.status(500).json({ error: "Failed to update horizontal deployment" });
+    }
+  });
+
+  // D7 deployment status for location
+  app.post("/api/capas/:id/d7/horizontal-deployment/:location", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(400).json({ error: "D7 data must be created first" });
+
+      const plan = JSON.parse(d7.horizontalDeploymentPlan || '{}');
+      const location = decodeURIComponent(req.params.location);
+      if (!plan.locations) plan.locations = {};
+      plan.locations[location] = { ...req.body, updatedAt: new Date().toISOString(), updatedBy: req.auth!.user.id };
+      await storage.updateCapaD7(capaId, { horizontalDeploymentPlan: JSON.stringify(plan) });
+      res.json({ message: `Deployment status updated for ${location}` });
+    } catch (error) {
+      console.error("Error updating deployment status:", error);
+      res.status(500).json({ error: "Failed to update deployment status" });
+    }
+  });
+
+  // D7 lesson learned
+  app.post("/api/capas/:id/d7/lesson-learned", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(400).json({ error: "D7 data must be created first" });
+
+      const entries = JSON.parse(d7.knowledgeBaseEntries || '[]');
+      const entry = { id: randomUUID(), ...req.body, createdAt: new Date().toISOString(), createdBy: req.auth!.user.id };
+      entries.push(entry);
+      await storage.updateCapaD7(capaId, { knowledgeBaseEntries: JSON.stringify(entries), lessonLearnedCreated: 1 });
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error creating lesson learned:", error);
+      res.status(500).json({ error: "Failed to create lesson learned" });
+    }
+  });
+
+  // D7 complete
+  app.post("/api/capas/:id/d7/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d7 = await storage.getCapaD7(capaId);
+      if (!d7) return res.status(400).json({ error: "D7 data must be created first" });
+
+      if (!d7.systemicAnalysisComplete) return res.status(400).json({ error: "Systemic analysis must be complete" });
+
+      await storage.updateCapaD7(capaId, { d7CompletedAt: new Date(), d7CompletedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_completed', userId: req.auth!.user.id,
+        discipline: 'D7', changeDescription: 'D7 completed',
+      });
+
+      res.json({ message: "D7 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D7:", error);
+      res.status(500).json({ error: "Failed to complete D7" });
+    }
+  });
+
+  // D7 verify
+  app.post("/api/capas/:id/d7/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d7 = await storage.getCapaD7(capaId);
+      if (!d7 || !d7.d7CompletedAt) return res.status(400).json({ error: "D7 must be completed before verification" });
+
+      await storage.updateCapaD7(capaId, { d7VerifiedAt: new Date(), d7VerifiedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_verified', userId: req.auth!.user.id,
+        discipline: 'D7', changeDescription: 'D7 verified',
+      });
+
+      res.json({ message: "D7 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D7:", error);
+      res.status(500).json({ error: "Failed to verify D7" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: D8 Team Recognition & Closure
+  // =============================================
+
+  app.get("/api/capas/:id/d8", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+      const d8 = await storage.getCapaD8(capaId);
+      res.json(d8 || null);
+    } catch (error) {
+      console.error("Error fetching D8:", error);
+      res.status(500).json({ error: "Failed to fetch D8 data" });
+    }
+  });
+
+  app.put("/api/capas/:id/d8", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d8 = await storage.getCapaD8(capaId);
+      if (d8) {
+        d8 = (await storage.updateCapaD8(capaId, req.body))!;
+      } else {
+        const parsed = insertCapaD8ClosureSchema.parse({
+          ...req.body, orgId: req.orgId!, capaId, createdBy: req.auth!.user.id,
+        });
+        d8 = await storage.createCapaD8(parsed);
+      }
+      res.json(d8);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
+      console.error("Error updating D8:", error);
+      res.status(500).json({ error: "Failed to update D8 data" });
+    }
+  });
+
+  // D8 closure criteria
+  app.post("/api/capas/:id/d8/closure-criteria/:itemId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      let d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+
+      const checklist = JSON.parse(d8.closureCriteriaChecklist || '{}');
+      checklist[req.params.itemId] = { met: true, metAt: new Date().toISOString(), metBy: req.auth!.user.id, ...req.body };
+      await storage.updateCapaD8(capaId, { closureCriteriaChecklist: JSON.stringify(checklist) });
+      res.json({ message: `Criteria ${req.params.itemId} marked as met` });
+    } catch (error) {
+      console.error("Error updating closure criteria:", error);
+      res.status(500).json({ error: "Failed to update closure criteria" });
+    }
+  });
+
+  // D8 team recognition
+  app.put("/api/capas/:id/d8/team-recognition", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+
+      await storage.updateCapaD8(capaId, {
+        teamRecognition: JSON.stringify(req.body),
+        teamRecognitionDate: req.body.date ? new Date(req.body.date) : new Date(),
+        teamRecognitionMethod: req.body.recognitionType || null,
+      });
+
+      const updated = await storage.getCapaD8(capaId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating team recognition:", error);
+      res.status(500).json({ error: "Failed to update team recognition" });
+    }
+  });
+
+  // D8 success metrics
+  app.put("/api/capas/:id/d8/success-metrics", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+
+      await storage.updateCapaD8(capaId, { successMetrics: JSON.stringify(req.body) });
+      const updated = await storage.getCapaD8(capaId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating success metrics:", error);
+      res.status(500).json({ error: "Failed to update success metrics" });
+    }
+  });
+
+  // D8 lessons learned
+  app.post("/api/capas/:id/d8/lessons-learned", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+
+      const feedback = JSON.parse(d8.teamFeedback || '[]');
+      const entry = { id: randomUUID(), ...req.body, createdAt: new Date().toISOString(), createdBy: req.auth!.user.id };
+      feedback.push(entry);
+      await storage.updateCapaD8(capaId, { teamFeedback: JSON.stringify(feedback), lessonsLearnedShared: 1 });
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error adding lessons learned:", error);
+      res.status(500).json({ error: "Failed to add lessons learned" });
+    }
+  });
+
+  // D8 submit for approval
+  app.post("/api/capas/:id/d8/submit-for-approval", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      await storage.updateCapa(capaId, { approvalStatus: 'pending_review' });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'closure_submitted', userId: req.auth!.user.id,
+        discipline: 'D8', changeDescription: 'CAPA submitted for closure approval',
+      });
+
+      res.json({ message: "Submitted for closure approval" });
+    } catch (error) {
+      console.error("Error submitting for approval:", error);
+      res.status(500).json({ error: "Failed to submit for approval" });
+    }
+  });
+
+  // D8 approve closure
+  app.post("/api/capas/:id/d8/approve-closure", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+
+      await storage.updateCapaD8(capaId, { approvedBy: req.auth!.user.id, approvedAt: new Date() });
+      await storage.updateCapa(capaId, { approvalStatus: 'approved', approvedBy: req.auth!.user.id, approvedAt: new Date() });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'closure_approved', userId: req.auth!.user.id,
+        discipline: 'D8', changeDescription: 'CAPA closure approved',
+      });
+
+      res.json({ message: "Closure approved" });
+    } catch (error) {
+      console.error("Error approving closure:", error);
+      res.status(500).json({ error: "Failed to approve closure" });
+    }
+  });
+
+  // D8 close
+  app.post("/api/capas/:id/d8/close", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+      if (!d8.approvedAt) return res.status(400).json({ error: "Closure must be approved first" });
+
+      const now = new Date();
+      await storage.updateCapaD8(capaId, { closedBy: req.auth!.user.id, closedAt: now, closureCriteriaMet: 1 });
+      await storage.updateCapa(capaId, { status: 'closed', closedBy: req.auth!.user.id, closedAt: now, actualClosureDate: now });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'closed', userId: req.auth!.user.id,
+        discipline: 'D8', changeDescription: 'CAPA closed',
+      });
+
+      res.json({ message: "CAPA closed successfully" });
+    } catch (error) {
+      console.error("Error closing CAPA:", error);
+      res.status(500).json({ error: "Failed to close CAPA" });
+    }
+  });
+
+  // D8 reopen
+  app.post("/api/capas/:id/d8/reopen", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const { reason } = req.body;
+      if (!reason) return res.status(400).json({ error: "Reopen reason is required" });
+
+      await storage.updateCapa(capaId, {
+        status: capaRecord.currentDiscipline === 'D8' ? 'd8_closure' : 'd0_awareness',
+        closedAt: null,
+        closedBy: null,
+        actualClosureDate: null,
+        approvalStatus: 'draft',
+      });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'reopened', userId: req.auth!.user.id,
+        changeDescription: `CAPA reopened: ${reason}`,
+      });
+
+      res.json({ message: "CAPA reopened" });
+    } catch (error) {
+      console.error("Error reopening CAPA:", error);
+      res.status(500).json({ error: "Failed to reopen CAPA" });
+    }
+  });
+
+  // D8 final report
+  app.get("/api/capas/:id/d8/final-report", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const [d0, d1, d2, d3, d4, d5, d6, d7, d8, team, sources, attachments, auditLogs] = await Promise.all([
+        storage.getCapaD0(capaId), storage.getCapaD1(capaId), storage.getCapaD2(capaId),
+        storage.getCapaD3(capaId), storage.getCapaD4(capaId), storage.getCapaD5(capaId),
+        storage.getCapaD6(capaId), storage.getCapaD7(capaId), storage.getCapaD8(capaId),
+        storage.getCapaTeamMembers(capaId), storage.getCapaSources(capaId),
+        storage.getCapaAttachments(capaId), storage.getCapaAuditLogs(capaId),
+      ]);
+
+      let candidates = null;
+      if (d4) candidates = await storage.getD4Candidates(capaId);
+
+      res.json({
+        capa: capaRecord, d0, d1, d2, d3, d4: d4 ? { ...d4, candidates } : null,
+        d5, d6, d7, d8, team, sources,
+        attachments: attachments.filter(a => !a.deletedAt),
+        auditLogSummary: { totalEntries: auditLogs.length, latestEntry: auditLogs[0] || null },
+      });
+    } catch (error) {
+      console.error("Error generating final report:", error);
+      res.status(500).json({ error: "Failed to generate final report" });
+    }
+  });
+
+  // D8 complete
+  app.post("/api/capas/:id/d8/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8) return res.status(400).json({ error: "D8 data must be created first" });
+
+      await storage.updateCapaD8(capaId, { d8CompletedAt: new Date(), d8CompletedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_completed', userId: req.auth!.user.id,
+        discipline: 'D8', changeDescription: 'D8 completed',
+      });
+
+      res.json({ message: "D8 completed successfully" });
+    } catch (error) {
+      console.error("Error completing D8:", error);
+      res.status(500).json({ error: "Failed to complete D8" });
+    }
+  });
+
+  // D8 verify
+  app.post("/api/capas/:id/d8/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const d8 = await storage.getCapaD8(capaId);
+      if (!d8 || !d8.d8CompletedAt) return res.status(400).json({ error: "D8 must be completed before verification" });
+
+      await storage.updateCapaD8(capaId, { d8VerifiedAt: new Date(), d8VerifiedBy: req.auth!.user.id });
+
+      await storage.createCapaAuditLog({
+        orgId: req.orgId!, capaId, action: 'discipline_verified', userId: req.auth!.user.id,
+        discipline: 'D8', changeDescription: 'D8 verified',
+      });
+
+      res.json({ message: "D8 verified successfully" });
+    } catch (error) {
+      console.error("Error verifying D8:", error);
+      res.status(500).json({ error: "Failed to verify D8" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Audit Log Endpoints
+  // =============================================
+
+  app.get("/api/capas/:id/audit-log", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const limit = parseInt(req.query.limit as string) || undefined;
+      const action = req.query.action as string | undefined;
+
+      let logs;
+      if (action) {
+        logs = await storage.getCapaAuditLogsByAction(capaId, action);
+      } else {
+        logs = await storage.getCapaAuditLogs(capaId, limit);
+      }
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit log:", error);
+      res.status(500).json({ error: "Failed to fetch audit log" });
+    }
+  });
+
+  app.get("/api/capa-audit-logs", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const logs = await storage.getRecentCapaActivity(orgId, limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+
+  app.get("/api/capas/:id/audit-log/verify-chain", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const logs = await storage.getCapaAuditLogs(capaId);
+      const sortedLogs = logs.sort((a, b) => a.id - b.id);
+
+      let valid = true;
+      for (let i = 1; i < sortedLogs.length; i++) {
+        if (sortedLogs[i].previousLogHash !== sortedLogs[i - 1].logHash) {
+          valid = false;
+          break;
+        }
+      }
+
+      res.json({ valid, totalEntries: sortedLogs.length, checkedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error("Error verifying audit chain:", error);
+      res.status(500).json({ error: "Failed to verify audit chain" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Analytics Endpoints
+  // =============================================
+
+  app.get("/api/capa-analytics/summary", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const metrics = await storage.getCapaMetrics(orgId);
+      const capas = await storage.getCapas(orgId);
+      const open = capas.filter(c => c.status !== 'closed' && !c.deletedAt);
+      const closed = capas.filter(c => c.status === 'closed');
+      const effective = closed.filter(c => c.effectivenessVerified);
+      const recurred = closed.filter(c => c.recurrenceResult === 'recurred');
+      const onTime = closed.filter(c => c.targetClosureDate && c.actualClosureDate && new Date(c.actualClosureDate) <= new Date(c.targetClosureDate));
+
+      res.json({
+        totalOpen: open.length,
+        totalClosed: closed.length,
+        avgCycleTimeDays: metrics.avgClosureTime,
+        onTimeRate: closed.length ? onTime.length / closed.length : 0,
+        effectivenessRate: closed.length ? effective.length / closed.length : 0,
+        recurrenceRate: closed.length ? recurred.length / closed.length : 0,
+      });
+    } catch (error) {
+      console.error("Error fetching analytics summary:", error);
+      res.status(500).json({ error: "Failed to fetch analytics summary" });
+    }
+  });
+
+  app.get("/api/capa-analytics/by-status", requireAuth, async (req, res) => {
+    try {
+      const metrics = await storage.getCapaMetrics(req.orgId!);
+      res.json(metrics.byStatus);
+    } catch (error) {
+      console.error("Error fetching by-status analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/capa-analytics/by-priority", requireAuth, async (req, res) => {
+    try {
+      const metrics = await storage.getCapaMetrics(req.orgId!);
+      res.json(metrics.byPriority);
+    } catch (error) {
+      console.error("Error fetching by-priority analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/capa-analytics/by-source", requireAuth, async (req, res) => {
+    try {
+      const capas = await storage.getCapas(req.orgId!);
+      const bySource: Record<string, number> = {};
+      for (const c of capas.filter(x => !x.deletedAt)) {
+        bySource[c.sourceType] = (bySource[c.sourceType] || 0) + 1;
+      }
+      res.json(bySource);
+    } catch (error) {
+      console.error("Error fetching by-source analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/capa-analytics/by-category", requireAuth, async (req, res) => {
+    try {
+      const capas = await storage.getCapas(req.orgId!);
+      const byCategory: Record<string, number> = {};
+      for (const c of capas.filter(x => !x.deletedAt)) {
+        const cat = c.category || 'uncategorized';
+        byCategory[cat] = (byCategory[cat] || 0) + 1;
+      }
+      res.json(byCategory);
+    } catch (error) {
+      console.error("Error fetching by-category analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/capa-analytics/trends", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const period = (req.query.period as string) || 'monthly';
+      const limit = parseInt(req.query.months as string) || 12;
+      const snapshots = await storage.getCapaSnapshotsByPeriod(orgId, period, limit);
+      res.json(snapshots);
+    } catch (error) {
+      console.error("Error fetching trends:", error);
+      res.status(500).json({ error: "Failed to fetch trends" });
+    }
+  });
+
+  app.get("/api/capa-analytics/pareto", requireAuth, async (req, res) => {
+    try {
+      const capas = await storage.getCapas(req.orgId!);
+      const rootCauses: Record<string, number> = {};
+      for (const c of capas.filter(x => !x.deletedAt)) {
+        const d4 = await storage.getCapaD4(c.id);
+        if (d4?.rootCauseOccurrence) {
+          rootCauses[d4.rootCauseOccurrence] = (rootCauses[d4.rootCauseOccurrence] || 0) + 1;
+        }
+      }
+      const sorted = Object.entries(rootCauses).sort((a, b) => b[1] - a[1]);
+      const total = sorted.reduce((sum, [, count]) => sum + count, 0);
+      let cumulative = 0;
+      const pareto = sorted.map(([cause, count]) => {
+        cumulative += count;
+        return { cause, count, percentage: total ? count / total : 0, cumulative: total ? cumulative / total : 0 };
+      });
+      res.json(pareto);
+    } catch (error) {
+      console.error("Error fetching pareto:", error);
+      res.status(500).json({ error: "Failed to fetch pareto analysis" });
+    }
+  });
+
+  app.get("/api/capa-analytics/aging", requireAuth, async (req, res) => {
+    try {
+      const capas = await storage.getCapas(req.orgId!);
+      const now = new Date();
+      const open = capas.filter(c => c.status !== 'closed' && !c.deletedAt);
+      const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '91-180': 0, '180+': 0 };
+      for (const c of open) {
+        const age = Math.floor((now.getTime() - new Date(c.createdAt!).getTime()) / (1000 * 60 * 60 * 24));
+        if (age <= 30) buckets['0-30']++;
+        else if (age <= 60) buckets['31-60']++;
+        else if (age <= 90) buckets['61-90']++;
+        else if (age <= 180) buckets['91-180']++;
+        else buckets['180+']++;
+      }
+      res.json(buckets);
+    } catch (error) {
+      console.error("Error fetching aging:", error);
+      res.status(500).json({ error: "Failed to fetch aging analysis" });
+    }
+  });
+
+  app.get("/api/capa-analytics/team-performance", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const capas = await storage.getCapas(orgId);
+      const closed = capas.filter(c => c.status === 'closed');
+      const teamPerf: Record<string, { closed: number; avgCycleTimeDays: number; totalDays: number }> = {};
+
+      for (const c of closed) {
+        const team = await storage.getCapaTeamMembers(c.id);
+        const cycleDays = c.createdAt && c.closedAt
+          ? Math.floor((new Date(c.closedAt).getTime() - new Date(c.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        for (const m of team) {
+          if (!teamPerf[m.userId]) teamPerf[m.userId] = { closed: 0, avgCycleTimeDays: 0, totalDays: 0 };
+          teamPerf[m.userId].closed++;
+          teamPerf[m.userId].totalDays += cycleDays;
+        }
+      }
+
+      const results = Object.entries(teamPerf).map(([userId, data]) => ({
+        userId,
+        closedCapas: data.closed,
+        avgCycleTimeDays: data.closed ? Math.round(data.totalDays / data.closed) : 0,
+      }));
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error fetching team performance:", error);
+      res.status(500).json({ error: "Failed to fetch team performance" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Reporting Endpoints
+  // =============================================
+
+  app.get("/api/capas/:id/report", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const [d0, d1, d2, d3, d4, d5, d6, d7, d8, team, sources, attachments, auditLogs] = await Promise.all([
+        storage.getCapaD0(capaId), storage.getCapaD1(capaId), storage.getCapaD2(capaId),
+        storage.getCapaD3(capaId), storage.getCapaD4(capaId), storage.getCapaD5(capaId),
+        storage.getCapaD6(capaId), storage.getCapaD7(capaId), storage.getCapaD8(capaId),
+        storage.getCapaTeamMembers(capaId), storage.getCapaSources(capaId),
+        storage.getCapaAttachments(capaId), storage.getCapaAuditLogs(capaId),
+      ]);
+
+      let candidates = null;
+      if (d4) candidates = await storage.getD4Candidates(capaId);
+
+      res.json({
+        report: {
+          capa: capaRecord, d0, d1, d2, d3, d4: d4 ? { ...d4, candidates } : null,
+          d5, d6, d7, d8, team, sources,
+          attachments: attachments.filter(a => !a.deletedAt),
+          auditTrail: auditLogs,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error("Error generating report:", error);
+      res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  // Batch report
+  app.post("/api/capa-reports/batch", requireAuth, async (req, res) => {
+    try {
+      const { capaIds } = req.body;
+      if (!Array.isArray(capaIds) || capaIds.length === 0) {
+        return res.status(400).json({ error: "capaIds array is required" });
+      }
+
+      const reports = [];
+      for (const id of capaIds) {
+        const capaRecord = await storage.getCapa(id);
+        if (capaRecord && capaRecord.orgId === req.orgId!) {
+          reports.push(capaRecord);
+        }
+      }
+
+      res.json({ reports, generatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error("Error generating batch report:", error);
+      res.status(500).json({ error: "Failed to generate batch report" });
+    }
+  });
+
+  // Summary report
+  app.get("/api/capa-reports/summary", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const capas = await storage.getCapas(orgId);
+      const metrics = await storage.getCapaMetrics(orgId);
+
+      res.json({
+        metrics,
+        totalCapas: capas.length,
+        active: capas.filter(c => !c.deletedAt && c.status !== 'closed').length,
+        closed: capas.filter(c => c.status === 'closed').length,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error generating summary report:", error);
+      res.status(500).json({ error: "Failed to generate summary report" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Metric Snapshot Endpoints
+  // =============================================
+
+  app.get("/api/capa-metrics/snapshots", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const period = (req.query.period as string) || 'monthly';
+      const limit = parseInt(req.query.limit as string) || 12;
+      const snapshots = await storage.getCapaSnapshotsByPeriod(orgId, period, limit);
+      res.json(snapshots);
+    } catch (error) {
+      console.error("Error fetching snapshots:", error);
+      res.status(500).json({ error: "Failed to fetch snapshots" });
+    }
+  });
+
+  app.post("/api/capa-metrics/snapshot", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const metrics = await storage.getCapaMetrics(orgId);
+      const capas = await storage.getCapas(orgId);
+
+      const bySource: Record<string, number> = {};
+      const byCategory: Record<string, number> = {};
+      for (const c of capas.filter(x => !x.deletedAt)) {
+        bySource[c.sourceType] = (bySource[c.sourceType] || 0) + 1;
+        const cat = c.category || 'uncategorized';
+        byCategory[cat] = (byCategory[cat] || 0) + 1;
+      }
+
+      const now = new Date();
+      const open = capas.filter(c => c.status !== 'closed' && !c.deletedAt);
+      const closed = capas.filter(c => c.status === 'closed');
+      const overdue = open.filter(c => c.targetClosureDate && new Date(c.targetClosureDate) < now);
+      const onTime = closed.filter(c => c.targetClosureDate && c.actualClosureDate && new Date(c.actualClosureDate) <= new Date(c.targetClosureDate));
+
+      const parsed = insertCapaMetricSnapshotSchema.parse({
+        orgId,
+        snapshotDate: now,
+        snapshotPeriod: req.body.period || 'daily',
+        totalCapas: capas.filter(x => !x.deletedAt).length,
+        byStatus: JSON.stringify(metrics.byStatus),
+        byPriority: JSON.stringify(metrics.byPriority),
+        bySourceType: JSON.stringify(bySource),
+        byCategory: JSON.stringify(byCategory),
+        openedThisPeriod: 0,
+        closedThisPeriod: 0,
+        overdueCount: overdue.length,
+        avgAgeDays: 0,
+        avgCycleTimeDays: metrics.avgClosureTime,
+        onTimeClosureRate: closed.length ? onTime.length / closed.length : 0,
+        effectivenessRate: 0,
+        recurrenceRate: 0,
+      });
+
+      const snapshot = await storage.createCapaMetricSnapshot(parsed);
+      res.status(201).json(snapshot);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
+      console.error("Error creating snapshot:", error);
+      res.status(500).json({ error: "Failed to create snapshot" });
+    }
+  });
+
+  app.get("/api/capa-metrics/compare", requireAuth, async (req, res) => {
+    try {
+      const orgId = req.orgId!;
+      const snapshots = await storage.getCapaSnapshotsByPeriod(orgId, 'monthly', 100);
+      const id1 = parseInt(req.query.snapshot1 as string);
+      const id2 = parseInt(req.query.snapshot2 as string);
+
+      const s1 = snapshots.find(s => s.id === id1);
+      const s2 = snapshots.find(s => s.id === id2);
+
+      if (!s1 || !s2) return res.status(404).json({ error: "Snapshot not found" });
+
+      res.json({ snapshot1: s1, snapshot2: s2 });
+    } catch (error) {
+      console.error("Error comparing snapshots:", error);
+      res.status(500).json({ error: "Failed to compare snapshots" });
+    }
+  });
+
+  // Single CAPA export (with :id param - safe to be here)
+  app.get("/api/capas/:id/export", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const [d0, d1, d2, d3, d4, d5, d6, d7, d8, team, sources, attachments] = await Promise.all([
+        storage.getCapaD0(capaId), storage.getCapaD1(capaId), storage.getCapaD2(capaId),
+        storage.getCapaD3(capaId), storage.getCapaD4(capaId), storage.getCapaD5(capaId),
+        storage.getCapaD6(capaId), storage.getCapaD7(capaId), storage.getCapaD8(capaId),
+        storage.getCapaTeamMembers(capaId), storage.getCapaSources(capaId),
+        storage.getCapaAttachments(capaId),
+      ]);
+
+      res.json({ capa: capaRecord, d0, d1, d2, d3, d4, d5, d6, d7, d8, team, sources, attachments: attachments.filter(a => !a.deletedAt) });
+    } catch (error) {
+      console.error("Error exporting CAPA:", error);
+      res.status(500).json({ error: "Failed to export CAPA" });
+    }
+  });
+
+  // =============================================
+  // CAPA/8D Module: Analysis Tools CRUD
+  // =============================================
+
+  // Helper to parse/update tool data JSON
+  function parseToolData(tool: any): any {
+    try { return typeof tool.data === 'string' ? JSON.parse(tool.data) : tool.data; } catch { return {}; }
+  }
+
+  function updateToolData(existingData: any, updates: any): string {
+    const current = typeof existingData === 'string' ? JSON.parse(existingData || '{}') : existingData || {};
+    return JSON.stringify({ ...current, ...updates });
+  }
+
+  // List analysis tools
+  app.get("/api/capas/:id/analysis-tools", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const toolType = req.query.toolType as string | undefined;
+      let tools;
+      if (toolType) {
+        tools = await storage.getCapaAnalysisToolsByType(capaId, toolType);
+      } else {
+        tools = await storage.getCapaAnalysisTools(capaId);
+      }
+
+      const discipline = req.query.discipline as string | undefined;
+      if (discipline) tools = tools.filter(t => t.discipline === discipline);
+
+      const status = req.query.status as string | undefined;
+      if (status) tools = tools.filter(t => t.status === status);
+
+      res.json({ tools: tools.map(t => ({ ...t, data: parseToolData(t) })) });
+    } catch (error) {
+      console.error("Error listing analysis tools:", error);
+      res.status(500).json({ error: "Failed to list analysis tools" });
+    }
+  });
+
+  // Create analysis tool
+  app.post("/api/capas/:id/analysis-tools", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const validTypes = ['is_is_not', 'five_why', 'three_leg_five_why', 'fishbone', 'fault_tree', 'comparative', 'change_point', 'pareto'];
+      if (!validTypes.includes(req.body.toolType)) {
+        return res.status(400).json({ error: `Invalid tool type. Must be one of: ${validTypes.join(', ')}` });
+      }
+
+      const parsed = insertCapaAnalysisToolSchema.parse({
+        orgId: req.orgId!,
+        capaId,
+        toolType: req.body.toolType,
+        name: req.body.name || `${req.body.toolType} Analysis`,
+        discipline: req.body.discipline || 'D4',
+        data: JSON.stringify(req.body.data || {}),
+        createdBy: req.auth!.user.id,
+      });
+
+      const tool = await storage.createCapaAnalysisTool(parsed);
+      res.status(201).json({ ...tool, data: parseToolData(tool) });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
+      console.error("Error creating analysis tool:", error);
+      res.status(500).json({ error: "Failed to create analysis tool" });
+    }
+  });
+
+  // Get analysis tool
+  app.get("/api/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      res.json({ ...tool, data: parseToolData(tool) });
+    } catch (error) {
+      console.error("Error fetching analysis tool:", error);
+      res.status(500).json({ error: "Failed to fetch analysis tool" });
+    }
+  });
+
+  // Update analysis tool
+  app.put("/api/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      const updates: any = {};
+      if (req.body.name) updates.name = req.body.name;
+      if (req.body.discipline) updates.discipline = req.body.discipline;
+      if (req.body.data) updates.data = updateToolData(tool.data, req.body.data);
+      if (req.body.conclusion !== undefined) updates.conclusion = req.body.conclusion;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, updates);
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating analysis tool:", error);
+      res.status(500).json({ error: "Failed to update analysis tool" });
+    }
+  });
+
+  // Delete analysis tool
+  app.delete("/api/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      await storage.deleteCapaAnalysisTool(toolId);
+      res.json({ deleted: true });
+    } catch (error) {
+      console.error("Error deleting analysis tool:", error);
+      res.status(500).json({ error: "Failed to delete analysis tool" });
+    }
+  });
+
+  // Complete analysis tool
+  app.post("/api/capas/:id/analysis-tools/:toolId/complete", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      const conclusion = req.body.conclusion || '';
+      const updated = await storage.completeCapaAnalysisTool(toolId, req.auth!.user.id, conclusion);
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error completing analysis tool:", error);
+      res.status(500).json({ error: "Failed to complete analysis tool" });
+    }
+  });
+
+  // Verify analysis tool
+  app.post("/api/capas/:id/analysis-tools/:toolId/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+      if (tool.status !== 'complete') return res.status(400).json({ error: "Tool must be completed before verification" });
+
+      const updated = await storage.verifyCapaAnalysisTool(toolId, req.auth!.user.id);
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error verifying analysis tool:", error);
+      res.status(500).json({ error: "Failed to verify analysis tool" });
+    }
+  });
+
+  // Link to root cause
+  app.post("/api/capas/:id/analysis-tools/:toolId/link-to-root-cause", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      const updated = await storage.linkAnalysisToolToRootCause(toolId);
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error linking to root cause:", error);
+      res.status(500).json({ error: "Failed to link to root cause" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific Operations: Is/Is Not
+  // =============================================
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/is-is-not/:dimension", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'is_is_not') return res.status(404).json({ error: "Is/Is Not tool not found" });
+
+      const validDimensions = ['what', 'where', 'when', 'howMany'];
+      if (!validDimensions.includes(req.params.dimension)) {
+        return res.status(400).json({ error: `Invalid dimension. Must be one of: ${validDimensions.join(', ')}` });
+      }
+
+      const data = parseToolData(tool);
+      if (!data.dimensions) data.dimensions = {};
+      data.dimensions[req.params.dimension] = req.body;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating Is/Is Not dimension:", error);
+      res.status(500).json({ error: "Failed to update dimension" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/is-is-not/verify-therefore", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'is_is_not') return res.status(404).json({ error: "Is/Is Not tool not found" });
+
+      const data = parseToolData(tool);
+      data.therefore = req.body.therefore;
+      data.thereforeVerified = true;
+      data.thereforeVerifiedBy = req.auth!.user.id;
+      data.thereforeVerifiedAt = new Date().toISOString();
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error verifying therefore:", error);
+      res.status(500).json({ error: "Failed to verify therefore" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific Operations: 5-Why
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/five-why/add-why", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'five_why') return res.status(404).json({ error: "5-Why tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.whys) data.whys = [];
+      data.whys.push({ ...req.body, addedAt: new Date().toISOString(), addedBy: req.auth!.user.id });
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error adding why:", error);
+      res.status(500).json({ error: "Failed to add why" });
+    }
+  });
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/five-why/whys/:level", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      const level = parseInt(req.params.level);
+      if (isNaN(capaId) || isNaN(toolId) || isNaN(level)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'five_why') return res.status(404).json({ error: "5-Why tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.whys || level < 0 || level >= data.whys.length) return res.status(404).json({ error: "Why level not found" });
+
+      data.whys[level] = { ...data.whys[level], ...req.body, updatedAt: new Date().toISOString() };
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating why:", error);
+      res.status(500).json({ error: "Failed to update why" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/five-why/set-root-cause", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'five_why') return res.status(404).json({ error: "5-Why tool not found" });
+
+      const data = parseToolData(tool);
+      data.rootCause = req.body.rootCause;
+      data.rootCauseCategory = req.body.rootCauseCategory;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data), conclusion: req.body.rootCause });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error setting root cause:", error);
+      res.status(500).json({ error: "Failed to set root cause" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/five-why/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'five_why') return res.status(404).json({ error: "5-Why tool not found" });
+
+      const data = parseToolData(tool);
+      data.verified = true;
+      data.verificationMethod = req.body.verificationMethod;
+      data.verifiedAt = new Date().toISOString();
+      data.verifiedBy = req.auth!.user.id;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error verifying 5-Why:", error);
+      res.status(500).json({ error: "Failed to verify 5-Why" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific: 3-Legged 5-Why
+  // =============================================
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/three-leg/:leg", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'three_leg_five_why') return res.status(404).json({ error: "3-Leg tool not found" });
+
+      const leg = req.params.leg;
+      const validLegs = ['occurrence', 'detection', 'systemic'];
+      if (!validLegs.includes(leg)) return res.status(400).json({ error: `Invalid leg. Must be one of: ${validLegs.join(', ')}` });
+
+      const data = parseToolData(tool);
+      if (!data.legs) data.legs = {};
+      data.legs[leg] = { ...data.legs[leg], ...req.body, updatedAt: new Date().toISOString() };
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating 3-leg:", error);
+      res.status(500).json({ error: "Failed to update leg" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/three-leg/:leg/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'three_leg_five_why') return res.status(404).json({ error: "3-Leg tool not found" });
+
+      const leg = req.params.leg;
+      const data = parseToolData(tool);
+      if (!data.legs || !data.legs[leg]) return res.status(404).json({ error: "Leg not found" });
+
+      data.legs[leg].verified = true;
+      data.legs[leg].verifiedAt = new Date().toISOString();
+      data.legs[leg].verifiedBy = req.auth!.user.id;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error verifying leg:", error);
+      res.status(500).json({ error: "Failed to verify leg" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific: Fishbone
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/fishbone/cause", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fishbone') return res.status(404).json({ error: "Fishbone tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.causes) data.causes = {};
+      const category = req.body.category || 'other';
+      if (!data.causes[category]) data.causes[category] = [];
+
+      const newCause = { id: randomUUID(), text: req.body.text, status: 'open', parentCauseId: req.body.parentCauseId || null, subCauses: [], createdAt: new Date().toISOString() };
+      data.causes[category].push(newCause);
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ cause: newCause, tool: { ...updated, data: parseToolData(updated) } });
+    } catch (error) {
+      console.error("Error adding fishbone cause:", error);
+      res.status(500).json({ error: "Failed to add cause" });
+    }
+  });
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fishbone') return res.status(404).json({ error: "Fishbone tool not found" });
+
+      const data = parseToolData(tool);
+      const causeId = req.params.causeId;
+      let found = false;
+      for (const cat of Object.keys(data.causes || {})) {
+        const idx = data.causes[cat].findIndex((c: any) => c.id === causeId);
+        if (idx !== -1) {
+          data.causes[cat][idx] = { ...data.causes[cat][idx], ...req.body, updatedAt: new Date().toISOString() };
+          found = true;
+          break;
+        }
+      }
+      if (!found) return res.status(404).json({ error: "Cause not found" });
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating fishbone cause:", error);
+      res.status(500).json({ error: "Failed to update cause" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/verify", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fishbone') return res.status(404).json({ error: "Fishbone tool not found" });
+
+      const data = parseToolData(tool);
+      const causeId = req.params.causeId;
+      for (const cat of Object.keys(data.causes || {})) {
+        const idx = data.causes[cat].findIndex((c: any) => c.id === causeId);
+        if (idx !== -1) {
+          data.causes[cat][idx].status = 'verified';
+          data.causes[cat][idx].evidence = req.body.evidence;
+          data.causes[cat][idx].verifiedBy = req.auth!.user.id;
+          data.causes[cat][idx].verifiedAt = new Date().toISOString();
+          break;
+        }
+      }
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error verifying cause:", error);
+      res.status(500).json({ error: "Failed to verify cause" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/rule-out", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fishbone') return res.status(404).json({ error: "Fishbone tool not found" });
+
+      const data = parseToolData(tool);
+      const causeId = req.params.causeId;
+      for (const cat of Object.keys(data.causes || {})) {
+        const idx = data.causes[cat].findIndex((c: any) => c.id === causeId);
+        if (idx !== -1) {
+          data.causes[cat][idx].status = 'ruled_out';
+          data.causes[cat][idx].ruledOutReason = req.body.reason;
+          data.causes[cat][idx].ruledOutBy = req.auth!.user.id;
+          break;
+        }
+      }
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error ruling out cause:", error);
+      res.status(500).json({ error: "Failed to rule out cause" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/sub-cause", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fishbone') return res.status(404).json({ error: "Fishbone tool not found" });
+
+      const data = parseToolData(tool);
+      const causeId = req.params.causeId;
+      const subCause = { id: randomUUID(), text: req.body.text, status: 'open', createdAt: new Date().toISOString() };
+
+      for (const cat of Object.keys(data.causes || {})) {
+        const idx = data.causes[cat].findIndex((c: any) => c.id === causeId);
+        if (idx !== -1) {
+          if (!data.causes[cat][idx].subCauses) data.causes[cat][idx].subCauses = [];
+          data.causes[cat][idx].subCauses.push(subCause);
+          break;
+        }
+      }
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ subCause, tool: { ...updated, data: parseToolData(updated) } });
+    } catch (error) {
+      console.error("Error adding sub-cause:", error);
+      res.status(500).json({ error: "Failed to add sub-cause" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific: Fault Tree
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/fault-tree/node", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fault_tree') return res.status(404).json({ error: "Fault tree tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.nodes) data.nodes = [];
+      const newNode = { id: randomUUID(), ...req.body, createdAt: new Date().toISOString() };
+      data.nodes.push(newNode);
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ node: newNode, tool: { ...updated, data: parseToolData(updated) } });
+    } catch (error) {
+      console.error("Error adding fault tree node:", error);
+      res.status(500).json({ error: "Failed to add node" });
+    }
+  });
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/fault-tree/node/:nodeId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fault_tree') return res.status(404).json({ error: "Fault tree tool not found" });
+
+      const data = parseToolData(tool);
+      const idx = (data.nodes || []).findIndex((n: any) => n.id === req.params.nodeId);
+      if (idx === -1) return res.status(404).json({ error: "Node not found" });
+
+      data.nodes[idx] = { ...data.nodes[idx], ...req.body, updatedAt: new Date().toISOString() };
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating fault tree node:", error);
+      res.status(500).json({ error: "Failed to update node" });
+    }
+  });
+
+  app.delete("/api/capas/:id/analysis-tools/:toolId/fault-tree/node/:nodeId", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fault_tree') return res.status(404).json({ error: "Fault tree tool not found" });
+
+      const data = parseToolData(tool);
+      const nodeId = req.params.nodeId;
+      // Remove node and its children
+      const toRemove = new Set([nodeId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const node of (data.nodes || [])) {
+          if (toRemove.has(node.parentId) && !toRemove.has(node.id)) {
+            toRemove.add(node.id);
+            changed = true;
+          }
+        }
+      }
+      data.nodes = (data.nodes || []).filter((n: any) => !toRemove.has(n.id));
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error deleting fault tree node:", error);
+      res.status(500).json({ error: "Failed to delete node" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/fault-tree/calculate", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'fault_tree') return res.status(404).json({ error: "Fault tree tool not found" });
+
+      const data = parseToolData(tool);
+      const nodes = data.nodes || [];
+
+      // Simple probability calculation
+      const basicEvents = nodes.filter((n: any) => n.type === 'basic_event' && n.probability);
+      const topProb = basicEvents.reduce((sum: number, n: any) => sum + (n.probability || 0), 0);
+
+      const minimalCutSets = basicEvents.map((n: any) => ({
+        events: [n.id],
+        probability: n.probability || 0,
+      }));
+
+      const criticalPath = basicEvents
+        .sort((a: any, b: any) => (b.probability || 0) - (a.probability || 0))
+        .map((n: any) => n.id);
+
+      // Store calculation results
+      data.calculation = { topEventProbability: Math.min(topProb, 1), minimalCutSets, criticalPath, calculatedAt: new Date().toISOString() };
+      await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+
+      res.json(data.calculation);
+    } catch (error) {
+      console.error("Error calculating fault tree:", error);
+      res.status(500).json({ error: "Failed to calculate fault tree" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific: Comparative Analysis
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/comparative/items", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'comparative') return res.status(404).json({ error: "Comparative tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.items) data.items = [];
+      data.items.push({ ...req.body, addedAt: new Date().toISOString() });
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error adding comparative item:", error);
+      res.status(500).json({ error: "Failed to add item" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/comparative/factors", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'comparative') return res.status(404).json({ error: "Comparative tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.factors) data.factors = [];
+      const isDifferent = req.body.good !== req.body.bad;
+      data.factors.push({ ...req.body, isDifferent, addedAt: new Date().toISOString() });
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error adding factor:", error);
+      res.status(500).json({ error: "Failed to add factor" });
+    }
+  });
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/comparative/factors/:index", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      const index = parseInt(req.params.index);
+      if (isNaN(capaId) || isNaN(toolId) || isNaN(index)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'comparative') return res.status(404).json({ error: "Comparative tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.factors || index >= data.factors.length) return res.status(404).json({ error: "Factor not found" });
+
+      data.factors[index] = { ...data.factors[index], ...req.body, updatedAt: new Date().toISOString() };
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating factor:", error);
+      res.status(500).json({ error: "Failed to update factor" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/comparative/verify-hypothesis", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'comparative') return res.status(404).json({ error: "Comparative tool not found" });
+
+      const data = parseToolData(tool);
+      data.hypothesisVerified = true;
+      data.verificationMethod = req.body.verificationMethod;
+      data.verifiedAt = new Date().toISOString();
+      data.verifiedBy = req.auth!.user.id;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error verifying hypothesis:", error);
+      res.status(500).json({ error: "Failed to verify hypothesis" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific: Change Point Analysis
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/change-point/changes", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'change_point') return res.status(404).json({ error: "Change point tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.changes) data.changes = [];
+      data.changes.push({ ...req.body, addedAt: new Date().toISOString(), addedBy: req.auth!.user.id });
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error adding change:", error);
+      res.status(500).json({ error: "Failed to add change" });
+    }
+  });
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/change-point/changes/:index", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      const index = parseInt(req.params.index);
+      if (isNaN(capaId) || isNaN(toolId) || isNaN(index)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'change_point') return res.status(404).json({ error: "Change point tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.changes || index >= data.changes.length) return res.status(404).json({ error: "Change not found" });
+
+      data.changes[index] = { ...data.changes[index], ...req.body, updatedAt: new Date().toISOString() };
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating change:", error);
+      res.status(500).json({ error: "Failed to update change" });
+    }
+  });
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/change-point/changes/:index/rule-out", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      const index = parseInt(req.params.index);
+      if (isNaN(capaId) || isNaN(toolId) || isNaN(index)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'change_point') return res.status(404).json({ error: "Change point tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.changes || index >= data.changes.length) return res.status(404).json({ error: "Change not found" });
+
+      data.changes[index].ruledOut = true;
+      data.changes[index].ruledOutReason = req.body.reason;
+      data.changes[index].ruledOutBy = req.auth!.user.id;
+
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error ruling out change:", error);
+      res.status(500).json({ error: "Failed to rule out change" });
+    }
+  });
+
+  // =============================================
+  // Tool-Specific: Pareto
+  // =============================================
+
+  app.put("/api/capas/:id/analysis-tools/:toolId/pareto/data", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId || tool.toolType !== 'pareto') return res.status(404).json({ error: "Pareto tool not found" });
+
+      const categories = req.body.categories || [];
+      const total = categories.reduce((sum: number, c: any) => sum + (c.count || 0), 0);
+      let cumulative = 0;
+      const enriched = categories.map((c: any) => {
+        cumulative += c.count || 0;
+        return { ...c, percentage: total ? (c.count / total) * 100 : 0, cumulative: total ? (cumulative / total) * 100 : 0 };
+      });
+
+      const data = { ...req.body, categories: enriched, total, calculatedAt: new Date().toISOString() };
+      const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ ...updated, data: parseToolData(updated) });
+    } catch (error) {
+      console.error("Error updating pareto data:", error);
+      res.status(500).json({ error: "Failed to update pareto data" });
+    }
+  });
+
+  // =============================================
+  // Analysis Tool Export
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/export", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      const format = req.body.format || 'json';
+      const data = parseToolData(tool);
+
+      if (format === 'json') {
+        return res.json({ tool: { ...tool, data }, exportedAt: new Date().toISOString() });
+      }
+
+      // For other formats, return the JSON data with format metadata
+      res.json({ tool: { ...tool, data }, format, exportedAt: new Date().toISOString(), note: `${format} rendering available on client` });
+    } catch (error) {
+      console.error("Error exporting analysis tool:", error);
+      res.status(500).json({ error: "Failed to export analysis tool" });
+    }
+  });
+
+  // =============================================
+  // Analysis Tool Templates
+  // =============================================
+
+  app.get("/api/analysis-tool-templates", requireAuth, async (_req, res) => {
+    try {
+      const templates = {
+        fishbone: {
+          '5M': ['man', 'machine', 'material', 'method', 'measurement'],
+          '6M': ['man', 'machine', 'material', 'method', 'measurement', 'environment'],
+          '8M': ['man', 'machine', 'material', 'method', 'measurement', 'environment', 'management', 'money'],
+        },
+        commonCauses: {
+          man: ['Training gap', 'Fatigue', 'Skill level', 'Communication', 'Supervision', 'Experience'],
+          machine: ['Tool wear', 'Calibration drift', 'Maintenance overdue', 'Equipment age', 'Setup error', 'Parameter drift'],
+          material: ['Material variation', 'Wrong material', 'Supplier change', 'Contamination', 'Storage conditions'],
+          method: ['Procedure not followed', 'Procedure unclear', 'Work instruction missing', 'Process change', 'Sequence error'],
+          measurement: ['Gage R&R failure', 'Wrong gage', 'Calibration expired', 'Measurement technique', 'Sample size'],
+          environment: ['Temperature', 'Humidity', 'Lighting', 'Cleanliness', 'Vibration', 'Noise'],
+        },
+        fiveWhy: { maxLevels: 7, guideline: 'Ask "Why?" until you reach a systemic root cause that can be addressed with a corrective action' },
+        changePoint: { categories: ['man', 'machine', 'material', 'method', 'measurement', 'environment', 'management'] },
+      };
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching templates:", error);
+      res.status(500).json({ error: "Failed to fetch templates" });
+    }
+  });
+
+  app.get("/api/analysis-tool-templates/fishbone/:category", requireAuth, async (req, res) => {
+    try {
+      const category = req.params.category;
+      const commonCauses: Record<string, string[]> = {
+        man: ['Training gap', 'Fatigue', 'Skill level', 'Communication', 'Supervision', 'Experience', 'Attitude', 'Physical ability'],
+        machine: ['Tool wear', 'Equipment age', 'Calibration drift', 'Maintenance overdue', 'Setup error', 'Parameter drift', 'Fixture wear', 'Coolant issue'],
+        material: ['Material variation', 'Wrong material', 'Supplier change', 'Contamination', 'Storage conditions', 'Batch variation', 'Incoming quality'],
+        method: ['Procedure not followed', 'Procedure unclear', 'Work instruction missing', 'Process change', 'Sequence error', 'Cycle time variation'],
+        measurement: ['Gage R&R failure', 'Wrong gage', 'Calibration expired', 'Measurement technique', 'Sample size', 'Resolution inadequate'],
+        environment: ['Temperature', 'Humidity', 'Lighting', 'Cleanliness', 'Vibration', 'Noise', 'ESD'],
+        management: ['Resource allocation', 'Planning', 'Priority conflict', 'Policy gap', 'Communication breakdown'],
+        money: ['Budget constraint', 'Cost pressure', 'Investment delay', 'Resource limitation'],
+      };
+
+      const causes = commonCauses[category];
+      if (!causes) return res.status(404).json({ error: "Category not found" });
+      res.json({ causes });
+    } catch (error) {
+      console.error("Error fetching fishbone causes:", error);
+      res.status(500).json({ error: "Failed to fetch causes" });
+    }
+  });
+
+  // =============================================
+  // Cross-Tool Linking
+  // =============================================
+
+  app.post("/api/capas/:id/analysis-tools/:toolId/link", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      const targetTool = await storage.getCapaAnalysisTool(req.body.targetToolId);
+      if (!targetTool || targetTool.capaId !== capaId) return res.status(404).json({ error: "Target tool not found" });
+
+      const data = parseToolData(tool);
+      if (!data.links) data.links = [];
+      data.links.push({
+        targetToolId: req.body.targetToolId,
+        linkType: req.body.linkType || 'supports',
+        description: req.body.description || '',
+        linkedAt: new Date().toISOString(),
+        linkedBy: req.auth!.user.id,
+      });
+
+      await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
+      res.json({ message: "Link created" });
+    } catch (error) {
+      console.error("Error linking tools:", error);
+      res.status(500).json({ error: "Failed to link tools" });
+    }
+  });
+
+  app.get("/api/capas/:id/analysis-tools/:toolId/links", requireAuth, async (req, res) => {
+    try {
+      const capaId = parseInt(req.params.id);
+      const toolId = parseInt(req.params.toolId);
+      if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+      const capaRecord = await storage.getCapa(capaId);
+      if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
+
+      const tool = await storage.getCapaAnalysisTool(toolId);
+      if (!tool || tool.capaId !== capaId) return res.status(404).json({ error: "Analysis tool not found" });
+
+      const data = parseToolData(tool);
+      const links = data.links || [];
+
+      // Enrich with target tool info
+      const enriched = [];
+      for (const link of links) {
+        const target = await storage.getCapaAnalysisTool(link.targetToolId);
+        enriched.push({ ...link, targetTool: target ? { id: target.id, toolType: target.toolType, name: target.name, status: target.status } : null });
+      }
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error fetching tool links:", error);
+      res.status(500).json({ error: "Failed to fetch tool links" });
     }
   });
 

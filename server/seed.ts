@@ -1,9 +1,9 @@
 import { storage } from "./storage";
 import { db } from "./db";
-import { organization, user, document, documentRevision, documentReview, approvalWorkflowDefinition, documentTemplate, documentFile, approvalWorkflowInstance, distributionList, externalDocument, documentAccessLog, documentComment } from "@shared/schema";
+import { organization, user, document, documentRevision, documentReview, approvalWorkflowDefinition, documentTemplate, documentFile, approvalWorkflowInstance, distributionList, externalDocument, documentAccessLog, documentComment, capa } from "@shared/schema";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 
 // Helper to hash passwords
 async function hashPassword(password: string): Promise<string> {
@@ -864,11 +864,617 @@ async function seedDocumentControlPhase3() {
   console.log("  ✓ DC Phase 3 seed data created (3 distribution lists, 4 external docs, access logs, comments).");
 }
 
+/**
+ * Seed CAPA/8D Module: 3 sample CAPAs with disciplines, team members, analysis tools, and audit logs.
+ */
+async function seedCAPA() {
+  // Check if CAPAs already exist
+  const [capaCount] = await db.select({ value: count() }).from(capa);
+  if (capaCount.value > 0) {
+    console.log("  CAPA seed data already exists, skipping.");
+    return;
+  }
+
+  const demoOrg = await storage.getOrganizationBySlug('acme-manufacturing');
+  if (!demoOrg) {
+    console.log("  No demo org found, skipping CAPA seed.");
+    return;
+  }
+
+  console.log("  Seeding CAPA/8D data...");
+  const orgId = demoOrg.id;
+  const users = await storage.getUsersByOrgId(orgId);
+  if (users.length === 0) {
+    console.log("  No users found in demo org, skipping CAPA seed.");
+    return;
+  }
+  const adminUser = users.find(u => u.role === 'admin') ?? users[0];
+  const qmUser = users.find(u => u.role === 'quality_manager') ?? users[0];
+  const engUser = users.find(u => u.role === 'engineer') ?? users[0];
+
+  // =============================================
+  // CAPA 1: Closed (Customer Complaint) — Full D0-D8
+  // =============================================
+  const capa1 = await storage.createCapa({
+    orgId,
+    capaNumber: 'auto',
+    title: 'Critical Dimension Out of Spec - Part 3004-XYZ Stiffener',
+    type: 'corrective',
+    status: 'd8_closure',
+    priority: 'critical',
+    sourceType: 'customer_complaint',
+    description: 'Customer reported dimension 3.72mm vs 3.50mm ±0.20mm target on Part 3004-XYZ Stiffener. 15 parts (1.5%) affected since Feb 1, 2026. Root cause: tool insert A-4421 accelerated wear without automated monitoring.',
+    createdBy: adminUser.id,
+    targetClosureDate: new Date('2026-03-15'),
+    actualClosureDate: new Date('2026-03-10'),
+    closedBy: adminUser.id,
+    closedAt: new Date('2026-03-10'),
+    costOfQuality: 22500,
+    riskLevel: 'high',
+    customerName: 'Apex Automotive',
+    customerPartNumber: '3004-XYZ',
+    plantLocation: 'Fraser Plant',
+  });
+
+  // Team members for CAPA 1
+  await storage.createCapaTeamMember({ capaId: capa1.id, orgId, userId: adminUser.id, userName: 'Admin User', role: 'champion', isChampion: 1, joinedAt: new Date('2026-02-01'), createdBy: adminUser.id });
+  await storage.createCapaTeamMember({ capaId: capa1.id, orgId, userId: qmUser.id, userName: 'Quality Manager', role: 'leader', isLeader: 1, joinedAt: new Date('2026-02-01'), createdBy: adminUser.id });
+  await storage.createCapaTeamMember({ capaId: capa1.id, orgId, userId: engUser.id, userName: 'Process Engineer', role: 'process_engineer', joinedAt: new Date('2026-02-01'), createdBy: adminUser.id });
+
+  // Source
+  await storage.createCapaSource({ capaId: capa1.id, orgId, sourceType: 'customer_complaint', customerComplaintNumber: 'CC-2026-0042', initialAssessment: 'Customer reported 15 parts with critical dimension out of specification', createdBy: adminUser.id });
+
+  // D0 Emergency
+  await storage.createCapaD0({
+    capaId: capa1.id, orgId,
+    emergencyResponseRequired: 1,
+    responseType: 'stop_shipment',
+    immediateThreat: 'Critical dimension out of specification — customer safety concern',
+    threatLevel: 'high',
+    customerNotificationRequired: 1,
+    customerNotifiedAt: new Date('2026-02-01'),
+    customerNotifiedBy: qmUser.id,
+    stopShipmentIssued: 1,
+    stopShipmentScope: 'All lots of Part 3004-XYZ from Fraser Plant Press #3',
+    stopShipmentIssuedAt: new Date('2026-02-01'),
+    stopShipmentIssuedBy: adminUser.id,
+    emergencyActions: JSON.stringify([
+      { action: 'Stop shipment of suspect lot', responsible: adminUser.id, completedAt: '2026-02-01T10:00:00Z' },
+      { action: 'Sort 100% of WIP and finished goods', responsible: engUser.id, completedAt: '2026-02-01T14:00:00Z' },
+      { action: 'Notify customer of containment actions', responsible: qmUser.id, completedAt: '2026-02-01T16:00:00Z' },
+    ]),
+    symptomsCaptured: 1,
+    symptomsDescription: 'Critical dimension 3.72mm on Part 3004-XYZ Stiffener (target: 3.50mm ±0.20mm). 15 parts (1.5%) rejected at customer incoming inspection.',
+    initialSortRequired: 1,
+    sortMethod: '100% CMM inspection of Feature #3',
+    sortResults: JSON.stringify({ totalInspected: 500, rejected: 8 }),
+    d0CompletedAt: new Date('2026-02-01'),
+    d0CompletedBy: adminUser.id,
+    createdBy: adminUser.id,
+  });
+
+  // D1 Team Detail
+  await storage.createCapaD1({
+    capaId: capa1.id, orgId,
+    teamFormationDate: new Date('2026-02-02'),
+    teamFormationMethod: 'cross_functional',
+    teamCharterDefined: 1,
+    teamObjective: 'Investigate and resolve critical dimension nonconformance on Part 3004-XYZ using 8D methodology. Target: permanent corrective action within 30 days.',
+    communicationPlan: JSON.stringify({ frequency: 'daily', method: 'email + stand-up', escalation: 'Plant Manager if >3 days blocked' }),
+    resourcesRequired: JSON.stringify(['CMM time', 'Tool crib records', 'SPC data access', 'Maintenance records']),
+    resourcesApproved: 1,
+    d1CompletedAt: new Date('2026-02-02'),
+    d1CompletedBy: qmUser.id,
+    createdBy: adminUser.id,
+  });
+
+  // D2 Problem
+  await storage.createCapaD2({
+    capaId: capa1.id, orgId,
+    problemStatement: 'Since February 1, 2026, Part 3004-XYZ Stiffener produced on Press #3 at Fraser Plant has exhibited critical dimension Feature #3 measuring 3.72mm (0.22mm out of specification vs target 3.50mm ±0.20mm), affecting 15 parts (1.5% defect rate).',
+    defectDescription: 'Dimension 3.72mm on Feature #3 (target 3.50mm ±0.20mm)',
+    whereGeographic: 'Fraser Plant, Press #3',
+    whereOnObject: 'Feature #3 (3.5mm critical dimension)',
+    whenFirstObserved: new Date('2026-02-01'),
+    whenPattern: 'Continuous, all shifts since Feb 1',
+    howManyUnits: 15,
+    howManyTrend: 'Increasing',
+    isNotWhat: JSON.stringify({ is: 'Part 3004-XYZ Feature #3', isNot: 'Other part numbers or features' }),
+    isNotWhere: JSON.stringify({ is: 'Fraser Plant Press #3', isNot: 'Monroe Plant or other presses' }),
+    isNotWhen: JSON.stringify({ is: 'Since Feb 1 continuously', isNot: 'Before Feb 1 or intermittent' }),
+    isNotHowMany: JSON.stringify({ is: '15 parts (1.5%)', isNot: '0% before Feb 1' }),
+    measurementSystemValid: 1,
+    fiveWsComplete: 1,
+    d2CompletedAt: new Date('2026-02-04'),
+    d2CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D3 Containment
+  await storage.createCapaD3({
+    capaId: capa1.id, orgId,
+    containmentRequired: 1,
+    containmentStrategy: 'Sort, replace tooling, 100% inspect until permanent fix',
+    actions: JSON.stringify([
+      { action: '100% sort of WIP and finished goods', result: '8 additional OOS parts found', responsible: engUser.id },
+      { action: 'Replaced tool insert A-4421 with new A-4420', result: 'First 50 parts all in spec', responsible: engUser.id },
+      { action: 'Added temporary 100% inspection at press', result: 'Running since Feb 2', responsible: qmUser.id },
+    ]),
+    containmentEffective: 1,
+    containmentEffectiveEvidence: 'Zero OOS parts detected since containment implementation on Feb 2',
+    quantityInspected: 1200,
+    quantityPassed: 1177,
+    quantityFailed: 23,
+    d3CompletedAt: new Date('2026-02-05'),
+    d3CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D4 Root Cause
+  const d4_1 = await storage.createCapaD4({
+    capaId: capa1.id, orgId,
+    analysisApproach: JSON.stringify(['is_is_not', 'five_why', 'three_leg_five_why', 'fishbone', 'change_point', 'comparative']),
+    fiveWhyAnalysis: JSON.stringify([
+      { level: 1, question: 'Why is dimension OOS?', answer: 'Tool insert worn beyond tolerance' },
+      { level: 2, question: 'Why is insert worn?', answer: 'Exceeded recommended tool life (10,000 shots)' },
+      { level: 3, question: 'Why exceeded tool life?', answer: 'Tool change schedule not followed' },
+      { level: 4, question: 'Why not followed?', answer: 'Manual tracking only, no automated alerts' },
+      { level: 5, question: 'Why no automated alerts?', answer: 'No tool life monitoring system on Press #3' },
+    ]),
+    fishboneDiagram: JSON.stringify({ type: '6M', rootCauses: ['Tool wear (machine)', 'No counter (machine)', 'Manual procedure (method)', 'SPC limits outdated (measurement)'] }),
+    rootCauseOccurrence: 'No automated tool life monitoring on Press #3',
+    rootCauseOccurrenceEvidence: 'Equipment assessment confirmed no counter installed',
+    rootCauseOccurrenceVerified: 1,
+    rootCauseOccurrenceVerifiedBy: engUser.id,
+    rootCauseEscape: 'No periodic SPC limit review in control plan',
+    rootCauseEscapeEvidence: 'SPC review confirmed limits based on 2024 data',
+    rootCauseEscapeVerified: 1,
+    rootCauseEscapeVerifiedBy: qmUser.id,
+    systemicCauses: JSON.stringify(['CAPA procedure lacks PFMEA/CP update requirement']),
+    rootCauseSummary: 'Primary: No automated tool life monitoring. Escape: Outdated SPC limits. Systemic: Missing PFMEA update in CAPA closure.',
+    confidenceLevel: 'high',
+    d4CompletedAt: new Date('2026-02-08'),
+    d4CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D4 Root Cause Candidates
+  await storage.createD4Candidate({ capaId: capa1.id, orgId, d4Id: d4_1.id, causeType: 'occurrence', description: 'Tool insert worn beyond tolerance', category: 'machine', likelihood: 'high', verificationResult: 'confirmed', verificationMethod: 'Insert measurement showed 0.15mm wear', verifiedBy: engUser.id, verifiedAt: new Date('2026-02-07'), isRootCause: 1, createdBy: engUser.id });
+  await storage.createD4Candidate({ capaId: capa1.id, orgId, d4Id: d4_1.id, causeType: 'escape', description: 'SPC limits outdated (last review 2024)', category: 'measurement', likelihood: 'medium', verificationResult: 'confirmed', verificationMethod: 'SPC review confirmed limits based on 2024 data', verifiedBy: qmUser.id, verifiedAt: new Date('2026-02-07'), isRootCause: 1, createdBy: engUser.id });
+  await storage.createD4Candidate({ capaId: capa1.id, orgId, d4Id: d4_1.id, causeType: 'contributing', description: 'Operator training gap', category: 'man', likelihood: 'low', verificationResult: 'refuted', verificationMethod: 'Training records current, interviewed operator — ruled out', createdBy: engUser.id });
+
+  // D5 Corrective Action (single discipline record per CAPA)
+  await storage.createCapaD5({
+    capaId: capa1.id, orgId,
+    correctiveActionsSelected: JSON.stringify([
+      { description: 'Install tool life counter with automatic lockout on Press #3', type: 'occurrence', responsible: engUser.id, dueDate: '2026-02-28', completedAt: '2026-02-12' },
+      { description: 'Add annual SPC review requirement to control plan', type: 'detection', responsible: qmUser.id, dueDate: '2026-02-28', completedAt: '2026-02-14' },
+      { description: 'Revise CAPA closure procedure to require PFMEA/CP update evidence', type: 'systemic', responsible: qmUser.id, dueDate: '2026-03-15', completedAt: '2026-02-20' },
+    ]),
+    occurrenceActionSummary: 'Install tool life counter with automatic lockout on Press #3',
+    escapeActionSummary: 'Add annual SPC review requirement to control plan',
+    pfmeaUpdatesRequired: 1,
+    controlPlanUpdatesRequired: 1,
+    documentUpdatesRequired: 1,
+    managementApprovalStatus: 'approved',
+    managementApprovedBy: adminUser.id,
+    managementApprovedAt: new Date('2026-02-10'),
+    d5CompletedAt: new Date('2026-02-10'),
+    d5CompletedBy: qmUser.id,
+    createdBy: qmUser.id,
+  });
+
+  // D6 Validation
+  await storage.createCapaD6({
+    capaId: capa1.id, orgId,
+    implementationStatus: 'complete',
+    implementationProgress: 100,
+    implementationLog: JSON.stringify([
+      { date: '2026-02-12', action: 'Tool life counter installed on Press #3', verifiedBy: engUser.id },
+      { date: '2026-02-14', action: 'SPC limits recalculated and updated', verifiedBy: qmUser.id },
+      { date: '2026-02-20', action: 'CAPA procedure revised (SOP-QA-015 Rev C)', verifiedBy: adminUser.id },
+    ]),
+    validationTests: JSON.stringify([
+      { test: '500 part production run', result: 'All in spec (Cpk 1.67)', passed: true },
+      { test: 'Tool counter lockout test', result: 'Press locked at 9,500 shots as configured', passed: true },
+      { test: 'SPC chart monitoring', result: 'Process stable for 2 weeks', passed: true },
+    ]),
+    effectivenessVerified: 1,
+    effectivenessResult: 'effective',
+    effectivenessEvidence: 'Cpk improved from 0.85 to 1.67 after corrective actions. Zero defects in 2,000 parts since implementation.',
+    containmentRemoved: 1,
+    containmentRemovedAt: new Date('2026-02-18'),
+    pfmeaUpdated: 1,
+    pfmeaUpdateDetails: 'Updated PFMEA for Part 3004-XYZ — RPN reduced from 192 to 48',
+    controlPlanUpdated: 1,
+    controlPlanUpdateDetails: 'Updated Control Plan to include tool life monitoring and annual SPC review',
+    d6CompletedAt: new Date('2026-02-15'),
+    d6CompletedBy: qmUser.id,
+    createdBy: qmUser.id,
+  });
+
+  // D7 Preventive
+  await storage.createCapaD7({
+    capaId: capa1.id, orgId,
+    systemicAnalysisComplete: 1,
+    systemicAnalysisSummary: 'Three systemic gaps identified: equipment monitoring, procedure review schedule, feedback loop from CAPA to PFMEA.',
+    preventiveActions: JSON.stringify([
+      { action: 'Install tool life counters on all 12 presses', dueDate: '2026-06-30', responsible: engUser.id },
+      { action: 'Implement automated SPC alert system plant-wide', dueDate: '2026-09-30', responsible: qmUser.id },
+    ]),
+    horizontalDeploymentPlan: JSON.stringify({
+      areas: [
+        { area: 'Monroe Plant', action: 'Audit all presses for tool life monitoring', dueDate: '2026-04-30' },
+        { area: 'All injection molding cells', action: 'Review SPC limits vs current capability', dueDate: '2026-05-31' },
+      ],
+    }),
+    procedureChangesRequired: 1,
+    procedureChanges: JSON.stringify(['SOP-QA-015 Rev C (CAPA procedure)', 'CP-3004-XYZ Rev B (control plan)']),
+    fmeaSystemReviewComplete: 1,
+    fmeaSystemReviewNotes: 'Updated PFMEA for Part 3004-XYZ (RPN reduced from 192 to 48)',
+    lessonLearnedCreated: 1,
+    lessonLearnedReference: 'LL-2026-001: Manual tool life tracking is insufficient for critical dimensions',
+    standardizationComplete: 1,
+    standardizationSummary: 'Standardized tool life monitoring requirement across all critical-dimension tooling',
+    d7CompletedAt: new Date('2026-02-20'),
+    d7CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D8 Closure
+  await storage.createCapaD8({
+    capaId: capa1.id, orgId,
+    closureCriteriaMet: 1,
+    closureCriteriaChecklist: JSON.stringify({
+      rootCauseVerified: true,
+      correctiveActionsImplemented: true,
+      preventiveActionsScheduled: true,
+      documentationUpdated: true,
+      customerNotified: true,
+    }),
+    allActionsComplete: 1,
+    actionsCompletionSummary: 'All 3 corrective actions completed. All preventive actions scheduled with owners.',
+    effectivenessConfirmed: 1,
+    effectivenessSummary: 'Cpk improved from 0.85 to 1.67. Zero defects in 2,000+ parts since implementation.',
+    noRecurrence: 1,
+    recurrenceMonitoringPeriod: '90 days',
+    containmentRemoved: 1,
+    containmentRemovalDate: new Date('2026-02-18'),
+    documentationComplete: 1,
+    customerClosed: 1,
+    customerClosureDate: new Date('2026-03-08'),
+    teamRecognition: JSON.stringify({ note: 'Team completed 8D in 38 days (target: 45). Special recognition to Process Engineer for rapid tool counter installation.' }),
+    teamRecognitionDate: new Date('2026-03-10'),
+    lessonsLearnedSummary: 'Manual tool life tracking is insufficient for critical dimensions. Automated monitoring with lockout prevents tool-wear-related nonconformances.',
+    lessonsLearnedShared: 1,
+    successMetrics: JSON.stringify({ cpkBefore: 0.85, cpkAfter: 1.67, defectRateBefore: 1.5, defectRateAfter: 0, costSavingsAnnual: 150000 }),
+    costSavingsRealized: 150000,
+    cycleTimeDays: 38,
+    onTimeCompletion: 1,
+    approvedBy: adminUser.id,
+    approvedAt: new Date('2026-03-10'),
+    closedBy: adminUser.id,
+    closedAt: new Date('2026-03-10'),
+    d8CompletedAt: new Date('2026-03-10'),
+    d8CompletedBy: adminUser.id,
+    createdBy: adminUser.id,
+  });
+
+  // Audit log entries for CAPA 1 (hash-chained)
+  const auditActions: Array<{ action: string; userId: string; changeDescription?: string; previousValue?: string; newValue?: string }> = [
+    { action: 'capa_created', userId: adminUser.id, changeDescription: 'CAPA created from customer complaint CC-2026-0042' },
+    { action: 'status_changed', userId: adminUser.id, previousValue: 'd0_awareness', newValue: 'd1_team', changeDescription: 'D0 completed, advancing to D1' },
+    { action: 'team_member_added', userId: adminUser.id, changeDescription: 'Quality Manager added as leader' },
+    { action: 'd0_completed', userId: engUser.id, changeDescription: 'D0 Emergency Response completed' },
+    { action: 'd1_completed', userId: qmUser.id, changeDescription: 'D1 Team Formation completed' },
+    { action: 'd2_completed', userId: engUser.id, changeDescription: 'D2 Problem Description completed' },
+    { action: 'd3_completed', userId: engUser.id, changeDescription: 'D3 Containment completed' },
+    { action: 'd4_completed', userId: engUser.id, changeDescription: 'D4 Root Cause Analysis completed' },
+    { action: 'd5_completed', userId: qmUser.id, changeDescription: 'D5 Corrective Actions selected and approved' },
+    { action: 'd6_completed', userId: qmUser.id, changeDescription: 'D6 Validation completed — effectiveness verified' },
+    { action: 'd7_completed', userId: engUser.id, changeDescription: 'D7 Preventive Actions established' },
+    { action: 'd8_completed', userId: adminUser.id, changeDescription: 'D8 Closure — all criteria met' },
+    { action: 'capa_closed', userId: adminUser.id, previousValue: 'd8_closure', newValue: 'closed', changeDescription: 'CAPA formally closed' },
+  ];
+  for (const entry of auditActions) {
+    await storage.createCapaAuditLog({
+      capaId: capa1.id,
+      orgId,
+      action: entry.action,
+      userId: entry.userId,
+      changeDescription: entry.changeDescription,
+      previousValue: entry.previousValue,
+      newValue: entry.newValue,
+    });
+  }
+
+  // Analysis tools for CAPA 1
+  await storage.createCapaAnalysisTool({
+    orgId,
+    capaId: capa1.id,
+    toolType: 'is_is_not',
+    name: 'Initial Is/Is Not Analysis',
+    discipline: 'D2',
+    data: JSON.stringify({
+      what: { object: { is: [{ observation: 'Part 3004-XYZ Stiffener', evidence: 'Customer complaint' }], isNot: [{ observation: 'Other part numbers', distinction: 'Only this part affected' }] } },
+      where: { geographic: { is: [{ observation: 'Fraser Plant', evidence: '' }], isNot: [{ observation: 'Monroe Plant', distinction: 'Different equipment' }] } },
+      therefore: 'Tool insert A-4421 causing dimension drift on feature #3',
+    }),
+    status: 'complete',
+    conclusion: 'Tool insert change on 1/30 is root cause',
+    linkedToRootCause: 1,
+    createdBy: engUser.id,
+    completedAt: new Date('2026-02-04'),
+    completedBy: engUser.id,
+  });
+
+  await storage.createCapaAnalysisTool({
+    orgId,
+    capaId: capa1.id,
+    toolType: 'three_leg_five_why',
+    name: '3-Legged 5-Why Analysis',
+    discipline: 'D4',
+    data: JSON.stringify({
+      startingPoint: 'Critical dimension 3.72mm vs 3.50mm target',
+      occurrenceLeg: { whys: [{ level: 1, question: 'Why dimension OOS?', answer: 'Tool insert worn' }, { level: 2, question: 'Why insert worn?', answer: 'Exceeded tool life' }, { level: 3, question: 'Why exceeded life?', answer: 'No counter' }], rootCause: 'No automated tool life monitoring', verified: true },
+      detectionLeg: { whys: [{ level: 1, question: 'Why not detected?', answer: 'SPC limits too wide' }, { level: 2, question: 'Why too wide?', answer: 'Based on old capability' }], rootCause: 'No periodic SPC limit review', verified: true },
+      systemicLeg: { whys: [{ level: 1, question: 'Why system allowed?', answer: 'PFMEA not updated' }, { level: 2, question: 'Why not updated?', answer: 'No feedback loop' }], rootCause: 'CAPA procedure lacks PFMEA update requirement', verified: true },
+    }),
+    status: 'verified',
+    conclusion: 'Three root causes: equipment gap (occurrence), procedure gap (detection), system gap (systemic)',
+    linkedToRootCause: 1,
+    createdBy: engUser.id,
+    completedAt: new Date('2026-02-07'),
+    completedBy: engUser.id,
+    verifiedAt: new Date('2026-02-08'),
+    verifiedBy: qmUser.id,
+  });
+
+  await storage.createCapaAnalysisTool({
+    orgId,
+    capaId: capa1.id,
+    toolType: 'fishbone',
+    name: '6M Fishbone Analysis',
+    discipline: 'D4',
+    data: JSON.stringify({
+      type: '6M',
+      effect: 'Dimension out of specification',
+      categories: {
+        machine: [{ id: 'mc1', text: 'Tool insert worn', status: 'verified' }, { id: 'mc2', text: 'No tool life counter', status: 'verified' }],
+        method: [{ id: 'me1', text: 'Tool change procedure gap', status: 'verified' }],
+        measurement: [{ id: 'ms1', text: 'SPC limits outdated', status: 'verified' }],
+        man: [{ id: 'm1', text: 'Operator training', status: 'ruled_out' }],
+        material: [{ id: 'mt1', text: 'Resin lot variation', status: 'ruled_out' }],
+      },
+    }),
+    status: 'complete',
+    conclusion: 'Primary: Tool wear due to no life monitoring. Contributing: Manual procedure and outdated SPC limits.',
+    createdBy: engUser.id,
+    completedAt: new Date('2026-02-06'),
+    completedBy: engUser.id,
+  });
+
+  await storage.createCapaAnalysisTool({
+    orgId,
+    capaId: capa1.id,
+    toolType: 'change_point',
+    name: 'Change Point Timeline',
+    discipline: 'D2',
+    data: JSON.stringify({
+      problemFirstObserved: '2026-02-10',
+      changes: [
+        { date: '2026-01-30', category: 'machine', description: 'Tool insert changed to A-4421', isLikelyCause: true },
+        { date: '2026-01-22', category: 'machine', description: 'PM performed on Press #3', ruledOut: true },
+      ],
+      hypothesis: 'Tool change on 1/30 is the change point',
+    }),
+    status: 'complete',
+    conclusion: 'Tool insert change correlates with defect onset',
+    createdBy: engUser.id,
+    completedAt: new Date('2026-02-04'),
+    completedBy: engUser.id,
+  });
+
+  await storage.createCapaAnalysisTool({
+    orgId,
+    capaId: capa1.id,
+    toolType: 'comparative',
+    name: 'Good vs Bad Part Comparison',
+    discipline: 'D4',
+    data: JSON.stringify({
+      comparison: { good: [{ id: 'SN-0542', date: '2026-01-28' }], bad: [{ id: 'SN-0523', date: '2026-02-03' }] },
+      factors: [
+        { name: 'Tool Insert', good: 'A-4420', bad: 'A-4421', isDifferent: true, significance: 'Different insert!' },
+        { name: 'Tool Life Count', good: '2,450', bad: '8,920', isDifferent: true, significance: 'High wear' },
+      ],
+      hypothesis: 'Insert A-4421 wears faster',
+    }),
+    status: 'complete',
+    conclusion: 'Tool insert and tool life count are significant differences',
+    createdBy: engUser.id,
+    completedAt: new Date('2026-02-05'),
+    completedBy: engUser.id,
+  });
+
+  console.log(`  ✓ CAPA-1 created (closed, full D0-D8, 13 audit logs, 5 analysis tools)`);
+
+  // =============================================
+  // CAPA 2: In Progress at D4 (Internal NCR)
+  // =============================================
+  const capa2 = await storage.createCapa({
+    orgId,
+    capaNumber: 'auto',
+    title: 'Surface Finish Defect on Housing Assembly — Line 2',
+    type: 'corrective',
+    status: 'd4_root_cause',
+    priority: 'high',
+    sourceType: 'internal_ncr',
+    description: 'Recurring surface finish defects (orange peel) on Housing Assembly produced on Line 2. Defect rate increased from 0.5% to 3.2% over past 2 weeks.',
+    createdBy: engUser.id,
+    targetClosureDate: new Date('2026-04-01'),
+    costOfQuality: 15000,
+    riskLevel: 'medium',
+    plantLocation: 'Fraser Plant',
+  });
+
+  // Team members
+  await storage.createCapaTeamMember({ capaId: capa2.id, orgId, userId: qmUser.id, userName: 'Quality Manager', role: 'champion', isChampion: 1, joinedAt: new Date('2026-02-10'), createdBy: qmUser.id });
+  await storage.createCapaTeamMember({ capaId: capa2.id, orgId, userId: engUser.id, userName: 'Process Engineer', role: 'leader', isLeader: 1, joinedAt: new Date('2026-02-10'), createdBy: qmUser.id });
+  await storage.createCapaTeamMember({ capaId: capa2.id, orgId, userId: adminUser.id, userName: 'Admin User', role: 'quality_engineer', joinedAt: new Date('2026-02-11'), createdBy: qmUser.id });
+
+  await storage.createCapaSource({ capaId: capa2.id, orgId, sourceType: 'internal_ncr', ncrNumber: 'NCR-2026-0088', initialAssessment: 'Internal NCR for surface finish defects on Line 2', createdBy: engUser.id });
+
+  // D0
+  await storage.createCapaD0({
+    capaId: capa2.id, orgId,
+    emergencyResponseRequired: 0,
+    threatLevel: 'medium',
+    symptomsCaptured: 1,
+    symptomsDescription: 'Orange peel surface finish defect on Housing Assembly. Defect rate 3.2% (was 0.5%).',
+    emergencyActions: JSON.stringify([
+      { action: 'Increased visual inspection frequency to every 25 parts', responsible: qmUser.id },
+      { action: 'Quarantined suspect inventory (2 pallets)', responsible: engUser.id },
+    ]),
+    d0CompletedAt: new Date('2026-02-10'),
+    d0CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D1
+  await storage.createCapaD1({
+    capaId: capa2.id, orgId,
+    teamFormationDate: new Date('2026-02-11'),
+    teamFormationMethod: 'cross_functional',
+    teamObjective: 'Identify root cause of surface finish defects on Line 2 Housing Assembly and implement permanent corrective action.',
+    resourcesRequired: JSON.stringify(['Surface profilometer', 'Paint booth environmental data', 'Material COCs']),
+    d1CompletedAt: new Date('2026-02-11'),
+    d1CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D2
+  await storage.createCapaD2({
+    capaId: capa2.id, orgId,
+    problemStatement: 'Since February 3, 2026, Housing Assembly parts produced on Line 2 exhibit orange peel surface finish defect at 3.2% rate (baseline 0.5%), affecting all shifts.',
+    defectDescription: 'Orange peel texture on painted surface',
+    whereGeographic: 'Line 2, paint booth #4',
+    whenFirstObserved: new Date('2026-02-03'),
+    whenPattern: 'All shifts since Feb 3',
+    measurementSystemValid: 1,
+    d2CompletedAt: new Date('2026-02-13'),
+    d2CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D3
+  await storage.createCapaD3({
+    capaId: capa2.id, orgId,
+    containmentRequired: 1,
+    actions: JSON.stringify([
+      { action: '100% visual inspection with surface finish comparator', responsible: qmUser.id },
+      { action: 'Suspect inventory quarantined and sorted', result: '12 parts rejected', responsible: engUser.id },
+    ]),
+    containmentEffective: 1,
+    d3CompletedAt: new Date('2026-02-14'),
+    d3CompletedBy: engUser.id,
+    createdBy: engUser.id,
+  });
+
+  // D4 (in progress)
+  await storage.createCapaD4({
+    capaId: capa2.id, orgId,
+    analysisApproach: JSON.stringify(['fishbone', 'five_why', 'comparative']),
+    createdBy: engUser.id,
+  });
+
+  // One analysis tool in progress for CAPA 2
+  await storage.createCapaAnalysisTool({
+    orgId,
+    capaId: capa2.id,
+    toolType: 'fishbone',
+    name: 'Surface Finish Fishbone',
+    discipline: 'D4',
+    data: JSON.stringify({
+      type: '6M',
+      effect: 'Orange peel surface finish',
+      categories: {
+        machine: [{ id: 'mc1', text: 'Paint gun nozzle wear', status: 'investigating' }],
+        material: [{ id: 'mt1', text: 'Paint viscosity variation', status: 'investigating' }],
+        environment: [{ id: 'e1', text: 'Booth humidity fluctuation', status: 'suspected' }],
+      },
+    }),
+    status: 'in_progress',
+    createdBy: engUser.id,
+  });
+
+  console.log(`  ✓ CAPA-2 created (in progress at D4, D0-D3 complete)`);
+
+  // =============================================
+  // CAPA 3: New (Audit Finding) — Only D0 started
+  // =============================================
+  const capa3 = await storage.createCapa({
+    orgId,
+    capaNumber: 'auto',
+    title: 'Calibration Records Gap — Lab Equipment',
+    type: 'preventive',
+    status: 'd0_awareness',
+    priority: 'medium',
+    sourceType: 'audit_finding',
+    description: 'Internal audit finding: 3 CMMs in the metrology lab have calibration records that are 45+ days overdue. IATF 16949 clause 7.1.5.1 nonconformance.',
+    createdBy: qmUser.id,
+    targetClosureDate: new Date('2026-04-30'),
+    costOfQuality: 5000,
+    riskLevel: 'medium',
+    plantLocation: 'Fraser Plant',
+  });
+
+  await storage.createCapaTeamMember({ capaId: capa3.id, orgId, userId: qmUser.id, userName: 'Quality Manager', role: 'leader', isLeader: 1, joinedAt: new Date('2026-02-15'), createdBy: qmUser.id });
+
+  await storage.createCapaSource({ capaId: capa3.id, orgId, sourceType: 'audit_finding', auditId: 'AF-2026-0015', auditType: 'internal', auditFindingCategory: 'minor', initialAssessment: 'Calibration records overdue per IATF 16949 7.1.5.1', createdBy: qmUser.id });
+
+  await storage.createCapaD0({
+    capaId: capa3.id, orgId,
+    emergencyResponseRequired: 0,
+    threatLevel: 'medium',
+    symptomsCaptured: 1,
+    symptomsDescription: '3 CMMs (CMM-001, CMM-003, CMM-007) have calibration due dates 45+ days past. No evidence of calibration or out-of-calibration assessment.',
+    emergencyActions: JSON.stringify([
+      { action: 'Schedule emergency calibration for all 3 CMMs', responsible: qmUser.id },
+      { action: 'Identify all parts measured by affected CMMs since last valid calibration', responsible: engUser.id },
+    ]),
+    createdBy: qmUser.id,
+  });
+
+  console.log(`  ✓ CAPA-3 created (new, D0 awareness only)`);
+
+  // Metric snapshot
+  await storage.createCapaMetricSnapshot({
+    orgId,
+    snapshotDate: new Date('2026-02-17'),
+    snapshotPeriod: 'weekly',
+    totalCapas: 3,
+    byStatus: JSON.stringify({ d0_awareness: 1, d4_root_cause: 1, d8_closure: 1 }),
+    byPriority: JSON.stringify({ critical: 1, high: 1, medium: 1 }),
+    bySourceType: JSON.stringify({ customer_complaint: 1, internal_ncr: 1, audit_finding: 1 }),
+    openedThisPeriod: 3,
+    closedThisPeriod: 1,
+    overdueCount: 0,
+    avgCycleTimeDays: 38,
+    onTimeClosureRate: 100,
+    effectivenessRate: 100,
+    costOfQuality: 42500,
+    costSavings: 150000,
+  });
+
+  console.log("  ✓ CAPA/8D seed data created (3 CAPAs, team members, disciplines, audit logs, analysis tools, metrics).");
+}
+
 export async function runAllSeeds() {
   console.log("Running seeds...");
   await seedCorePlatform();
   await seedDocumentControl();
   await seedDocumentControlPhase2();
   await seedDocumentControlPhase3();
+  await seedCAPA();
   console.log("✓ All seeds completed.");
 }

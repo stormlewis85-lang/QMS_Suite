@@ -1,0 +1,732 @@
+CREATE TABLE "capa" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_number" text NOT NULL,
+	"title" text NOT NULL,
+	"description" text NOT NULL,
+	"type" text NOT NULL,
+	"priority" text DEFAULT 'medium' NOT NULL,
+	"status" text DEFAULT 'd0_awareness' NOT NULL,
+	"current_discipline" text DEFAULT 'D0' NOT NULL,
+	"source_type" text NOT NULL,
+	"source_id" integer,
+	"category" text,
+	"subcategory" text,
+	"product_line" text,
+	"part_numbers" text DEFAULT '[]',
+	"process_ids" text DEFAULT '[]',
+	"plant_location" text,
+	"customer_name" text,
+	"customer_part_number" text,
+	"date_occurred" timestamp,
+	"date_discovered" timestamp DEFAULT now(),
+	"date_reported" timestamp,
+	"target_closure_date" timestamp,
+	"actual_closure_date" timestamp,
+	"recurrence_check" integer DEFAULT 0,
+	"recurrence_check_date" timestamp,
+	"recurrence_result" text,
+	"effectiveness_verified" integer DEFAULT 0,
+	"effectiveness_date" timestamp,
+	"effectiveness_result" text,
+	"cost_of_quality" real,
+	"cost_breakdown" text DEFAULT '{}',
+	"risk_level" text,
+	"approval_status" text DEFAULT 'draft',
+	"approved_by" text,
+	"approved_at" timestamp,
+	"closed_by" text,
+	"closed_at" timestamp,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	"deleted_at" timestamp
+);
+CREATE TABLE "capa_analysis_tool" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"tool_type" text NOT NULL,
+	"name" text,
+	"discipline" text,
+	"data" text DEFAULT '{}' NOT NULL,
+	"status" text DEFAULT 'in_progress',
+	"conclusion" text,
+	"linked_to_root_cause" integer DEFAULT 0,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	"completed_at" timestamp,
+	"completed_by" text,
+	"verified_at" timestamp,
+	"verified_by" text
+);
+CREATE TABLE "capa_attachment" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"discipline" text,
+	"attachment_type" text NOT NULL,
+	"title" text NOT NULL,
+	"description" text,
+	"file_name" text NOT NULL,
+	"original_name" text NOT NULL,
+	"file_type" text NOT NULL,
+	"mime_type" text NOT NULL,
+	"file_size" integer NOT NULL,
+	"storage_path" text NOT NULL,
+	"storage_provider" text DEFAULT 'local',
+	"checksum_sha256" text NOT NULL,
+	"thumbnail_path" text,
+	"is_evidence" integer DEFAULT 0,
+	"evidence_description" text,
+	"evidence_collected_at" timestamp,
+	"evidence_collected_by" text,
+	"evidence_chain_of_custody" text DEFAULT '[]',
+	"linked_document_id" integer,
+	"uploaded_by" text NOT NULL,
+	"uploaded_at" timestamp DEFAULT now(),
+	"deleted_at" timestamp,
+	"deleted_by" text,
+	"deletion_reason" text
+);
+CREATE TABLE "capa_audit_log" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"discipline" text,
+	"action" text NOT NULL,
+	"entity_type" text,
+	"entity_id" integer,
+	"user_id" text NOT NULL,
+	"user_name" text,
+	"user_role" text,
+	"timestamp" timestamp DEFAULT now(),
+	"previous_value" text,
+	"new_value" text,
+	"change_description" text,
+	"ip_address" text,
+	"user_agent" text,
+	"session_id" text,
+	"log_hash" text,
+	"previous_log_hash" text
+);
+CREATE TABLE "capa_d0_emergency" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"emergency_response_required" integer DEFAULT 0 NOT NULL,
+	"response_type" text,
+	"immediate_threat" text,
+	"threat_level" text DEFAULT 'none',
+	"safety_impact" integer DEFAULT 0,
+	"safety_description" text,
+	"regulatory_impact" integer DEFAULT 0,
+	"regulatory_body" text,
+	"regulatory_deadline" timestamp,
+	"regulatory_submitted_at" timestamp,
+	"customer_notification_required" integer DEFAULT 0,
+	"customer_notified_at" timestamp,
+	"customer_notified_by" text,
+	"customer_response" text,
+	"stop_shipment_issued" integer DEFAULT 0,
+	"stop_shipment_scope" text,
+	"stop_shipment_issued_at" timestamp,
+	"stop_shipment_issued_by" text,
+	"stop_shipment_lifted_at" timestamp,
+	"stop_shipment_lifted_by" text,
+	"emergency_actions" text DEFAULT '[]',
+	"quantity_at_risk" integer,
+	"quantity_contained" integer,
+	"containment_locations" text DEFAULT '[]',
+	"initial_sort_required" integer DEFAULT 0,
+	"sort_method" text,
+	"sort_results" text DEFAULT '{}',
+	"symptoms_captured" integer DEFAULT 0,
+	"symptoms_description" text,
+	"d0_completed_at" timestamp,
+	"d0_completed_by" text,
+	"d0_verified_at" timestamp,
+	"d0_verified_by" text,
+	"d0_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d1_team_detail" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"team_formation_date" timestamp,
+	"team_formation_method" text,
+	"team_charter_defined" integer DEFAULT 0,
+	"team_charter_document" text,
+	"team_objective" text,
+	"team_scope" text,
+	"team_boundaries" text,
+	"communication_plan" text DEFAULT '{}',
+	"meeting_schedule" text DEFAULT '[]',
+	"escalation_path" text DEFAULT '[]',
+	"resources_required" text DEFAULT '[]',
+	"resources_approved" integer DEFAULT 0,
+	"resources_approved_by" text,
+	"resources_approved_at" timestamp,
+	"skills_gap_identified" text DEFAULT '[]',
+	"skills_gap_addressed" integer DEFAULT 0,
+	"team_effectiveness_score" integer,
+	"team_effectiveness_notes" text,
+	"d1_completed_at" timestamp,
+	"d1_completed_by" text,
+	"d1_verified_at" timestamp,
+	"d1_verified_by" text,
+	"d1_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d2_problem" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"problem_statement" text NOT NULL,
+	"problem_statement_verified" integer DEFAULT 0,
+	"problem_statement_verified_by" text,
+	"object_description" text,
+	"defect_description" text,
+	"is_not_what" text DEFAULT '{}',
+	"where_geographic" text,
+	"where_on_object" text,
+	"is_not_where" text DEFAULT '{}',
+	"when_first_observed" timestamp,
+	"when_pattern" text,
+	"when_lifecycle" text,
+	"is_not_when" text DEFAULT '{}',
+	"how_many_units" integer,
+	"how_many_defects" integer,
+	"how_many_trend" text,
+	"is_not_how_many" text DEFAULT '{}',
+	"distinctions_summary" text,
+	"changes_summary" text,
+	"problem_extent" text,
+	"problem_impact" text,
+	"five_ws_complete" integer DEFAULT 0,
+	"data_collection_plan" text DEFAULT '{}',
+	"data_collected" text DEFAULT '[]',
+	"measurement_system_valid" integer DEFAULT 0,
+	"measurement_system_notes" text,
+	"d2_completed_at" timestamp,
+	"d2_completed_by" text,
+	"d2_verified_at" timestamp,
+	"d2_verified_by" text,
+	"d2_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d3_containment" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"containment_required" integer DEFAULT 1 NOT NULL,
+	"containment_not_required_reason" text,
+	"containment_strategy" text,
+	"containment_scope" text DEFAULT '{}',
+	"containment_locations" text DEFAULT '[]',
+	"actions" text DEFAULT '[]',
+	"verification_method" text,
+	"verification_frequency" text,
+	"verification_results" text DEFAULT '[]',
+	"containment_effective" integer DEFAULT 0,
+	"containment_effective_date" timestamp,
+	"containment_effective_evidence" text,
+	"quantity_inspected" integer DEFAULT 0,
+	"quantity_passed" integer DEFAULT 0,
+	"quantity_failed" integer DEFAULT 0,
+	"quantity_reworked" integer DEFAULT 0,
+	"quantity_scrapped" integer DEFAULT 0,
+	"quantity_on_hold" integer DEFAULT 0,
+	"wip" text DEFAULT '{}',
+	"finished_goods" text DEFAULT '{}',
+	"in_transit" text DEFAULT '{}',
+	"at_customer" text DEFAULT '{}',
+	"supplier_containment" text DEFAULT '{}',
+	"sorting_instructions" text,
+	"sorting_training" integer DEFAULT 0,
+	"sorting_start_date" timestamp,
+	"sorting_end_date" timestamp,
+	"cost_of_containment" real DEFAULT 0,
+	"cost_breakdown" text DEFAULT '{}',
+	"customer_approval_required" integer DEFAULT 0,
+	"customer_approval_received" integer DEFAULT 0,
+	"customer_approval_date" timestamp,
+	"customer_approval_reference" text,
+	"exit_criteria" text,
+	"exit_criteria_met" integer DEFAULT 0,
+	"exit_criteria_met_date" timestamp,
+	"transition_to_permanent" text,
+	"d3_completed_at" timestamp,
+	"d3_completed_by" text,
+	"d3_verified_at" timestamp,
+	"d3_verified_by" text,
+	"d3_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d4_root_cause" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"analysis_approach" text DEFAULT '[]',
+	"possible_causes" text DEFAULT '[]',
+	"five_why_analysis" text DEFAULT '[]',
+	"fishbone_diagram" text DEFAULT '{}',
+	"fault_tree_analysis" text DEFAULT '{}',
+	"is_is_not_conclusions" text,
+	"data_analysis" text DEFAULT '[]',
+	"experiments_conducted" text DEFAULT '[]',
+	"verification_tests" text DEFAULT '[]',
+	"root_cause_occurrence" text,
+	"root_cause_occurrence_evidence" text,
+	"root_cause_occurrence_verified" integer DEFAULT 0,
+	"root_cause_occurrence_verified_by" text,
+	"root_cause_occurrence_verified_at" timestamp,
+	"root_cause_escape" text,
+	"root_cause_escape_evidence" text,
+	"root_cause_escape_verified" integer DEFAULT 0,
+	"root_cause_escape_verified_by" text,
+	"root_cause_escape_verified_at" timestamp,
+	"escape_point" text,
+	"escape_point_analysis" text,
+	"systemic_causes" text DEFAULT '[]',
+	"contributing_factors" text DEFAULT '[]',
+	"human_factors_analysis" text DEFAULT '{}',
+	"equipment_factors_analysis" text DEFAULT '{}',
+	"material_factors_analysis" text DEFAULT '{}',
+	"method_factors_analysis" text DEFAULT '{}',
+	"environment_factors_analysis" text DEFAULT '{}',
+	"root_cause_summary" text,
+	"confidence_level" text,
+	"additional_investigation_needed" integer DEFAULT 0,
+	"additional_investigation_plan" text,
+	"d4_completed_at" timestamp,
+	"d4_completed_by" text,
+	"d4_verified_at" timestamp,
+	"d4_verified_by" text,
+	"d4_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d4_root_cause_candidate" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"d4_id" integer NOT NULL,
+	"cause_type" text NOT NULL,
+	"category" text,
+	"description" text NOT NULL,
+	"source" text,
+	"evidence_for" text DEFAULT '[]',
+	"evidence_against" text DEFAULT '[]',
+	"likelihood" text DEFAULT 'medium',
+	"verification_method" text,
+	"verification_result" text,
+	"verified_at" timestamp,
+	"verified_by" text,
+	"is_root_cause" integer DEFAULT 0,
+	"linked_to_5why" text,
+	"linked_to_fishbone" text,
+	"notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d5_corrective_action" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"corrective_actions_selected" text DEFAULT '[]',
+	"alternatives_considered" text DEFAULT '[]',
+	"selection_criteria" text DEFAULT '{}',
+	"occurrence_action_summary" text,
+	"escape_action_summary" text,
+	"risk_assessment" text DEFAULT '{}',
+	"implementation_plan" text DEFAULT '{}',
+	"resource_requirements" text DEFAULT '{}',
+	"resources_approved" integer DEFAULT 0,
+	"resources_approved_by" text,
+	"resources_approved_at" timestamp,
+	"timeline" text DEFAULT '[]',
+	"dependencies" text DEFAULT '[]',
+	"potential_obstacles" text DEFAULT '[]',
+	"contingency_plan" text,
+	"pfmea_updates_required" integer DEFAULT 0,
+	"pfmea_update_plan" text,
+	"control_plan_updates_required" integer DEFAULT 0,
+	"control_plan_update_plan" text,
+	"document_updates_required" integer DEFAULT 0,
+	"document_update_list" text DEFAULT '[]',
+	"training_required" integer DEFAULT 0,
+	"training_plan" text DEFAULT '{}',
+	"customer_approval_required" integer DEFAULT 0,
+	"customer_approval_status" text,
+	"customer_approval_date" timestamp,
+	"customer_approval_notes" text,
+	"management_approval_required" integer DEFAULT 1,
+	"management_approval_status" text,
+	"management_approved_by" text,
+	"management_approved_at" timestamp,
+	"estimated_cost" real,
+	"estimated_savings" real,
+	"estimated_payback_months" integer,
+	"d5_completed_at" timestamp,
+	"d5_completed_by" text,
+	"d5_verified_at" timestamp,
+	"d5_verified_by" text,
+	"d5_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d6_validation" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"implementation_status" text DEFAULT 'not_started',
+	"implementation_progress" integer DEFAULT 0,
+	"implementation_log" text DEFAULT '[]',
+	"actions_implemented" text DEFAULT '[]',
+	"actions_pending" text DEFAULT '[]',
+	"delays_encountered" text DEFAULT '[]',
+	"deviations_from_plan" text DEFAULT '[]',
+	"containment_removed" integer DEFAULT 0,
+	"containment_removed_at" timestamp,
+	"containment_removal_verified_by" text,
+	"pre_implementation_baseline" text DEFAULT '{}',
+	"post_implementation_data" text DEFAULT '{}',
+	"validation_plan" text DEFAULT '{}',
+	"validation_tests" text DEFAULT '[]',
+	"validation_results" text DEFAULT '[]',
+	"statistical_validation" text DEFAULT '{}',
+	"effectiveness_check_date" timestamp,
+	"effectiveness_check_period" text,
+	"effectiveness_metric" text,
+	"effectiveness_target" text,
+	"effectiveness_actual" text,
+	"effectiveness_verified" integer DEFAULT 0,
+	"effectiveness_verified_by" text,
+	"effectiveness_verified_at" timestamp,
+	"effectiveness_result" text,
+	"effectiveness_evidence" text,
+	"reoccurrence_check" integer DEFAULT 0,
+	"reoccurrence_check_date" timestamp,
+	"reoccurrence_check_method" text,
+	"pfmea_updated" integer DEFAULT 0,
+	"pfmea_update_details" text,
+	"control_plan_updated" integer DEFAULT 0,
+	"control_plan_update_details" text,
+	"documents_updated" text DEFAULT '[]',
+	"training_completed" integer DEFAULT 0,
+	"training_records" text DEFAULT '[]',
+	"customer_notified" integer DEFAULT 0,
+	"customer_notification_date" timestamp,
+	"customer_acceptance" text,
+	"lessons_learned" text DEFAULT '[]',
+	"d6_completed_at" timestamp,
+	"d6_completed_by" text,
+	"d6_verified_at" timestamp,
+	"d6_verified_by" text,
+	"d6_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d7_preventive" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"systemic_analysis_complete" integer DEFAULT 0,
+	"systemic_analysis_summary" text,
+	"management_systems_reviewed" text DEFAULT '[]',
+	"similar_processes_identified" text DEFAULT '[]',
+	"similar_products_identified" text DEFAULT '[]',
+	"other_plants_identified" text DEFAULT '[]',
+	"horizontal_deployment_plan" text DEFAULT '{}',
+	"preventive_actions" text DEFAULT '[]',
+	"policy_changes_required" integer DEFAULT 0,
+	"policy_changes" text DEFAULT '[]',
+	"procedure_changes_required" integer DEFAULT 0,
+	"procedure_changes" text DEFAULT '[]',
+	"system_changes_required" integer DEFAULT 0,
+	"system_changes" text DEFAULT '[]',
+	"design_changes_required" integer DEFAULT 0,
+	"design_changes" text DEFAULT '[]',
+	"supplier_actions_required" integer DEFAULT 0,
+	"supplier_actions" text DEFAULT '[]',
+	"fmea_system_review_complete" integer DEFAULT 0,
+	"fmea_system_review_notes" text,
+	"lesson_learned_created" integer DEFAULT 0,
+	"lesson_learned_reference" text,
+	"knowledge_base_updated" integer DEFAULT 0,
+	"knowledge_base_entries" text DEFAULT '[]',
+	"training_materials_updated" integer DEFAULT 0,
+	"training_materials_list" text DEFAULT '[]',
+	"audit_checklist_updated" integer DEFAULT 0,
+	"audit_checklist_changes" text,
+	"standardization_complete" integer DEFAULT 0,
+	"standardization_summary" text,
+	"preventive_action_verification" text DEFAULT '[]',
+	"d7_completed_at" timestamp,
+	"d7_completed_by" text,
+	"d7_verified_at" timestamp,
+	"d7_verified_by" text,
+	"d7_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_d8_closure" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"closure_criteria_met" integer DEFAULT 0,
+	"closure_criteria_checklist" text DEFAULT '{}',
+	"all_actions_complete" integer DEFAULT 0,
+	"actions_completion_summary" text,
+	"effectiveness_confirmed" integer DEFAULT 0,
+	"effectiveness_summary" text,
+	"no_recurrence" integer DEFAULT 0,
+	"recurrence_monitoring_period" text,
+	"containment_removed" integer DEFAULT 0,
+	"containment_removal_date" timestamp,
+	"documentation_complete" integer DEFAULT 0,
+	"documentation_checklist" text DEFAULT '{}',
+	"customer_closed" integer DEFAULT 0,
+	"customer_closure_date" timestamp,
+	"customer_closure_reference" text,
+	"customer_feedback" text,
+	"team_recognition" text DEFAULT '{}',
+	"team_recognition_date" timestamp,
+	"team_recognition_method" text,
+	"team_feedback" text DEFAULT '[]',
+	"lessons_learned_summary" text,
+	"lessons_learned_shared" integer DEFAULT 0,
+	"lessons_learned_audience" text DEFAULT '[]',
+	"success_metrics" text DEFAULT '{}',
+	"cost_savings_realized" real,
+	"cost_of_quality_reduction" real,
+	"cycle_time_days" integer,
+	"on_time_completion" integer DEFAULT 0,
+	"final_report" text DEFAULT '{}',
+	"final_report_document_id" integer,
+	"archive_complete" integer DEFAULT 0,
+	"archive_location" text,
+	"closed_by" text,
+	"closed_at" timestamp,
+	"approved_by" text,
+	"approved_at" timestamp,
+	"d8_completed_at" timestamp,
+	"d8_completed_by" text,
+	"d8_verified_at" timestamp,
+	"d8_verified_by" text,
+	"d8_notes" text,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_metric_snapshot" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"snapshot_date" timestamp NOT NULL,
+	"snapshot_period" text NOT NULL,
+	"total_capas" integer DEFAULT 0,
+	"by_status" text DEFAULT '{}',
+	"by_priority" text DEFAULT '{}',
+	"by_source_type" text DEFAULT '{}',
+	"by_category" text DEFAULT '{}',
+	"by_discipline" text DEFAULT '{}',
+	"opened_this_period" integer DEFAULT 0,
+	"closed_this_period" integer DEFAULT 0,
+	"overdue_count" integer DEFAULT 0,
+	"avg_age_days" real DEFAULT 0,
+	"avg_cycle_time_days" real DEFAULT 0,
+	"on_time_closure_rate" real DEFAULT 0,
+	"effectiveness_rate" real DEFAULT 0,
+	"recurrence_rate" real DEFAULT 0,
+	"containment_effectiveness_rate" real DEFAULT 0,
+	"customer_capa_count" integer DEFAULT 0,
+	"safety_capa_count" integer DEFAULT 0,
+	"top_failure_modes" text DEFAULT '[]',
+	"top_root_causes" text DEFAULT '[]',
+	"cost_of_quality" real DEFAULT 0,
+	"cost_savings" real DEFAULT 0,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_number_sequence" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"year" integer NOT NULL,
+	"last_number" integer DEFAULT 0 NOT NULL,
+	"prefix" text DEFAULT 'CAPA',
+	"format" text DEFAULT '{prefix}-{year}-{seq:4}',
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_related_record" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"related_type" text NOT NULL,
+	"related_id" integer NOT NULL,
+	"relationship_type" text NOT NULL,
+	"relationship_description" text,
+	"linked_at" timestamp DEFAULT now(),
+	"linked_by" text NOT NULL,
+	"verified_at" timestamp,
+	"verified_by" text,
+	"notes" text
+);
+CREATE TABLE "capa_source" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"source_type" text NOT NULL,
+	"source_system" text,
+	"external_id" text,
+	"external_url" text,
+	"customer_complaint_number" text,
+	"ncr_number" text,
+	"audit_id" text,
+	"audit_type" text,
+	"audit_finding_category" text,
+	"supplier_name" text,
+	"supplier_code" text,
+	"pfmea_id" integer,
+	"pfmea_row_id" integer,
+	"control_plan_id" integer,
+	"process_deviation_id" text,
+	"original_report_date" timestamp,
+	"original_reporter" text,
+	"original_reporter_contact" text,
+	"quantity_affected" integer,
+	"lot_numbers" text DEFAULT '[]',
+	"serial_numbers" text DEFAULT '[]',
+	"date_code_range" text,
+	"shipment_info" text DEFAULT '{}',
+	"received_condition" text,
+	"initial_assessment" text,
+	"evidence_collected" text DEFAULT '[]',
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "capa_team_member" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"org_id" uuid NOT NULL,
+	"capa_id" integer NOT NULL,
+	"user_id" text NOT NULL,
+	"user_name" text NOT NULL,
+	"user_email" text,
+	"role" text NOT NULL,
+	"department" text,
+	"expertise" text,
+	"responsibilities" text,
+	"time_commitment" text,
+	"is_champion" integer DEFAULT 0,
+	"is_leader" integer DEFAULT 0,
+	"joined_at" timestamp DEFAULT now(),
+	"left_at" timestamp,
+	"left_reason" text,
+	"notifications_enabled" integer DEFAULT 1,
+	"last_activity_at" timestamp,
+	"created_by" text NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+
+CREATE INDEX "capa_org_idx" ON "capa" USING btree ("org_id");
+CREATE UNIQUE INDEX "capa_org_number_idx" ON "capa" USING btree ("org_id","capa_number");
+CREATE INDEX "capa_status_idx" ON "capa" USING btree ("status");
+CREATE INDEX "capa_priority_idx" ON "capa" USING btree ("priority");
+CREATE INDEX "capa_main_source_type_idx" ON "capa" USING btree ("source_type");
+CREATE INDEX "capa_created_at_idx" ON "capa" USING btree ("created_at");
+CREATE INDEX "capa_analysis_tool_capa_idx" ON "capa_analysis_tool" USING btree ("capa_id");
+CREATE INDEX "capa_analysis_tool_type_idx" ON "capa_analysis_tool" USING btree ("capa_id","tool_type");
+CREATE INDEX "capa_analysis_tool_org_idx" ON "capa_analysis_tool" USING btree ("org_id");
+CREATE INDEX "capa_attachment_capa_idx" ON "capa_attachment" USING btree ("capa_id");
+CREATE INDEX "capa_attachment_discipline_idx" ON "capa_attachment" USING btree ("discipline");
+CREATE INDEX "capa_attachment_type_idx" ON "capa_attachment" USING btree ("attachment_type");
+CREATE INDEX "capa_attachment_evidence_idx" ON "capa_attachment" USING btree ("is_evidence");
+CREATE INDEX "capa_audit_log_capa_idx" ON "capa_audit_log" USING btree ("capa_id");
+CREATE INDEX "capa_audit_log_action_idx" ON "capa_audit_log" USING btree ("action");
+CREATE INDEX "capa_audit_log_user_idx" ON "capa_audit_log" USING btree ("user_id");
+CREATE INDEX "capa_audit_log_timestamp_idx" ON "capa_audit_log" USING btree ("timestamp");
+CREATE INDEX "capa_audit_log_discipline_idx" ON "capa_audit_log" USING btree ("discipline");
+CREATE UNIQUE INDEX "capa_d0_emergency_capa_idx" ON "capa_d0_emergency" USING btree ("capa_id");
+CREATE INDEX "capa_d0_emergency_threat_idx" ON "capa_d0_emergency" USING btree ("threat_level");
+CREATE INDEX "capa_d0_emergency_safety_idx" ON "capa_d0_emergency" USING btree ("safety_impact");
+CREATE UNIQUE INDEX "capa_d1_team_detail_capa_idx" ON "capa_d1_team_detail" USING btree ("capa_id");
+CREATE UNIQUE INDEX "capa_d2_problem_capa_idx" ON "capa_d2_problem" USING btree ("capa_id");
+CREATE UNIQUE INDEX "capa_d3_containment_capa_idx" ON "capa_d3_containment" USING btree ("capa_id");
+CREATE INDEX "capa_d3_containment_effective_idx" ON "capa_d3_containment" USING btree ("containment_effective");
+CREATE UNIQUE INDEX "capa_d4_root_cause_capa_idx" ON "capa_d4_root_cause" USING btree ("capa_id");
+CREATE INDEX "capa_d4_root_cause_confidence_idx" ON "capa_d4_root_cause" USING btree ("confidence_level");
+CREATE INDEX "capa_d4_candidate_capa_idx" ON "capa_d4_root_cause_candidate" USING btree ("capa_id");
+CREATE INDEX "capa_d4_candidate_d4_idx" ON "capa_d4_root_cause_candidate" USING btree ("d4_id");
+CREATE INDEX "capa_d4_candidate_root_cause_idx" ON "capa_d4_root_cause_candidate" USING btree ("is_root_cause");
+CREATE INDEX "capa_d4_candidate_verification_idx" ON "capa_d4_root_cause_candidate" USING btree ("verification_result");
+CREATE UNIQUE INDEX "capa_d5_corrective_action_capa_idx" ON "capa_d5_corrective_action" USING btree ("capa_id");
+CREATE INDEX "capa_d5_corrective_action_approval_idx" ON "capa_d5_corrective_action" USING btree ("management_approval_status");
+CREATE UNIQUE INDEX "capa_d6_validation_capa_idx" ON "capa_d6_validation" USING btree ("capa_id");
+CREATE INDEX "capa_d6_validation_status_idx" ON "capa_d6_validation" USING btree ("implementation_status");
+CREATE INDEX "capa_d6_validation_effectiveness_idx" ON "capa_d6_validation" USING btree ("effectiveness_result");
+CREATE UNIQUE INDEX "capa_d7_preventive_capa_idx" ON "capa_d7_preventive" USING btree ("capa_id");
+CREATE UNIQUE INDEX "capa_d8_closure_capa_idx" ON "capa_d8_closure" USING btree ("capa_id");
+CREATE INDEX "capa_metric_snapshot_org_date_idx" ON "capa_metric_snapshot" USING btree ("org_id","snapshot_date");
+CREATE INDEX "capa_metric_snapshot_period_idx" ON "capa_metric_snapshot" USING btree ("snapshot_period");
+CREATE UNIQUE INDEX "capa_number_sequence_org_year_idx" ON "capa_number_sequence" USING btree ("org_id","year");
+CREATE INDEX "capa_related_record_capa_idx" ON "capa_related_record" USING btree ("capa_id");
+CREATE INDEX "capa_related_record_related_idx" ON "capa_related_record" USING btree ("related_type","related_id");
+CREATE UNIQUE INDEX "capa_related_record_unique_idx" ON "capa_related_record" USING btree ("capa_id","related_type","related_id","relationship_type");
+CREATE INDEX "capa_source_capa_idx" ON "capa_source" USING btree ("capa_id");
+CREATE INDEX "capa_source_type_idx" ON "capa_source" USING btree ("source_type");
+CREATE INDEX "capa_source_external_id_idx" ON "capa_source" USING btree ("external_id");
+CREATE INDEX "capa_team_member_capa_idx" ON "capa_team_member" USING btree ("capa_id");
+CREATE INDEX "capa_team_member_user_idx" ON "capa_team_member" USING btree ("user_id");
+CREATE INDEX "capa_team_member_role_idx" ON "capa_team_member" USING btree ("role");
+CREATE UNIQUE INDEX "capa_team_member_unique_idx" ON "capa_team_member" USING btree ("capa_id","user_id");
+
+ALTER TABLE "capa" ADD CONSTRAINT "capa_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_analysis_tool" ADD CONSTRAINT "capa_analysis_tool_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_analysis_tool" ADD CONSTRAINT "capa_analysis_tool_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_attachment" ADD CONSTRAINT "capa_attachment_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_attachment" ADD CONSTRAINT "capa_attachment_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_audit_log" ADD CONSTRAINT "capa_audit_log_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d0_emergency" ADD CONSTRAINT "capa_d0_emergency_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d0_emergency" ADD CONSTRAINT "capa_d0_emergency_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d1_team_detail" ADD CONSTRAINT "capa_d1_team_detail_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d1_team_detail" ADD CONSTRAINT "capa_d1_team_detail_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d2_problem" ADD CONSTRAINT "capa_d2_problem_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d2_problem" ADD CONSTRAINT "capa_d2_problem_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d3_containment" ADD CONSTRAINT "capa_d3_containment_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d3_containment" ADD CONSTRAINT "capa_d3_containment_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d4_root_cause" ADD CONSTRAINT "capa_d4_root_cause_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d4_root_cause" ADD CONSTRAINT "capa_d4_root_cause_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d4_root_cause_candidate" ADD CONSTRAINT "capa_d4_root_cause_candidate_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d4_root_cause_candidate" ADD CONSTRAINT "capa_d4_root_cause_candidate_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d4_root_cause_candidate" ADD CONSTRAINT "capa_d4_root_cause_candidate_d4_id_capa_d4_root_cause_id_fk" FOREIGN KEY ("d4_id") REFERENCES "public"."capa_d4_root_cause"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d5_corrective_action" ADD CONSTRAINT "capa_d5_corrective_action_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d5_corrective_action" ADD CONSTRAINT "capa_d5_corrective_action_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d6_validation" ADD CONSTRAINT "capa_d6_validation_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d6_validation" ADD CONSTRAINT "capa_d6_validation_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d7_preventive" ADD CONSTRAINT "capa_d7_preventive_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d7_preventive" ADD CONSTRAINT "capa_d7_preventive_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d8_closure" ADD CONSTRAINT "capa_d8_closure_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_d8_closure" ADD CONSTRAINT "capa_d8_closure_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_metric_snapshot" ADD CONSTRAINT "capa_metric_snapshot_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_number_sequence" ADD CONSTRAINT "capa_number_sequence_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_related_record" ADD CONSTRAINT "capa_related_record_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_related_record" ADD CONSTRAINT "capa_related_record_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_source" ADD CONSTRAINT "capa_source_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_source" ADD CONSTRAINT "capa_source_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_team_member" ADD CONSTRAINT "capa_team_member_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "capa_team_member" ADD CONSTRAINT "capa_team_member_capa_id_capa_id_fk" FOREIGN KEY ("capa_id") REFERENCES "public"."capa"("id") ON DELETE cascade ON UPDATE no action;
