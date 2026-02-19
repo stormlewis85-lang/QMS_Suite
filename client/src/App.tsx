@@ -45,6 +45,16 @@ import DistributionLists from "@/pages/DistributionLists";
 import DocumentTemplates from "@/pages/DocumentTemplates";
 import AuditLog from "@/pages/AuditLog";
 import ExternalDocuments from "@/pages/ExternalDocuments";
+import CapaDashboard from "@/pages/CapaDashboard";
+import CapaList from "@/pages/CapaList";
+import CapaCreate from "@/pages/CapaCreate";
+import CapaDetail from "@/pages/CapaDetail";
+import CapaAnalytics from "@/pages/CapaAnalytics";
+import CapaPareto from "@/pages/CapaPareto";
+import CapaTrends from "@/pages/CapaTrends";
+import CapaTeamPerformance from "@/pages/CapaTeamPerformance";
+import CapaReports from "@/pages/CapaReports";
+import CapaAnalysisTools from "@/pages/CapaAnalysisTools";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -197,6 +207,38 @@ function AppRoutes() {
       </Route>
       <Route path="/notifications">
         <ProtectedPage><Notifications /></ProtectedPage>
+      </Route>
+
+      {/* CAPA routes - specific before parameterized */}
+      <Route path="/capa/dashboard">
+        <ProtectedPage><CapaDashboard /></ProtectedPage>
+      </Route>
+      <Route path="/capa/new">
+        <ProtectedPage><CapaCreate /></ProtectedPage>
+      </Route>
+      <Route path="/capa/analytics/pareto">
+        <ProtectedPage><CapaPareto /></ProtectedPage>
+      </Route>
+      <Route path="/capa/analytics/trends">
+        <ProtectedPage><CapaTrends /></ProtectedPage>
+      </Route>
+      <Route path="/capa/analytics/team">
+        <ProtectedPage><CapaTeamPerformance /></ProtectedPage>
+      </Route>
+      <Route path="/capa/analytics">
+        <ProtectedPage><CapaAnalytics /></ProtectedPage>
+      </Route>
+      <Route path="/capa/reports">
+        <ProtectedPage><CapaReports /></ProtectedPage>
+      </Route>
+      <Route path="/capa/:id/tools">
+        <ProtectedPage><CapaAnalysisTools /></ProtectedPage>
+      </Route>
+      <Route path="/capa/:id">
+        <ProtectedPage><CapaDetail /></ProtectedPage>
+      </Route>
+      <Route path="/capa">
+        <ProtectedPage><CapaList /></ProtectedPage>
       </Route>
 
       {/* 404 */}

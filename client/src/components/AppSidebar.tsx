@@ -46,6 +46,7 @@ import {
   FileCog,
   Users,
   ScrollText,
+  ShieldAlert,
 } from "lucide-react";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
 import NotificationBell from "./NotificationBell";
@@ -86,6 +87,21 @@ const mainNavItems = [
     url: "/change-packages",
     icon: GitBranch,
     testId: "nav-change-packages",
+  },
+];
+
+const capaNavItems = [
+  {
+    title: "CAPA",
+    url: "/capa",
+    icon: ShieldAlert,
+    testId: "nav-capa",
+  },
+  {
+    title: "CAPA Dashboard",
+    url: "/capa/dashboard",
+    icon: ShieldAlert,
+    testId: "nav-capa-dashboard",
   },
 ];
 
@@ -237,6 +253,29 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={item.testId}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* CAPA */}
+        <SidebarGroup>
+          <SidebarGroupLabel>CAPA / 8D</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {capaNavItems.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     asChild
