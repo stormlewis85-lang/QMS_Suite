@@ -59,7 +59,7 @@
 - Update storage methods, routes, and client references
 - **Why:** Pattern inconsistency (34 serial vs 34 uuid). CAPA module is most isolated, safest to migrate first.
 
-[TASK-007] Split routes.ts into module routers | Scope: Standard | Assigned: Architect + Developer | Dependencies: none
+[TASK-007] Split routes.ts into module routers | Scope: Standard | Assigned: Architect + Developer | Dependencies: none | **DONE**
 - Current: 11,631 lines in single file
 - Target: Express Router per module (auth, import, dashboard, parts, processes, pfmea, control-plans, documents, capa, change-packages, auto-review)
 - Pure refactor — no functional changes
@@ -113,6 +113,8 @@
 [TASK-017] Add React error boundaries | Completed: 2026-03-02 | Summary: Created ErrorBoundary class component with fallback UI (error message, Try Again, Go to Dashboard). Wrapped AppRoutes in App.tsx. 250/250 unit tests pass.
 
 [TASK-018] Seed data for templates/workflows/distribution | Completed: 2026-03-02 | Summary: Already existed — 3 workflow definitions, 4 document templates, 3 distribution lists seeded in seedDocumentControlPhase2/Phase3. No changes needed.
+
+[TASK-007] Split routes.ts into module routers | Completed: 2026-03-02 | Summary: Extracted 11,700-line monolithic routes.ts into 21 module files under server/routes/ with 80-line orchestrator. 13 top-level routers + documents/ (3 sub-files) + capa/ (3 sub-files) + shared _helpers.ts and _config.ts. Pure refactor, no functional changes. 250/250 unit tests pass.
 
 [TASK-002] Fix dashboard queries to filter by orgId | Completed: 2026-03-01 | Summary: Rewrote /api/dashboard/summary and /api/dashboard/metrics to use SQL COUNT/GROUP BY with orgId WHERE clauses instead of loading full result sets. pfmeaRow scoped via INNER JOIN to org-scoped pfmea. auditLog scoped via INNER JOIN to user table. 147/147 unit tests pass.
 
