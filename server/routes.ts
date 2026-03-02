@@ -11696,6 +11696,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(404).json({ error: "Not found" });
   });
 
+  // Cleanup expired sessions every 15 minutes
+  const SESSION_CLEANUP_INTERVAL = 15 * 60 * 1000;
+  setInterval(async () => {
+    try {
+      const deleted = await storage.deleteExpiredSessions();
+      if (deleted > 0) {
+        console.log(`Session cleanup: removed ${deleted} expired sessions`);
+      }
+    } catch (error: unknown) {
+      console.error("Session cleanup error:", error);
+    }
+  }, SESSION_CLEANUP_INTERVAL);
+
   const httpServer = createServer(app);
   return httpServer;
 }
