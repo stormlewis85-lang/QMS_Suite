@@ -71,11 +71,12 @@
 - Keep test file console.log as-is
 - **Why:** IATF 16949 audit trail requirements. Console.log is not sufficient for regulatory evidence. Also: log injection risk, info disclosure.
 
-[TASK-009] Add orgId to remaining non-child tables | Scope: Standard | Assigned: Developer | Dependencies: TASK-001
+[TASK-009] Add orgId to remaining non-child tables | Scope: Standard | Assigned: Developer | Dependencies: TASK-001 | **DONE**
 - Tables: actionItem, notifications, auditLog, signature, ownership, calibrationLink
 - Change packages and auto-review tables can inherit scope through parent FK
 - Write migration SQL scripts
 - **Why:** Defense-in-depth for multi-tenancy. Lower urgency than TASK-001 since these tables have indirect org scoping through parent entities.
+- **Completed:** Added orgId + FK + index to all 6 tables in schema.ts. Migration SQL in migrations/0003_add_orgid_to_remaining_tables.sql. Updated notification-service.ts, export-service.ts, document-control.ts, and routes.ts to pass orgId in all insert/service calls. 250/250 unit tests pass.
 
 ### P3 — Low (Code Quality / Polish)
 

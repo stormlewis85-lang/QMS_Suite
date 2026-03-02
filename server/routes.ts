@@ -1385,10 +1385,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         format: format as 'pdf' | 'xlsx',
         documentType: 'pfmea',
         documentId: id,
+        orgId: req.orgId!,
         includeSignatures,
         orientation: 'landscape',
       });
-      
+
       res.setHeader('Content-Type', result.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.setHeader('Content-Length', result.buffer.length);
@@ -1475,6 +1476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const [newItem] = await db.insert(actionItem).values({
+        orgId: req.orgId!,
         pfmeaRowId: rowId,
         actionType: actionType || 'other',
         description,
@@ -2012,10 +2014,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         format: format as 'pdf' | 'xlsx',
         documentType: 'control_plan',
         documentId: id,
+        orgId: req.orgId!,
         includeSignatures,
         orientation: 'landscape',
       });
-      
+
       res.setHeader('Content-Type', result.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.setHeader('Content-Length', result.buffer.length);
@@ -2054,6 +2057,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           format: format as 'pdf' | 'xlsx',
           documentType: 'pfmea',
           documentId: latestPfmea.id,
+          orgId: req.orgId!,
         });
         exports.pfmea = {
           filename: pfmeaExport.filename,
@@ -2067,6 +2071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           format: format as 'pdf' | 'xlsx',
           documentType: 'control_plan',
           documentId: latestCP.id,
+          orgId: req.orgId!,
         });
         exports.controlPlan = {
           filename: cpExport.filename,
@@ -3674,6 +3679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await documentControlService.addSignature({
         documentType: type as 'pfmea' | 'control_plan',
         documentId: id,
+        orgId: req.orgId!,
         role,
         signerUserId,
         signerName: signerName || 'Unknown',
@@ -3758,7 +3764,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await documentControlService.setOwner(
         type as 'pfmea' | 'control_plan',
         id,
-        ownerUserId
+        ownerUserId,
+        req.orgId!
       );
       res.json({ success: true });
     } catch (error: any) {
@@ -3810,6 +3817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         format: format as 'pdf' | 'xlsx',
         documentType: type as 'pfmea' | 'control_plan',
         documentId: id,
+        orgId: req.orgId!,
         includeSignatures,
         paperSize: paperSize as 'letter' | 'legal' | 'a4',
         orientation: orientation as 'portrait' | 'landscape',
@@ -3887,6 +3895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log to audit
       await db.insert(auditLog).values({
+        orgId: req.orgId!,
         entityType: 'pfmea',
         entityId: id,
         action: 'status_changed',
@@ -3894,7 +3903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         actorName: 'system',
         payloadJson: { newStatus: status },
       });
-      
+
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -3953,6 +3962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const contentHash = createHash('sha256').update(`${id}-${role}-${signedBy || 'system'}-${Date.now()}`).digest('hex');
       
       const [sig] = await db.insert(signature).values({
+        orgId: req.orgId!,
         entityType: 'pfmea',
         entityId: id,
         role,
@@ -3960,9 +3970,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         signerName: signedBy || 'System',
         contentHash,
       }).returning();
-      
+
       // Log to audit
       await db.insert(auditLog).values({
+        orgId: req.orgId!,
         entityType: 'pfmea',
         entityId: id,
         action: 'signature_added',
@@ -3999,6 +4010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create new revision
       const [newPfmea] = await db.insert(pfmea).values({
+        orgId: req.orgId!,
         partId: current.partId,
         rev: newRev,
         status: 'draft',
@@ -4019,6 +4031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log to audit
       await db.insert(auditLog).values({
+        orgId: req.orgId!,
         entityType: 'pfmea',
         entityId: newPfmea.id,
         action: 'revision_created',
@@ -4111,13 +4124,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create PFMEA with unique revision
       const [newPfmea] = await db.insert(pfmea).values({
+        orgId: req.orgId!,
         partId: id,
         rev: nextRev,
         status: 'draft',
       }).returning();
-      
+
       // Create Control Plan with matching revision
       const [newCP] = await db.insert(controlPlan).values({
+        orgId: req.orgId!,
         partId: id,
         rev: nextRev,
         type: 'Production',

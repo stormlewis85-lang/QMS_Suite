@@ -13,6 +13,7 @@ export interface ExportOptions {
   format: ExportFormat;
   documentType: DocumentType;
   documentId: string;
+  orgId: string;
   includeHeader?: boolean;
   includeSignatures?: boolean;
   includeRevisionHistory?: boolean;
@@ -69,6 +70,7 @@ export class ExportService {
   private async logExport(
     entityType: 'pfmea' | 'control_plan',
     entityId: string,
+    orgId: string,
     format: ExportFormat,
     filename: string,
     rowCount: number
@@ -76,6 +78,7 @@ export class ExportService {
     try {
       await db.insert(auditLog).values({
         id: randomUUID(),
+        orgId,
         entityType,
         entityId,
         action: 'exported',
@@ -119,6 +122,7 @@ export class ExportService {
     await this.logExport(
       documentType as 'pfmea' | 'control_plan',
       documentId,
+      options.orgId,
       format,
       result.filename,
       data.rows.length

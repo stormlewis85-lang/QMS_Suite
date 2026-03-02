@@ -30,6 +30,7 @@ export interface DocumentInfo {
 export interface SignatureRequest {
   documentType: DocumentType;
   documentId: string;
+  orgId: string;
   role: string;
   signerUserId: string;
   signerName: string;
@@ -48,6 +49,7 @@ export interface SignatureRecord {
 
 export interface AuditLogEntry {
   id: string;
+  orgId: string;
   entityType: string;
   entityId: string;
   action: string;
@@ -138,6 +140,7 @@ export class DocumentControlService {
     }
     
     await this.logAuditEntry({
+      orgId: doc.orgId,
       entityType: type,
       entityId: documentId,
       action: 'doc_number_assigned',
@@ -193,12 +196,13 @@ export class DocumentControlService {
     }
     
     await this.logAuditEntry({
+      orgId: doc.orgId,
       entityType: documentType,
       entityId: documentId,
       action: 'status_changed',
       actor: userId,
-      payloadJson: { 
-        from: currentStatus, 
+      payloadJson: {
+        from: currentStatus,
         to: newStatus,
         comment,
       },
@@ -233,6 +237,7 @@ export class DocumentControlService {
       const newRev = calculateNextRev(currentDoc.rev);
       
       const [newPfmea] = await db.insert(pfmea).values({
+        orgId: currentDoc.orgId,
         partId: currentDoc.partId,
         rev: newRev,
         status: 'draft',
@@ -268,18 +273,19 @@ export class DocumentControlService {
       }
       
       await this.logAuditEntry({
+        orgId: currentDoc.orgId,
         entityType: documentType,
         entityId: newDocId,
         action: 'revision_created',
         actor: userId,
-        payloadJson: { 
+        payloadJson: {
           previousId: documentId,
           previousRev,
           newRev,
           reason,
         },
       });
-      
+
       const newDoc = await db.query.pfmea.findFirst({ where: eq(pfmea.id, newDocId) });
       return this.mapToDocumentInfo(documentType, newDoc);
     } else {
@@ -298,6 +304,7 @@ export class DocumentControlService {
       const newRev = calculateNextRev(currentDoc.rev);
       
       const [newCP] = await db.insert(controlPlan).values({
+        orgId: currentDoc.orgId,
         partId: currentDoc.partId,
         rev: newRev,
         type: currentDoc.type,
@@ -333,11 +340,12 @@ export class DocumentControlService {
       }
       
       await this.logAuditEntry({
+        orgId: currentDoc.orgId,
         entityType: documentType,
         entityId: newDocId,
         action: 'revision_created',
         actor: userId,
-        payloadJson: { 
+        payloadJson: {
           previousId: documentId,
           previousRev,
           newRev,
@@ -351,7 +359,7 @@ export class DocumentControlService {
   }
   
   async addSignature(request: SignatureRequest): Promise<SignatureRecord> {
-    const { documentType, documentId, role, signerUserId, signerName, signerEmail } = request;
+    const { documentType, documentId, orgId, role, signerUserId, signerName, signerEmail } = request;
     
     const doc = documentType === 'pfmea'
       ? await db.query.pfmea.findFirst({ where: eq(pfmea.id, documentId), with: { rows: true } })
@@ -382,6 +390,7 @@ export class DocumentControlService {
     });
     
     const [sig] = await db.insert(signature).values({
+      orgId,
       entityType: documentType,
       entityId: documentId,
       role,
@@ -389,13 +398,14 @@ export class DocumentControlService {
       signedAt: new Date(),
       contentHash,
     }).returning();
-    
+
     await this.logAuditEntry({
+      orgId,
       entityType: documentType,
       entityId: documentId,
       action: 'signature_added',
       actor: signerUserId,
-      payloadJson: { 
+      payloadJson: {
         role,
         signerName,
         signerEmail,
@@ -461,6 +471,7 @@ export class DocumentControlService {
   
   async logAuditEntry(entry: Omit<AuditLogEntry, 'id' | 'at'>): Promise<void> {
     await db.insert(auditLog).values({
+      orgId: entry.orgId,
       entityType: entry.entityType,
       entityId: entry.entityId,
       action: entry.action,
@@ -487,6 +498,7 @@ export class DocumentControlService {
     
     return entries.map(e => ({
       id: e.id,
+      orgId: e.orgId,
       entityType: e.entityType,
       entityId: e.entityId,
       action: e.action,
@@ -496,7 +508,7 @@ export class DocumentControlService {
     }));
   }
   
-  async setOwner(entityType: DocumentType, entityId: string, ownerUserId: string): Promise<void> {
+  async setOwner(entityType: DocumentType, entityId: string, ownerUserId: string, orgId: string): Promise<void> {
     const existing = await db.select()
       .from(ownership)
       .where(and(
@@ -510,14 +522,16 @@ export class DocumentControlService {
         .where(eq(ownership.id, existing[0].id));
     } else {
       await db.insert(ownership).values({
+        orgId,
         entityType,
         entityId,
         ownerUserId,
         watchers: [],
       });
     }
-    
+
     await this.logAuditEntry({
+      orgId,
       entityType,
       entityId,
       action: 'owner_changed',

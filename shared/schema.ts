@@ -640,11 +640,13 @@ export const controlPlanRow = pgTable('control_plan_row', {
 
 export const calibrationLink = pgTable('calibration_link', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   gageId: uuid('gage_id').notNull().references(() => gageLibrary.id),
   calibDue: timestamp('calib_due').notNull(),
   status: text('status').notNull(),
 }, (table) => ({
   gageIdx: index('calibration_link_gage_idx').on(table.gageId),
+  orgIdx: index('calibration_link_org_idx').on(table.orgId),
 }));
 
 // ==========================================
@@ -789,6 +791,7 @@ export const changePackagePropagation = pgTable('change_package_propagation', {
 
 export const signature = pgTable('signature', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   entityType: text('entity_type').notNull(),
   entityId: uuid('entity_id').notNull(),
   role: text('role').notNull(),
@@ -804,10 +807,12 @@ export const signature = pgTable('signature', {
 }, (table) => ({
   entityIdx: index('signature_entity_idx').on(table.entityType, table.entityId),
   roleIdx: index('signature_role_idx').on(table.role),
+  orgIdx: index('signature_org_idx').on(table.orgId),
 }));
 
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   entityType: text('entity_type').notNull(),
   entityId: uuid('entity_id').notNull(),
   action: text('action').notNull(),
@@ -823,16 +828,19 @@ export const auditLog = pgTable('audit_log', {
 }, (table) => ({
   entityIdx: index('audit_log_entity_idx').on(table.entityType, table.entityId),
   atIdx: index('audit_log_at_idx').on(table.at),
+  orgIdx: index('audit_log_org_idx').on(table.orgId),
 }));
 
 export const ownership = pgTable('ownership', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   entityType: text('entity_type').notNull(),
   entityId: uuid('entity_id').notNull(),
   ownerUserId: text('owner_user_id').notNull(),
   watchers: jsonb('watchers').$type<string[]>().default([]),
 }, (table) => ({
   entityIdx: uniqueIndex('ownership_entity_idx').on(table.entityType, table.entityId),
+  orgIdx: index('ownership_org_idx').on(table.orgId),
 }));
 
 // ==========================================
@@ -946,6 +954,7 @@ export const pfmeaRelations = relations(pfmea, ({ one, many }) => ({
 // Action Items for PFMEA Rows (AIAG-VDA Recommended Actions)
 export const actionItem = pgTable('action_item', {
   id: serial('id').primaryKey(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   pfmeaRowId: uuid('pfmea_row_id').notNull().references(() => pfmeaRow.id, { onDelete: 'cascade' }),
   actionType: text('action_type').notNull(), // 'prevention' | 'detection' | 'design' | 'process' | 'other'
   description: text('description').notNull(),
@@ -972,6 +981,7 @@ export const actionItem = pgTable('action_item', {
   pfmeaRowIdx: index('action_item_pfmea_row_idx').on(table.pfmeaRowId),
   statusIdx: index('action_item_status_idx').on(table.status),
   targetDateIdx: index('action_item_target_date_idx').on(table.targetDate),
+  orgIdx: index('action_item_org_idx').on(table.orgId),
 }));
 
 export const actionItemRelations = relations(actionItem, ({ one }) => ({
@@ -984,7 +994,8 @@ export const actionItemRelations = relations(actionItem, ({ one }) => ({
 // Notifications
 export const notifications = pgTable('notifications', {
   id: serial('id').primaryKey(),
-  
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+
   // Recipient
   userId: text('user_id').notNull(), // Would link to users table in production
   
@@ -1007,7 +1018,9 @@ export const notifications = pgTable('notifications', {
   // Timestamps
   createdAt: timestamp('created_at').notNull().defaultNow(),
   expiresAt: timestamp('expires_at'), // Optional expiration
-});
+}, (table) => ({
+  orgIdx: index('notifications_org_idx').on(table.orgId),
+}));
 
 export const pfmeaRowRelations = relations(pfmeaRow, ({ one, many }) => ({
   pfmea: one(pfmea, {

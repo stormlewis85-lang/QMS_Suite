@@ -13,6 +13,7 @@ export type NotificationType =
   | 'high_ap_added';
 
 interface CreateNotificationInput {
+  orgId: string;
   userId: string;
   type: NotificationType;
   title: string;
@@ -29,6 +30,7 @@ export class NotificationService {
   
   async create(input: CreateNotificationInput) {
     const [notification] = await db.insert(notifications).values({
+      orgId: input.orgId,
       userId: input.userId,
       type: input.type,
       title: input.title,
@@ -47,6 +49,7 @@ export class NotificationService {
     
     const created = await db.insert(notifications).values(
       inputs.map(input => ({
+        orgId: input.orgId,
         userId: input.userId,
         type: input.type,
         title: input.title,
@@ -198,6 +201,7 @@ export class NotificationService {
       
       if (existingToday.length === 0) {
         notificationsToCreate.push({
+          orgId: item.pfmeaData.orgId,
           userId: item.action.responsiblePerson,
           type: 'action_overdue',
           title: 'Action Item Overdue',
@@ -260,6 +264,7 @@ export class NotificationService {
       
       if (existingNotif.length === 0) {
         notificationsToCreate.push({
+          orgId: item.pfmeaData.orgId,
           userId: item.action.responsiblePerson,
           type: 'action_due_soon',
           title: 'Action Item Due Soon',
@@ -279,11 +284,13 @@ export class NotificationService {
   }
   
   async notifySignatureRequired(
+    orgId: string,
     documentType: 'pfmea' | 'control_plan',
     documentId: number,
     requiredRoles: string[]
   ) {
     const notificationsToCreate: CreateNotificationInput[] = requiredRoles.map(role => ({
+      orgId,
       userId: role,
       type: 'signature_required' as NotificationType,
       title: 'Signature Required',
@@ -297,11 +304,13 @@ export class NotificationService {
   }
   
   async notifyDocumentApproved(
+    orgId: string,
     documentType: 'pfmea' | 'control_plan',
     documentId: number,
     ownerId: string
   ) {
     await this.create({
+      orgId,
       userId: ownerId,
       type: 'document_approved',
       title: 'Document Approved',
@@ -313,11 +322,13 @@ export class NotificationService {
   }
   
   async notifyHighAPAdded(
+    orgId: string,
     pfmeaId: number,
     failureMode: string,
     ownerId: string
   ) {
     await this.create({
+      orgId,
       userId: ownerId,
       type: 'high_ap_added',
       title: 'High AP Failure Mode Added',
@@ -329,6 +340,7 @@ export class NotificationService {
   }
   
   async notifyReviewFindings(
+    orgId: string,
     documentType: 'pfmea' | 'control_plan',
     documentId: number,
     ownerId: string,
@@ -336,8 +348,9 @@ export class NotificationService {
     warningCount: number
   ) {
     if (errorCount === 0 && warningCount === 0) return;
-    
+
     await this.create({
+      orgId,
       userId: ownerId,
       type: 'review_findings',
       title: 'Auto-Review Findings',
