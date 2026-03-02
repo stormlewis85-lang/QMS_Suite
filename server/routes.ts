@@ -36,6 +36,7 @@ import { db } from "./db";
 import { eq, desc, and, lt, asc, inArray, count, sql } from "drizzle-orm";
 import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced, capa, capaTeamMember, capaSource, capaAttachment, capaRelatedRecord, capaD0Emergency, capaD1TeamDetail, capaD2Problem, capaD3Containment, capaD4RootCause, capaD4RootCauseCandidate, capaD5CorrectiveAction, capaD6Validation, capaD7Preventive, capaD8Closure, capaAuditLog, capaMetricSnapshot, capaAnalysisTool, user as userTable } from "@shared/schema";
 import { notificationService } from "./services/notification-service";
+import { rateLimit } from "./middleware/rate-limit";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -175,6 +176,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AUTH ROUTES (public)
   // ============================================
 
+  // Rate limiting for auth endpoints
+  const authRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, maxRequests: 10, message: 'Too many authentication attempts, please try again later' });
+  const registerRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, maxRequests: 5, message: 'Too many registration attempts, please try again later' });
+
   // Register new organization + admin user
   const registerSchema = z.object({
     organizationName: z.string().min(2).max(100),
@@ -184,7 +189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     lastName: z.string().min(1).max(50),
   });
 
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', registerRateLimit, async (req, res) => {
     try {
       const data = registerSchema.parse(req.body);
 
@@ -262,7 +267,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     orgSlug: z.string().optional(),
   });
 
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authRateLimit, async (req, res) => {
     try {
       const data = loginSchema.parse(req.body);
 
