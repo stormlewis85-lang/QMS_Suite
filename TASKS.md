@@ -31,14 +31,14 @@
 
 ### P1 — High (Data Integrity / Test Coverage)
 
-[TASK-003] Fix CAPA-to-Core FK type mismatches | Scope: Standard | Assigned: Developer | Dependencies: none
+[TASK-003] Fix CAPA-to-Core FK type mismatches | Scope: Standard | Assigned: Developer | Dependencies: none | **DONE**
 - capaSource.pfmeaId (integer) references pfmea.id (uuid) — type mismatch
 - Audit all cross-module FK references in CAPA tables
 - Fix column types to match referenced table PK types
 - Write migration SQL script
 - **Why:** Runtime errors when CAPA-to-PFMEA linking feature is used. Latent data integrity bug.
 
-[TASK-004] Unit tests for ap-calculator service | Scope: Standard | Assigned: Test | Dependencies: none
+[TASK-004] Unit tests for ap-calculator service | Scope: Standard | Assigned: Test | Dependencies: none | **DONE**
 - server/services/ap-calculator.ts — AIAG-VDA 2019 AP logic, ZERO tests
 - Boundary value tests for all S/O/D rating combinations at AP level transitions
 - Test determineAPLevel() function thoroughly
@@ -100,5 +100,9 @@
 [TASK-002] Fix dashboard queries to filter by orgId | Completed: 2026-03-01 | Summary: Rewrote /api/dashboard/summary and /api/dashboard/metrics to use SQL COUNT/GROUP BY with orgId WHERE clauses instead of loading full result sets. pfmeaRow scoped via INNER JOIN to org-scoped pfmea. auditLog scoped via INNER JOIN to user table. 147/147 unit tests pass.
 
 [TASK-001] Add orgId to Phase-1 document tables | Completed: 2026-03-01 | Summary: Added orgId (uuid FK to organization, NOT NULL, cascade delete) + index to 5 tables (document, documentRevision, documentDistribution, documentReview, documentLink). Updated 16 storage methods with orgId filtering. Updated all document routes (Phase 1-3, ~40 handlers) to pass req.orgId. Updated seed.ts. Migration SQL: 0001_add_orgid_to_document_tables.sql. 147/147 unit tests pass.
+
+[TASK-004] Unit tests for ap-calculator service | Completed: 2026-03-01 | Summary: 54 test cases covering input validation, all HIGH/MEDIUM/LOW priority conditions, boundary transitions, result metadata, batch calculation, statistics, and suggestion helpers. 201/201 unit tests pass.
+
+[TASK-003] Fix CAPA-to-Core FK type mismatches | Completed: 2026-03-01 | Summary: Fixed 5 integer→uuid type mismatches in CAPA tables (capaSource.pfmeaId, pfmeaRowId, controlPlanId; capaAttachment.linkedDocumentId; capaD8Closure.finalReportDocumentId). Migration SQL: 0002_fix_capa_fk_type_mismatches.sql. 201/201 unit tests pass.
 
 [TASK-000] Full codebase assessment | Completed: 2026-03-01 | Summary: Deep audit by Research + Architect agents. 68 tables, 441 endpoints, 48 pages audited. Critical findings: multi-tenancy gaps, FK type mismatches, zero tests on core services. See RESEARCH.md [R-001].
