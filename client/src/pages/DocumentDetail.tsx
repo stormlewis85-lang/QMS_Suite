@@ -1146,6 +1146,7 @@ export default function DocumentDetail() {
     mutationFn: async () => {
       const res = await fetch(`/api/documents/${id}/submit-review`, {
         method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "include",
       });
       if (!res.ok) {
@@ -1218,6 +1219,7 @@ export default function DocumentDetail() {
     mutationFn: async () => {
       const res = await fetch(`/api/documents/${id}/obsolete`, {
         method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "include",
       });
       if (!res.ok) {
@@ -1297,7 +1299,7 @@ export default function DocumentDetail() {
     mutationFn: async (distId: string) => {
       const res = await fetch(
         `/api/document-distributions/${distId}/acknowledge`,
-        { method: "POST", credentials: "include" }
+        { method: "POST", headers: { "X-Requested-With": "XMLHttpRequest" }, credentials: "include" }
       );
       if (!res.ok) {
         const error = await res.json();
@@ -1343,6 +1345,7 @@ export default function DocumentDetail() {
     mutationFn: async (linkId: string) => {
       const res = await fetch(`/api/document-links/${linkId}`, {
         method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to delete link");
@@ -1385,6 +1388,7 @@ export default function DocumentDetail() {
     mutationFn: async () => {
       const res = await fetch(`/api/documents/${id}/checkout`, {
         method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "include",
       });
       if (!res.ok) {
@@ -1406,6 +1410,7 @@ export default function DocumentDetail() {
     mutationFn: async () => {
       const res = await fetch(`/api/documents/${id}/checkin`, {
         method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "include",
       });
       if (!res.ok) {

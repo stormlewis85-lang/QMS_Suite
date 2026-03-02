@@ -215,6 +215,7 @@ export default function PFMEAPage() {
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/pfmeas/${id}`, {
         method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to delete PFMEA");
     },
@@ -276,6 +277,7 @@ export default function PFMEAPage() {
     mutationFn: async (pfmeaId: string) => {
       const response = await fetch(`/api/pfmeas/${pfmeaId}/recalculate-ap`, {
         method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to recalculate AP");
       return response.json();

@@ -535,6 +535,7 @@ export default function ControlPlanDetail() {
     mutationFn: async (rowId: string) => {
       const response = await fetch(`/api/control-plan-rows/${rowId}`, {
         method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to delete row");
     },
@@ -560,6 +561,7 @@ export default function ControlPlanDetail() {
     mutationFn: async (rowId: string) => {
       const response = await fetch(`/api/control-plan-rows/${rowId}/copy`, {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (!response.ok) throw new Error('Failed to copy row');
       return response.json();

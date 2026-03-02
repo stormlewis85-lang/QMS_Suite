@@ -37,6 +37,7 @@ import { eq, desc, and, lt, asc, inArray, count, sql } from "drizzle-orm";
 import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced, capa, capaTeamMember, capaSource, capaAttachment, capaRelatedRecord, capaD0Emergency, capaD1TeamDetail, capaD2Problem, capaD3Containment, capaD4RootCause, capaD4RootCauseCandidate, capaD5CorrectiveAction, capaD6Validation, capaD7Preventive, capaD8Closure, capaAuditLog, capaMetricSnapshot, capaAnalysisTool, user as userTable } from "@shared/schema";
 import { notificationService } from "./services/notification-service";
 import { rateLimit } from "./middleware/rate-limit";
+import { csrfProtection } from "./middleware/csrf";
 import {
   insertPartSchema,
   insertProcessDefSchema,
@@ -171,6 +172,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add cookie parser middleware
   app.use(cookieParser());
+
+  // CSRF protection on all API state-changing requests
+  app.use('/api', csrfProtection);
 
   // ============================================
   // AUTH ROUTES (public)

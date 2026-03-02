@@ -220,6 +220,7 @@ export default function PartsPage() {
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/parts/${id}`, {
         method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to delete part");
     },

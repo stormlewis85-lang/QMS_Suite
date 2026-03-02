@@ -239,6 +239,7 @@ export default function ControlPlansPage() {
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/control-plans/${id}`, {
         method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to delete Control Plan");
     },

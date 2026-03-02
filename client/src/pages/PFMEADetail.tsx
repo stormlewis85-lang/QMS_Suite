@@ -591,6 +591,7 @@ export default function PFMEADetail() {
     mutationFn: async (rowId: string) => {
       const response = await fetch(`/api/pfmea-rows/${rowId}`, {
         method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to delete row");
     },
@@ -616,6 +617,7 @@ export default function PFMEADetail() {
     mutationFn: async (rowId: string) => {
       const response = await fetch(`/api/pfmea-rows/${rowId}/copy`, {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (!response.ok) throw new Error('Failed to copy row');
       return response.json();
@@ -634,6 +636,7 @@ export default function PFMEADetail() {
     mutationFn: async () => {
       const response = await fetch(`/api/pfmeas/${id}/recalculate-ap`, {
         method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (!response.ok) throw new Error("Failed to recalculate");
       return response.json();

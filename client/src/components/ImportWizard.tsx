@@ -93,6 +93,7 @@ export function ImportWizard({
     try {
       const response = await fetch('/api/import/analyze', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData,
       });
       
@@ -123,6 +124,7 @@ export function ImportWizard({
     try {
       const response = await fetch('/api/import/detect-columns', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData,
       });
       
@@ -148,6 +150,7 @@ export function ImportWizard({
     try {
       const response = await fetch('/api/import/preview', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData,
       });
       
@@ -187,6 +190,7 @@ export function ImportWizard({
     try {
       const response = await fetch('/api/import/execute', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData,
       });
       

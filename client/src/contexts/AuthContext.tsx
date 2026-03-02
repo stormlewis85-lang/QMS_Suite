@@ -97,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         credentials: 'include',
       });
     } catch (error) {

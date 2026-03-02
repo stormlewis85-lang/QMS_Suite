@@ -154,6 +154,7 @@ export default function ChangePackageDetail() {
     mutationFn: async () => {
       const res = await fetch(`/api/change-packages/${id}/impact-analysis`, {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (!res.ok) throw new Error('Failed to run impact analysis');
       return res.json();
@@ -175,6 +176,7 @@ export default function ChangePackageDetail() {
     mutationFn: async () => {
       const res = await fetch(`/api/change-packages/${id}/workflow/auto-review`, {
         method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (!res.ok) throw new Error('Failed to run auto-review');
       return res.json();
