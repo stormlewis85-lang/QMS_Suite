@@ -88,8 +88,8 @@ async function seedDocumentControl() {
   const orgId = demoOrg.id;
 
   // Check if documents already exist
-  const existing = await storage.getDocuments(orgId);
-  if (existing.length > 0) {
+  const existingResult = await storage.getDocuments(orgId);
+  if (existingResult.data.length > 0) {
     console.log("  Document Control seed data already exists, skipping.");
     return;
   }
@@ -534,8 +534,8 @@ async function seedDocumentControlPhase2() {
   // Sample Document File (attached to first document)
   // =============================================
 
-  const docs = await storage.getDocuments(orgId);
-  const firstDoc = docs.find(d => d.docNumber === 'WI-MOL-001');
+  const docsResult = await storage.getDocuments(orgId);
+  const firstDoc = docsResult.data.find(d => d.docNumber === 'WI-MOL-001');
   if (firstDoc) {
     const revisions = await storage.getDocumentRevisions(firstDoc.id, orgId);
     const effectiveRev = revisions.find(r => r.status === 'effective');
@@ -800,8 +800,8 @@ async function seedDocumentControlPhase3() {
   console.log(`  ✓ Created 4 external documents`);
 
   // 3. Create Sample Access Logs for existing document (WI-MOL-001)
-  const docs = await storage.getDocuments(demoOrg.id);
-  const targetDoc = docs.find(d => d.docNumber === 'WI-MOL-001');
+  const docsResult2 = await storage.getDocuments(demoOrg.id);
+  const targetDoc = docsResult2.data.find(d => d.docNumber === 'WI-MOL-001');
   if (targetDoc) {
     // Get a revision for the document
     const revisions = await storage.getDocumentRevisions(targetDoc.id, demoOrg.id);

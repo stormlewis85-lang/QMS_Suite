@@ -201,6 +201,18 @@ import { db } from "./db";
 import { eq, desc, ilike, and, or, sql, inArray, lt, gte, lte, isNull, isNotNull, count } from "drizzle-orm";
 import crypto from "crypto";
 
+export interface PaginationOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface IStorage {
   // Organization
   getOrganizationById(id: string): Promise<Organization | undefined>;
@@ -225,14 +237,14 @@ export interface IStorage {
   deleteUserSessions(userId: string): Promise<void>;
 
   // Parts
-  getAllParts(orgId?: string): Promise<Part[]>;
+  getAllParts(orgId?: string, pagination?: PaginationOptions): Promise<PaginatedResult<Part>>;
   getPartById(id: string): Promise<Part | undefined>;
   createPart(insertPart: InsertPart): Promise<Part>;
   updatePart(id: string, updates: Partial<InsertPart>): Promise<Part | undefined>;
   deletePart(id: string): Promise<boolean>;
   
   // Processes
-  getAllProcesses(orgId?: string): Promise<ProcessDef[]>;
+  getAllProcesses(orgId?: string, pagination?: PaginationOptions): Promise<PaginatedResult<ProcessDef>>;
   getProcessById(id: string): Promise<ProcessDef | undefined>;
   getProcessWithSteps(id: string): Promise<(ProcessDef & { steps: ProcessStep[] }) | undefined>;
   createProcess(insertProcess: InsertProcessDef): Promise<ProcessDef>;
@@ -274,7 +286,7 @@ export interface IStorage {
   // PFMEA
   getPFMEAsByPartId(partId: string): Promise<PFMEA[]>;
   getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined>;
-  getAllPFMEAs(): Promise<PFMEA[]>;
+  getAllPFMEAs(orgId?: string, pagination?: PaginationOptions): Promise<PaginatedResult<PFMEA>>;
   getPFMEARows(pfmeaId: string): Promise<PFMEARow[]>;
   createPFMEA(insertPFMEA: InsertPFMEA): Promise<PFMEA>;
   updatePFMEA(id: string, updates: Partial<InsertPFMEA>): Promise<PFMEA | undefined>;
@@ -379,7 +391,7 @@ export interface IStorage {
   // ============================================
 
   // Documents
-  getDocuments(orgId: string, filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]>;
+  getDocuments(orgId: string, filters?: { type?: string; status?: string; category?: string; search?: string }, pagination?: PaginationOptions): Promise<PaginatedResult<Document>>;
   getDocumentById(id: string, orgId: string): Promise<Document | undefined>;
   createDocument(data: InsertDocument): Promise<Document>;
   updateDocument(id: string, orgId: string, data: Partial<InsertDocument>): Promise<Document | undefined>;
@@ -818,11 +830,18 @@ class DatabaseStorage implements IStorage {
   // ============================================
 
   // Parts
-  async getAllParts(orgId?: string): Promise<Part[]> {
-    if (orgId) {
-      return await db.select().from(part).where(eq(part.orgId, orgId)).orderBy(desc(part.partNumber));
-    }
-    return await db.select().from(part).orderBy(desc(part.partNumber));
+  async getAllParts(orgId?: string, pagination?: PaginationOptions): Promise<PaginatedResult<Part>> {
+    const lim = pagination?.limit ?? 100;
+    const off = pagination?.offset ?? 0;
+    const conditions = orgId ? [eq(part.orgId, orgId)] : [];
+    const [{ value: total }] = await db.select({ value: count() }).from(part)
+      .where(conditions.length ? and(...conditions) : undefined);
+    const data = await db.select().from(part)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(part.partNumber))
+      .limit(lim)
+      .offset(off);
+    return { data, total: Number(total), limit: lim, offset: off };
   }
 
   async getPartById(id: string): Promise<Part | undefined> {
@@ -846,11 +865,18 @@ class DatabaseStorage implements IStorage {
   }
 
   // Processes
-  async getAllProcesses(orgId?: string): Promise<ProcessDef[]> {
-    if (orgId) {
-      return await db.select().from(processDef).where(eq(processDef.orgId, orgId)).orderBy(desc(processDef.createdAt));
-    }
-    return await db.select().from(processDef).orderBy(desc(processDef.createdAt));
+  async getAllProcesses(orgId?: string, pagination?: PaginationOptions): Promise<PaginatedResult<ProcessDef>> {
+    const lim = pagination?.limit ?? 100;
+    const off = pagination?.offset ?? 0;
+    const conditions = orgId ? [eq(processDef.orgId, orgId)] : [];
+    const [{ value: total }] = await db.select({ value: count() }).from(processDef)
+      .where(conditions.length ? and(...conditions) : undefined);
+    const data = await db.select().from(processDef)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(processDef.createdAt))
+      .limit(lim)
+      .offset(off);
+    return { data, total: Number(total), limit: lim, offset: off };
   }
 
   async getProcessById(id: string): Promise<ProcessDef | undefined> {
@@ -1062,8 +1088,18 @@ class DatabaseStorage implements IStorage {
       .orderBy(desc(pfmea.rev));
   }
 
-  async getAllPFMEAs(): Promise<PFMEA[]> {
-    return await db.select().from(pfmea).orderBy(desc(pfmea.rev));
+  async getAllPFMEAs(orgId?: string, pagination?: PaginationOptions): Promise<PaginatedResult<PFMEA>> {
+    const lim = pagination?.limit ?? 100;
+    const off = pagination?.offset ?? 0;
+    const conditions = orgId ? [eq(pfmea.orgId, orgId)] : [];
+    const [{ value: total }] = await db.select({ value: count() }).from(pfmea)
+      .where(conditions.length ? and(...conditions) : undefined);
+    const data = await db.select().from(pfmea)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(pfmea.rev))
+      .limit(lim)
+      .offset(off);
+    return { data, total: Number(total), limit: lim, offset: off };
   }
 
   async getPFMEAById(id: string): Promise<(PFMEA & { rows: PFMEARow[] }) | undefined> {
@@ -1712,7 +1748,9 @@ class DatabaseStorage implements IStorage {
   // DOCUMENT CONTROL
   // ============================================
 
-  async getDocuments(orgId: string, filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]> {
+  async getDocuments(orgId: string, filters?: { type?: string; status?: string; category?: string; search?: string }, pagination?: PaginationOptions): Promise<PaginatedResult<Document>> {
+    const lim = pagination?.limit ?? 100;
+    const off = pagination?.offset ?? 0;
     const conditions = [eq(document.orgId, orgId)];
 
     if (filters?.type) {
@@ -1734,9 +1772,14 @@ class DatabaseStorage implements IStorage {
       );
     }
 
-    return await db.select().from(document)
-      .where(and(...conditions))
-      .orderBy(desc(document.updatedAt));
+    const whereClause = and(...conditions);
+    const [{ value: total }] = await db.select({ value: count() }).from(document).where(whereClause);
+    const data = await db.select().from(document)
+      .where(whereClause)
+      .orderBy(desc(document.updatedAt))
+      .limit(lim)
+      .offset(off);
+    return { data, total: Number(total), limit: lim, offset: off };
   }
 
   async getDocumentById(id: string, orgId: string): Promise<Document | undefined> {

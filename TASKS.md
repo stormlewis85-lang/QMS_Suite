@@ -88,10 +88,11 @@
 - **Why:** Type safety erosion. Low runtime risk but high maintainability impact.
 - **Completed:** Replaced all 59 `catch (error: any)` with `catch (error: unknown)` in routes.ts. Added `getErrorMessage()` utility for type-safe error message extraction. Replaced 4 `$type<any>()` with `$type<Record<string, unknown>>()` in schema.ts JSONB columns. Client-side CAPA components deferred (outside autopilot scope). 250/250 unit tests pass.
 
-[TASK-011] Add pagination to list endpoints | Scope: Standard | Assigned: Developer | Dependencies: none
+[TASK-011] Add pagination to list endpoints | Scope: Standard | Assigned: Developer | Dependencies: none | **DONE**
 - getDocuments(), getAllParts(), getAllProcesses(), getAllPFMEAs() return unbounded result sets
 - Add limit/offset params to storage methods and API endpoints
 - **Why:** Performance at scale. 10,000+ records will cause latency and memory pressure.
+- **Completed:** Added PaginatedResult<T> type and PaginationOptions to storage interface. Updated 4 methods (getAllParts, getAllProcesses, getAllPFMEAs, getDocuments) with limit/offset and total count. Routes return paginated envelope when ?limit or ?offset params present; flat array otherwise (backward-compatible). Default limit: 100. 250/250 unit tests pass.
 
 ## In Progress
 

@@ -756,8 +756,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Parts API
   app.get("/api/parts", async (req, res) => {
     try {
-      const parts = await storage.getAllParts(req.orgId!);
-      res.json(parts);
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const result = await storage.getAllParts(req.orgId!, { limit, offset });
+      res.json(req.query.limit || req.query.offset ? result : result.data);
     } catch (error) {
       console.error("Error fetching parts:", error);
       res.status(500).json({ error: "Failed to fetch parts" });
@@ -850,8 +852,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Processes API
   app.get("/api/processes", async (req, res) => {
     try {
-      const processes = await storage.getAllProcesses(req.orgId!);
-      res.json(processes);
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const result = await storage.getAllProcesses(req.orgId!, { limit, offset });
+      res.json(req.query.limit || req.query.offset ? result : result.data);
     } catch (error) {
       console.error("Error fetching processes:", error);
       res.status(500).json({ error: "Failed to fetch processes" });
@@ -1161,8 +1165,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PFMEA endpoints with plural naming (for PFMEADetail page)
   app.get("/api/pfmeas", async (req, res) => {
     try {
-      const pfmeas = await storage.getAllPFMEAs();
-      res.json(pfmeas);
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const result = await storage.getAllPFMEAs(req.orgId!, { limit, offset });
+      res.json(req.query.limit || req.query.offset ? result : result.data);
     } catch (error) {
       console.error("Error fetching PFMEAs:", error);
       res.status(500).json({ error: "Failed to fetch PFMEAs" });
@@ -3250,11 +3256,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.get('/api/auto-review/summary', async (req, res) => {
     try {
-      const parts = await storage.getAllParts();
-      
+      const { data: parts } = await storage.getAllParts();
+
       let partsWithPfmea = 0;
       let partsWithCP = 0;
-      
+
       for (const part of parts) {
         const pfmeas = await storage.getPFMEAsByPartId(part.id);
         const controlPlans = await storage.getControlPlansByPartId(part.id);
@@ -4212,14 +4218,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents", async (req, res) => {
     try {
-      const { type, status, category, search } = req.query;
-      const documents = await storage.getDocuments(req.orgId!, {
+      const { type, status, category, search, limit: lim, offset: off } = req.query;
+      const limit = parseInt(lim as string) || 100;
+      const offset = parseInt(off as string) || 0;
+      const result = await storage.getDocuments(req.orgId!, {
         type: type as string | undefined,
         status: status as string | undefined,
         category: category as string | undefined,
         search: search as string | undefined,
-      });
-      res.json(documents);
+      }, { limit, offset });
+      res.json(lim || off ? result : result.data);
     } catch (error) {
       console.error("Error fetching documents:", error);
       res.status(500).json({ error: "Failed to fetch documents" });
@@ -4234,7 +4242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Search query must be at least 2 characters" });
       }
 
-      const docs = await storage.getDocuments(req.orgId!);
+      const { data: docs } = await storage.getDocuments(req.orgId!);
       const results: { documentId: string; docNumber: string; title: string; matchingFiles: { fileId: number; snippet: string }[] }[] = [];
 
       for (const doc of docs) {
@@ -5224,8 +5232,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appliedFieldValues: Record<string, string> = {};
 
       // Generate doc number
-      const existingDocs = await storage.getDocuments(req.orgId!);
-      const seq = existingDocs.length + 1;
+      const existingDocsResult = await storage.getDocuments(req.orgId!);
+      const seq = existingDocsResult.total + 1;
       const docNumber = generateDocNumber(
         `${template.docType === 'work_instruction' ? 'WI' : template.docType === 'procedure' ? 'SOP' : 'DOC'}-{department}-{seq:4}`,
         { department: template.department || 'GEN', seq, year: now.getFullYear() }
