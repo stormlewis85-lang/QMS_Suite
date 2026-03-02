@@ -1,0 +1,332 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - generic [ref=e9]:
+        - link "QMS Suite CAPA E2E Org 1771506551643" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e11]:
+            - img [ref=e12]
+            - generic [ref=e16]:
+              - generic [ref=e17]: QMS Suite
+              - generic [ref=e18]: CAPA E2E Org 1771506551643
+        - button [ref=e19] [cursor=pointer]:
+          - img
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: Main
+          - list [ref=e24]:
+            - listitem [ref=e25]:
+              - link "Dashboard" [ref=e26] [cursor=pointer]:
+                - /url: /
+                - img [ref=e27]
+                - generic [ref=e32]: Dashboard
+            - listitem [ref=e33]:
+              - link "Parts" [ref=e34] [cursor=pointer]:
+                - /url: /parts
+                - img [ref=e35]
+                - generic [ref=e39]: Parts
+            - listitem [ref=e40]:
+              - link "Processes" [ref=e41] [cursor=pointer]:
+                - /url: /processes
+                - img [ref=e42]
+                - generic [ref=e46]: Processes
+            - listitem [ref=e47]:
+              - link "PFMEA" [ref=e48] [cursor=pointer]:
+                - /url: /pfmea
+                - img [ref=e49]
+                - generic [ref=e51]: PFMEA
+            - listitem [ref=e52]:
+              - link "Control Plans" [ref=e53] [cursor=pointer]:
+                - /url: /control-plans
+                - img [ref=e54]
+                - generic [ref=e57]: Control Plans
+            - listitem [ref=e58]:
+              - link "Change Packages" [ref=e59] [cursor=pointer]:
+                - /url: /change-packages
+                - img [ref=e60]
+                - generic [ref=e64]: Change Packages
+        - generic [ref=e65]:
+          - generic [ref=e66]: CAPA / 8D
+          - list [ref=e68]:
+            - listitem [ref=e69]:
+              - link "CAPA" [ref=e70] [cursor=pointer]:
+                - /url: /capa
+                - img [ref=e71]
+                - generic [ref=e73]: CAPA
+            - listitem [ref=e74]:
+              - link "CAPA Dashboard" [ref=e75] [cursor=pointer]:
+                - /url: /capa/dashboard
+                - img [ref=e76]
+                - generic [ref=e78]: CAPA Dashboard
+        - generic [ref=e79]:
+          - generic [ref=e80]: Quality
+          - list [ref=e82]:
+            - listitem [ref=e83]:
+              - link "Documents" [ref=e84] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e85]
+                - generic [ref=e88]: Documents
+            - listitem [ref=e89]:
+              - link "My Approvals" [ref=e90] [cursor=pointer]:
+                - /url: /approvals
+                - img [ref=e91]
+                - generic [ref=e94]: My Approvals
+            - listitem [ref=e95]:
+              - link "Reviews Due" [ref=e96] [cursor=pointer]:
+                - /url: /document-reviews
+                - img [ref=e97]
+                - generic [ref=e99]: Reviews Due
+            - listitem [ref=e100]:
+              - link "External Docs" [ref=e101] [cursor=pointer]:
+                - /url: /external-documents
+                - img [ref=e102]
+                - generic [ref=e105]: External Docs
+            - listitem [ref=e106]:
+              - link "Auto-Review" [ref=e107] [cursor=pointer]:
+                - /url: /auto-review
+                - img [ref=e108]
+                - generic [ref=e111]: Auto-Review
+            - listitem [ref=e112]:
+              - link "Import" [ref=e113] [cursor=pointer]:
+                - /url: /import
+                - img [ref=e114]
+                - generic [ref=e117]: Import
+            - listitem [ref=e118]:
+              - link "Actions" [ref=e119] [cursor=pointer]:
+                - /url: /actions
+                - img [ref=e120]
+                - generic [ref=e124]: Actions
+        - generic [ref=e125]:
+          - generic [ref=e126]: Admin
+          - list [ref=e128]:
+            - listitem [ref=e129]:
+              - link "Workflows" [ref=e130] [cursor=pointer]:
+                - /url: /admin/workflows
+                - img [ref=e131]
+                - generic [ref=e135]: Workflows
+            - listitem [ref=e136]:
+              - link "Templates" [ref=e137] [cursor=pointer]:
+                - /url: /admin/document-templates
+                - img [ref=e138]
+                - generic [ref=e150]: Templates
+            - listitem [ref=e151]:
+              - link "Distribution Lists" [ref=e152] [cursor=pointer]:
+                - /url: /admin/distribution-lists
+                - img [ref=e153]
+                - generic [ref=e158]: Distribution Lists
+            - listitem [ref=e159]:
+              - link "Audit Log" [ref=e160] [cursor=pointer]:
+                - /url: /admin/audit-log
+                - img [ref=e161]
+                - generic [ref=e164]: Audit Log
+        - generic [ref=e165]:
+          - generic [ref=e166]: Libraries
+          - list [ref=e168]:
+            - listitem [ref=e169]:
+              - link "Equipment" [ref=e170] [cursor=pointer]:
+                - /url: /equipment
+                - img [ref=e171]
+                - generic [ref=e173]: Equipment
+            - listitem [ref=e174]:
+              - link "Failure Modes" [ref=e175] [cursor=pointer]:
+                - /url: /failure-modes
+                - img [ref=e176]
+                - generic [ref=e178]: Failure Modes
+            - listitem [ref=e179]:
+              - link "Controls Library" [ref=e180] [cursor=pointer]:
+                - /url: /controls-library
+                - img [ref=e181]
+                - generic [ref=e183]: Controls Library
+      - generic [ref=e184]:
+        - button "CT CAPA Tester capa-e2e-1771506551643@test.com" [ref=e185] [cursor=pointer]:
+          - generic [ref=e187]: CT
+          - generic [ref=e188]:
+            - generic [ref=e189]: CAPA Tester
+            - generic [ref=e190]: capa-e2e-1771506551643@test.com
+          - img
+        - button "Shortcuts" [ref=e192] [cursor=pointer]:
+          - img
+          - generic [ref=e193]: Shortcuts
+    - generic [ref=e194]:
+      - banner [ref=e195]:
+        - button "Toggle Sidebar" [ref=e196] [cursor=pointer]:
+          - img
+          - generic [ref=e197]: Toggle Sidebar
+        - button "Toggle theme" [ref=e198] [cursor=pointer]:
+          - img
+          - img
+          - generic [ref=e199]: Toggle theme
+      - main [ref=e200]:
+        - generic [ref=e202]:
+          - generic [ref=e203]:
+            - generic [ref=e204]:
+              - heading "Dashboard" [level=1] [ref=e205]:
+                - img [ref=e206]
+                - text: Dashboard
+              - paragraph [ref=e211]: PFMEA Suite Overview
+            - link "View Parts" [ref=e213] [cursor=pointer]:
+              - /url: /parts
+              - button "View Parts" [ref=e214]:
+                - img
+                - text: View Parts
+          - generic [ref=e215]:
+            - generic [ref=e216]:
+              - generic [ref=e217]:
+                - generic [ref=e218]: Total Parts
+                - generic [ref=e219]: "0"
+              - generic [ref=e221]: 0 without PFMEA
+            - generic [ref=e222]:
+              - generic [ref=e223]:
+                - generic [ref=e224]: Total Failure Modes
+                - generic [ref=e225]: "0"
+              - generic [ref=e227]:
+                - generic [ref=e228]: 0 High
+                - generic [ref=e229]: 0 Med
+            - generic [ref=e230]:
+              - generic [ref=e231]:
+                - generic [ref=e232]:
+                  - img [ref=e233]
+                  - text: Pending Review
+                - generic [ref=e236]: "0"
+              - generic [ref=e238]: Awaiting signatures
+            - generic [ref=e239]:
+              - generic [ref=e240]:
+                - generic [ref=e241]:
+                  - img [ref=e242]
+                  - text: High AP in Draft
+                - generic [ref=e244]: "0"
+              - generic [ref=e246]: Need action before release
+            - generic [ref=e247]:
+              - generic [ref=e248]:
+                - generic [ref=e249]:
+                  - img [ref=e250]
+                  - text: Open Actions
+                - generic [ref=e254]: "0"
+              - generic [ref=e256]: 0 overdue
+          - generic [ref=e257]:
+            - generic [ref=e258]:
+              - generic [ref=e259]:
+                - generic [ref=e260]:
+                  - img [ref=e261]
+                  - text: Action Priority Distribution
+                - generic [ref=e264]: Breakdown of failure modes by AP level
+              - generic [ref=e267]:
+                - img [ref=e268]
+                - paragraph [ref=e271]: No failure modes recorded
+            - generic [ref=e272]:
+              - generic [ref=e273]:
+                - generic [ref=e274]:
+                  - img [ref=e275]
+                  - text: Document Status
+                - generic [ref=e278]: PFMEAs and Control Plans by status
+              - generic [ref=e280]: No documents created
+          - generic [ref=e281]:
+            - generic [ref=e282]:
+              - generic [ref=e283]:
+                - generic [ref=e284]:
+                  - img [ref=e285]
+                  - text: PFMEA Documents
+                - generic [ref=e288]: 0 total
+              - generic [ref=e289]:
+                - generic [ref=e290]:
+                  - generic [ref=e291]:
+                    - generic [ref=e292]: Draft
+                    - generic [ref=e294]: "0"
+                  - generic [ref=e295]:
+                    - generic [ref=e296]: In Review
+                    - generic [ref=e298]: "0"
+                  - generic [ref=e299]:
+                    - generic [ref=e300]: Effective
+                    - generic [ref=e302]: "0"
+                - link "View All PFMEAs" [ref=e303] [cursor=pointer]:
+                  - /url: /pfmea
+                  - button "View All PFMEAs" [ref=e304]:
+                    - text: View All PFMEAs
+                    - img
+            - generic [ref=e305]:
+              - generic [ref=e306]:
+                - generic [ref=e307]:
+                  - img [ref=e308]
+                  - text: Control Plans
+                - generic [ref=e311]: 0 total
+              - generic [ref=e312]:
+                - generic [ref=e313]:
+                  - generic [ref=e314]:
+                    - generic [ref=e315]: Draft
+                    - generic [ref=e317]: "0"
+                  - generic [ref=e318]:
+                    - generic [ref=e319]: In Review
+                    - generic [ref=e321]: "0"
+                  - generic [ref=e322]:
+                    - generic [ref=e323]: Effective
+                    - generic [ref=e325]: "0"
+                - link "View All Control Plans" [ref=e326] [cursor=pointer]:
+                  - /url: /control-plans
+                  - button "View All Control Plans" [ref=e327]:
+                    - text: View All Control Plans
+                    - img
+            - generic [ref=e328]:
+              - generic [ref=e329]:
+                - generic [ref=e330]:
+                  - img [ref=e331]
+                  - text: Document Control
+                - generic [ref=e333]: 17 total
+              - generic [ref=e334]:
+                - generic [ref=e335]:
+                  - generic [ref=e336]:
+                    - generic [ref=e337]: Draft
+                    - generic [ref=e339]: "5"
+                  - generic [ref=e340]:
+                    - generic [ref=e341]: In Review
+                    - generic [ref=e343]: "2"
+                  - generic [ref=e344]:
+                    - generic [ref=e345]: Effective
+                    - generic [ref=e347]: "7"
+                - generic [ref=e348]:
+                  - generic [ref=e349]:
+                    - img [ref=e350]
+                    - text: 2 pending
+                  - generic [ref=e353]:
+                    - img [ref=e354]
+                    - text: 1 overdue
+                - link "View All Documents" [ref=e356] [cursor=pointer]:
+                  - /url: /documents
+                  - button "View All Documents" [ref=e357]:
+                    - text: View All Documents
+                    - img
+            - generic [ref=e358]:
+              - generic [ref=e360]:
+                - img [ref=e361]
+                - text: Recent Activity
+              - generic [ref=e364]:
+                - generic [ref=e365]:
+                  - generic [ref=e368]:
+                    - paragraph [ref=e369]: Revision Created
+                    - paragraph [ref=e370]: pfmea
+                  - generic [ref=e371]: 2/10/2026
+                - generic [ref=e372]:
+                  - generic [ref=e375]:
+                    - paragraph [ref=e376]: Signature Added
+                    - paragraph [ref=e377]: pfmea
+                  - generic [ref=e378]: 2/10/2026
+                - generic [ref=e379]:
+                  - generic [ref=e382]:
+                    - paragraph [ref=e383]: Status Changed
+                    - paragraph [ref=e384]: pfmea
+                  - generic [ref=e385]: 2/10/2026
+                - generic [ref=e386]:
+                  - generic [ref=e389]:
+                    - paragraph [ref=e390]: Status Changed
+                    - paragraph [ref=e391]: pfmea
+                  - generic [ref=e392]: 2/10/2026
+                - generic [ref=e393]:
+                  - generic [ref=e396]:
+                    - paragraph [ref=e397]: Status Changed
+                    - paragraph [ref=e398]: pfmea
+                  - generic [ref=e399]: 2/10/2026
+  - region "Notifications (F8)":
+    - list
+```
