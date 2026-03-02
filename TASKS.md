@@ -7,7 +7,7 @@
 [TASK-012] Add CSRF protection middleware | Scope: Quick | Assigned: — | Dependencies: none
 [TASK-013] Add session cleanup cron/middleware for expired sessions | Scope: Quick | Assigned: — | Dependencies: none
 [TASK-014] Add rate limiting to auth endpoints | Scope: Quick | Assigned: — | Dependencies: none
-[TASK-015] Remove Replit-specific Vite plugins for production builds | Scope: Quick | Assigned: — | Dependencies: none
+[TASK-015] Remove Replit-specific Vite plugins for production builds | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
 [TASK-016] Remove orphaned /components/examples/ directory (9 unused files) | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
 [TASK-017] Add React error boundaries in App.tsx | Scope: Quick | Assigned: — | Dependencies: none
 [TASK-018] Seed data for documentTemplate, approvalWorkflowDefinition, distributionList | Scope: Quick | Assigned: — | Dependencies: none
