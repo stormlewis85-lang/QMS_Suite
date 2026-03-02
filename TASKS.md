@@ -23,7 +23,7 @@
 - Write migration SQL script (not drizzle-kit push)
 - **Why:** Multi-tenancy not enforced at DB level. Cross-tenant document access possible. 21 CFR Part 11 §11.10(d) compliance gap.
 
-[TASK-002] Fix dashboard queries to filter by orgId | Scope: Quick | Assigned: Developer | Dependencies: none
+[TASK-002] Fix dashboard queries to filter by orgId | Scope: Quick | Assigned: Developer | Dependencies: none | **DONE**
 - routes.ts:625-713 — dashboard summary/metrics load ALL records without org filter
 - Change from `db.select().from(table)` to filtered queries with `where(eq(table.orgId, req.orgId))`
 - Use SQL aggregation (COUNT, GROUP BY) instead of loading full result sets into memory
@@ -96,6 +96,8 @@
 ## In Review
 
 ## Done
+
+[TASK-002] Fix dashboard queries to filter by orgId | Completed: 2026-03-01 | Summary: Rewrote /api/dashboard/summary and /api/dashboard/metrics to use SQL COUNT/GROUP BY with orgId WHERE clauses instead of loading full result sets. pfmeaRow scoped via INNER JOIN to org-scoped pfmea. auditLog scoped via INNER JOIN to user table. 147/147 unit tests pass.
 
 [TASK-001] Add orgId to Phase-1 document tables | Completed: 2026-03-01 | Summary: Added orgId (uuid FK to organization, NOT NULL, cascade delete) + index to 5 tables (document, documentRevision, documentDistribution, documentReview, documentLink). Updated 16 storage methods with orgId filtering. Updated all document routes (Phase 1-3, ~40 handlers) to pass req.orgId. Updated seed.ts. Migration SQL: 0001_add_orgid_to_document_tables.sql. 147/147 unit tests pass.
 

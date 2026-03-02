@@ -33,8 +33,8 @@ import { calculateAP } from "./services/ap-calculator";
 import { autoReviewService } from "./services/auto-review";
 import { documentControlService } from "./services/document-control";
 import { db } from "./db";
-import { eq, desc, and, lt, asc, inArray } from "drizzle-orm";
-import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced, capa, capaTeamMember, capaSource, capaAttachment, capaRelatedRecord, capaD0Emergency, capaD1TeamDetail, capaD2Problem, capaD3Containment, capaD4RootCause, capaD4RootCauseCandidate, capaD5CorrectiveAction, capaD6Validation, capaD7Preventive, capaD8Closure, capaAuditLog, capaMetricSnapshot, capaAnalysisTool } from "@shared/schema";
+import { eq, desc, and, lt, asc, inArray, count, sql } from "drizzle-orm";
+import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog, actionItem, notifications, signature, autoReviewRun, document as documentTable, documentRevision, approvalWorkflowInstance, approvalWorkflowStep, distributionList, documentDistributionRecord, documentAccessLog, documentPrintLog, documentComment, externalDocument, documentLinkEnhanced, capa, capaTeamMember, capaSource, capaAttachment, capaRelatedRecord, capaD0Emergency, capaD1TeamDetail, capaD2Problem, capaD3Containment, capaD4RootCause, capaD4RootCauseCandidate, capaD5CorrectiveAction, capaD6Validation, capaD7Preventive, capaD8Closure, capaAuditLog, capaMetricSnapshot, capaAnalysisTool, user as userTable } from "@shared/schema";
 import { notificationService } from "./services/notification-service";
 import {
   insertPartSchema,
@@ -624,16 +624,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dashboard summary (alias for tests)
   app.get('/api/dashboard/summary', async (req, res) => {
     try {
-      const allParts = await db.select().from(part);
-      const allPfmeas = await db.select().from(pfmea);
-      const allControlPlans = await db.select().from(controlPlan);
-      const allPfmeaRows = await db.select().from(pfmeaRow);
-      
+      const orgId = req.orgId!;
+
+      const [partCount] = await db.select({ value: count() }).from(part).where(eq(part.orgId, orgId));
+      const [pfmeaCount] = await db.select({ value: count() }).from(pfmea).where(eq(pfmea.orgId, orgId));
+      const [cpCount] = await db.select({ value: count() }).from(controlPlan).where(eq(controlPlan.orgId, orgId));
+      const [fmCount] = await db.select({ value: count() }).from(pfmeaRow)
+        .innerJoin(pfmea, eq(pfmeaRow.pfmeaId, pfmea.id))
+        .where(eq(pfmea.orgId, orgId));
+
       res.json({
-        totalParts: allParts.length,
-        totalPfmeas: allPfmeas.length,
-        totalControlPlans: allControlPlans.length,
-        totalFailureModes: allPfmeaRows.length,
+        totalParts: partCount.value,
+        totalPfmeas: pfmeaCount.value,
+        totalControlPlans: cpCount.value,
+        totalFailureModes: fmCount.value,
       });
     } catch (error) {
       console.error("Error fetching dashboard summary:", error);
@@ -643,69 +647,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/dashboard/metrics', async (req, res) => {
     try {
-      const allParts = await db.select().from(part);
-      const allPfmeas = await db.select().from(pfmea);
-      const allControlPlans = await db.select().from(controlPlan);
-      const allPfmeaRows = await db.select().from(pfmeaRow);
-      
-      const pfmeaByStatus = {
-        draft: allPfmeas.filter(p => p.status === 'draft').length,
-        review: allPfmeas.filter(p => p.status === 'review').length,
-        effective: allPfmeas.filter(p => p.status === 'effective').length,
-        superseded: allPfmeas.filter(p => p.status === 'superseded').length,
-      };
-      
-      const cpByStatus = {
-        draft: allControlPlans.filter(c => c.status === 'draft').length,
-        review: allControlPlans.filter(c => c.status === 'review').length,
-        effective: allControlPlans.filter(c => c.status === 'effective').length,
-        superseded: allControlPlans.filter(c => c.status === 'superseded').length,
-      };
-      
-      const apDistribution = {
-        high: allPfmeaRows.filter(r => r.ap === 'H').length,
-        medium: allPfmeaRows.filter(r => r.ap === 'M').length,
-        low: allPfmeaRows.filter(r => r.ap === 'L').length,
-      };
-      
-      const pendingReview = allPfmeas.filter(p => p.status === 'review').length +
-                            allControlPlans.filter(c => c.status === 'review').length;
-      
-      const draftPfmeaIds = allPfmeas.filter(p => p.status === 'draft').map(p => p.id);
-      const highAPInDraft = allPfmeaRows.filter(
-        r => r.ap === 'H' && draftPfmeaIds.includes(r.pfmeaId)
-      ).length;
-      
-      const recentActivity = await db.select()
-        .from(auditLog)
+      const orgId = req.orgId!;
+
+      // Aggregate counts with SQL instead of loading full result sets
+      const [partCount] = await db.select({ value: count() }).from(part).where(eq(part.orgId, orgId));
+      const [cpCount] = await db.select({ value: count() }).from(controlPlan).where(eq(controlPlan.orgId, orgId));
+
+      // PFMEA status breakdown
+      const pfmeaStatusRows = await db.select({
+        status: pfmea.status,
+        value: count(),
+      }).from(pfmea).where(eq(pfmea.orgId, orgId)).groupBy(pfmea.status);
+
+      const pfmeaByStatus: Record<string, number> = { draft: 0, review: 0, effective: 0, superseded: 0 };
+      let totalPfmeas = 0;
+      for (const row of pfmeaStatusRows) {
+        pfmeaByStatus[row.status] = row.value;
+        totalPfmeas += row.value;
+      }
+
+      // Control Plan status breakdown
+      const cpStatusRows = await db.select({
+        status: controlPlan.status,
+        value: count(),
+      }).from(controlPlan).where(eq(controlPlan.orgId, orgId)).groupBy(controlPlan.status);
+
+      const cpByStatus: Record<string, number> = { draft: 0, review: 0, effective: 0, superseded: 0 };
+      for (const row of cpStatusRows) {
+        cpByStatus[row.status] = row.value;
+      }
+
+      // AP distribution (join through pfmea for org scoping)
+      const apRows = await db.select({
+        ap: pfmeaRow.ap,
+        value: count(),
+      }).from(pfmeaRow)
+        .innerJoin(pfmea, eq(pfmeaRow.pfmeaId, pfmea.id))
+        .where(eq(pfmea.orgId, orgId))
+        .groupBy(pfmeaRow.ap);
+
+      const apDistribution: Record<string, number> = { high: 0, medium: 0, low: 0 };
+      let totalFailureModes = 0;
+      for (const row of apRows) {
+        if (row.ap === 'H') apDistribution.high = row.value;
+        else if (row.ap === 'M') apDistribution.medium = row.value;
+        else if (row.ap === 'L') apDistribution.low = row.value;
+        totalFailureModes += row.value;
+      }
+
+      const pendingReview = (pfmeaByStatus.review || 0) + (cpByStatus.review || 0);
+
+      // High AP in draft PFMEAs
+      const [highAPInDraftResult] = await db.select({ value: count() })
+        .from(pfmeaRow)
+        .innerJoin(pfmea, eq(pfmeaRow.pfmeaId, pfmea.id))
+        .where(and(eq(pfmea.orgId, orgId), eq(pfmea.status, 'draft'), eq(pfmeaRow.ap, 'H')));
+
+      // Parts without PFMEA
+      const partsWithPfmeaSubquery = db.selectDistinct({ partId: pfmea.partId })
+        .from(pfmea)
+        .where(eq(pfmea.orgId, orgId));
+      const [partsWithoutPfmeaResult] = await db.select({ value: count() })
+        .from(part)
+        .where(and(
+          eq(part.orgId, orgId),
+          sql`${part.id} NOT IN (${partsWithPfmeaSubquery})`
+        ));
+
+      // Recent activity — filter by actor's org membership
+      const recentActivity = await db.select({
+        id: auditLog.id,
+        action: auditLog.action,
+        entityType: auditLog.entityType,
+        entityId: auditLog.entityId,
+        actor: auditLog.actor,
+        at: auditLog.at,
+      }).from(auditLog)
+        .innerJoin(userTable, eq(auditLog.actor, userTable.id))
+        .where(eq(userTable.orgId, orgId))
         .orderBy(desc(auditLog.at))
         .limit(10);
-      
-      const partsWithPfmea = new Set(allPfmeas.map(p => p.partId));
-      const partsWithoutPfmea = allParts.filter(p => !partsWithPfmea.has(p.id)).length;
-      
+
       res.json({
         summary: {
-          totalParts: allParts.length,
-          totalPfmeas: allPfmeas.length,
-          totalControlPlans: allControlPlans.length,
-          totalFailureModes: allPfmeaRows.length,
+          totalParts: partCount.value,
+          totalPfmeas,
+          totalControlPlans: cpCount.value,
+          totalFailureModes,
           pendingReview,
           highAPItems: apDistribution.high,
-          highAPInDraft,
-          partsWithoutPfmea,
+          highAPInDraft: highAPInDraftResult.value,
+          partsWithoutPfmea: partsWithoutPfmeaResult.value,
         },
         pfmeaByStatus,
         cpByStatus,
         apDistribution,
-        recentActivity: recentActivity.map(a => ({
-          id: a.id,
-          action: a.action,
-          entityType: a.entityType,
-          entityId: a.entityId,
-          actor: a.actor,
-          at: a.at,
-        })),
+        recentActivity,
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
