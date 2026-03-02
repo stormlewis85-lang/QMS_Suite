@@ -44,7 +44,7 @@
 - Test determineAPLevel() function thoroughly
 - **Why:** Incorrect AP results violate IATF 16949. Pure function, easy to test, high regulatory impact.
 
-[TASK-005] Unit tests for auto-review service | Scope: Standard | Assigned: Test | Dependencies: none
+[TASK-005] Unit tests for auto-review service | Scope: Standard | Assigned: Test | Dependencies: none | **DONE**
 - server/services/auto-review.ts — PFMEA compliance validation engine, ZERO tests
 - Test all finding categories: coverage, effectiveness, document_control, scoring, csr
 - Test finding severity levels: error, warning, info
@@ -100,6 +100,8 @@
 [TASK-002] Fix dashboard queries to filter by orgId | Completed: 2026-03-01 | Summary: Rewrote /api/dashboard/summary and /api/dashboard/metrics to use SQL COUNT/GROUP BY with orgId WHERE clauses instead of loading full result sets. pfmeaRow scoped via INNER JOIN to org-scoped pfmea. auditLog scoped via INNER JOIN to user table. 147/147 unit tests pass.
 
 [TASK-001] Add orgId to Phase-1 document tables | Completed: 2026-03-01 | Summary: Added orgId (uuid FK to organization, NOT NULL, cascade delete) + index to 5 tables (document, documentRevision, documentDistribution, documentReview, documentLink). Updated 16 storage methods with orgId filtering. Updated all document routes (Phase 1-3, ~40 handlers) to pass req.orgId. Updated seed.ts. Migration SQL: 0001_add_orgid_to_document_tables.sql. 147/147 unit tests pass.
+
+[TASK-005] Unit tests for auto-review service | Completed: 2026-03-01 | Summary: 49 test cases with DB mocking covering all 16 finding codes (COV-001–004, EFF-001–006, DOC-001–004, TRC-001–002, CMP-001–004), summary calculation (passRate, category breakdown), and recommendation generation. 250/250 unit tests pass.
 
 [TASK-004] Unit tests for ap-calculator service | Completed: 2026-03-01 | Summary: 54 test cases covering input validation, all HIGH/MEDIUM/LOW priority conditions, boundary transitions, result metadata, batch calculation, statistics, and suggestion helpers. 201/201 unit tests pass.
 
