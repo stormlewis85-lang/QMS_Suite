@@ -4,13 +4,13 @@
 
 ## Backlog
 
-[TASK-012] Add CSRF protection middleware | Scope: Quick | Assigned: — | Dependencies: none
-[TASK-013] Add session cleanup cron/middleware for expired sessions | Scope: Quick | Assigned: — | Dependencies: none
-[TASK-014] Add rate limiting to auth endpoints | Scope: Quick | Assigned: — | Dependencies: none
+[TASK-012] Add CSRF protection middleware | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
+[TASK-013] Add session cleanup cron/middleware for expired sessions | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
+[TASK-014] Add rate limiting to auth endpoints | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
 [TASK-015] Remove Replit-specific Vite plugins for production builds | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
 [TASK-016] Remove orphaned /components/examples/ directory (9 unused files) | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
-[TASK-017] Add React error boundaries in App.tsx | Scope: Quick | Assigned: — | Dependencies: none
-[TASK-018] Seed data for documentTemplate, approvalWorkflowDefinition, distributionList | Scope: Quick | Assigned: — | Dependencies: none
+[TASK-017] Add React error boundaries in App.tsx | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
+[TASK-018] Seed data for documentTemplate, approvalWorkflowDefinition, distributionList | Scope: Quick | Assigned: — | Dependencies: none | **DONE** (pre-existing)
 
 ## Queue
 
@@ -99,6 +99,20 @@
 ## In Review
 
 ## Done
+
+[TASK-012] Add CSRF protection middleware | Completed: 2026-03-02 | Summary: Created csrfProtection middleware checking X-Requested-With header or JSON content-type on POST/PUT/PATCH/DELETE. Applied globally to /api/*. Updated 10 client files with header on bodiless fetch calls. 250/250 unit tests pass.
+
+[TASK-013] Add session cleanup for expired sessions | Completed: 2026-03-02 | Summary: Added setInterval in registerRoutes calling deleteExpiredSessions() every 15 minutes. 250/250 unit tests pass.
+
+[TASK-014] Add rate limiting to auth endpoints | Completed: 2026-03-02 | Summary: In-memory IP-based rate limiter middleware. Login: 10 req/15 min. Register: 5 req/hr. Returns 429 with Retry-After header. 250/250 unit tests pass.
+
+[TASK-015] Remove Replit-specific Vite plugins | Completed: 2026-03-02 | Summary: Removed 3 @replit plugin imports from vite.config.ts and 3 @replit devDependencies from package.json. 250/250 unit tests pass.
+
+[TASK-016] Remove orphaned examples directory | Completed: 2026-03-02 | Summary: Deleted 9 unused files in client/src/components/examples/. Verified no imports reference the directory. 250/250 unit tests pass.
+
+[TASK-017] Add React error boundaries | Completed: 2026-03-02 | Summary: Created ErrorBoundary class component with fallback UI (error message, Try Again, Go to Dashboard). Wrapped AppRoutes in App.tsx. 250/250 unit tests pass.
+
+[TASK-018] Seed data for templates/workflows/distribution | Completed: 2026-03-02 | Summary: Already existed — 3 workflow definitions, 4 document templates, 3 distribution lists seeded in seedDocumentControlPhase2/Phase3. No changes needed.
 
 [TASK-002] Fix dashboard queries to filter by orgId | Completed: 2026-03-01 | Summary: Rewrote /api/dashboard/summary and /api/dashboard/metrics to use SQL COUNT/GROUP BY with orgId WHERE clauses instead of loading full result sets. pfmeaRow scoped via INNER JOIN to org-scoped pfmea. auditLog scoped via INNER JOIN to user table. 147/147 unit tests pass.
 
