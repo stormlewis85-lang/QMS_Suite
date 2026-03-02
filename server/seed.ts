@@ -80,8 +80,15 @@ async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string 
 }
 
 async function seedDocumentControl() {
+  const demoOrg = await storage.getOrganizationBySlug('acme-manufacturing');
+  if (!demoOrg) {
+    console.log("  No demo org found, skipping Document Control seed.");
+    return;
+  }
+  const orgId = demoOrg.id;
+
   // Check if documents already exist
-  const existing = await storage.getDocuments();
+  const existing = await storage.getDocuments(orgId);
   if (existing.length > 0) {
     console.log("  Document Control seed data already exists, skipping.");
     return;
@@ -91,6 +98,7 @@ async function seedDocumentControl() {
 
   // Create sample documents
   const doc1 = await storage.createDocument({
+    orgId,
     docNumber: "WI-MOL-001",
     title: "Injection Molding Work Instruction",
     type: "work_instruction",
@@ -109,6 +117,7 @@ async function seedDocumentControl() {
   });
 
   const doc2 = await storage.createDocument({
+    orgId,
     docNumber: "SOP-QA-010",
     title: "Incoming Material Inspection Procedure",
     type: "procedure",
@@ -127,6 +136,7 @@ async function seedDocumentControl() {
   });
 
   const doc3 = await storage.createDocument({
+    orgId,
     docNumber: "SPEC-ENG-042",
     title: "Customer Surface Finish Specification",
     type: "customer_spec",
@@ -144,6 +154,7 @@ async function seedDocumentControl() {
   });
 
   const doc4 = await storage.createDocument({
+    orgId,
     docNumber: "FRM-QA-005",
     title: "First Article Inspection Report Template",
     type: "form",
@@ -160,6 +171,7 @@ async function seedDocumentControl() {
   });
 
   const doc5 = await storage.createDocument({
+    orgId,
     docNumber: "POL-QMS-001",
     title: "Quality Management System Policy",
     type: "policy",
@@ -178,6 +190,7 @@ async function seedDocumentControl() {
   });
 
   const doc6 = await storage.createDocument({
+    orgId,
     docNumber: "DWG-ENG-101",
     title: "Bracket Assembly Drawing",
     type: "drawing",
@@ -196,6 +209,7 @@ async function seedDocumentControl() {
 
   // Create revisions for doc1
   const rev1A = await storage.createRevision({
+    orgId,
     documentId: doc1.id,
     rev: "A",
     changeDescription: "Initial release of injection molding work instruction",
@@ -208,6 +222,7 @@ async function seedDocumentControl() {
   });
 
   const rev1B = await storage.createRevision({
+    orgId,
     documentId: doc1.id,
     rev: "B",
     changeDescription: "Updated startup sequence, added safety checks per audit finding #AF-2025-003",
@@ -220,6 +235,7 @@ async function seedDocumentControl() {
 
   // Create revisions for doc2
   await storage.createRevision({
+    orgId,
     documentId: doc2.id,
     rev: "A",
     changeDescription: "Initial release",
@@ -232,6 +248,7 @@ async function seedDocumentControl() {
   });
 
   await storage.createRevision({
+    orgId,
     documentId: doc2.id,
     rev: "B",
     changeDescription: "Added AQL sampling requirements",
@@ -244,6 +261,7 @@ async function seedDocumentControl() {
   });
 
   await storage.createRevision({
+    orgId,
     documentId: doc2.id,
     rev: "C",
     changeDescription: "Updated per customer audit findings, added traceability requirements",
@@ -256,6 +274,7 @@ async function seedDocumentControl() {
 
   // Create revision for doc3 (in review)
   await storage.createRevision({
+    orgId,
     documentId: doc3.id,
     rev: "A",
     changeDescription: "Initial intake of customer specification",
@@ -265,6 +284,7 @@ async function seedDocumentControl() {
 
   // Create revision for doc4 (draft)
   await storage.createRevision({
+    orgId,
     documentId: doc4.id,
     rev: "A",
     changeDescription: "Initial draft of FAIR template",
@@ -276,6 +296,7 @@ async function seedDocumentControl() {
   const pastDue = new Date();
   pastDue.setDate(pastDue.getDate() - 30);
   await storage.createReview({
+    orgId,
     documentId: doc5.id,
     reviewerName: "Robert Johnson",
     reviewerRole: "Quality Manager",
@@ -287,6 +308,7 @@ async function seedDocumentControl() {
   const futureDue = new Date();
   futureDue.setDate(futureDue.getDate() + 60);
   await storage.createReview({
+    orgId,
     documentId: doc2.id,
     reviewerName: "Jane Doe",
     reviewerRole: "Quality Engineer",
@@ -512,10 +534,10 @@ async function seedDocumentControlPhase2() {
   // Sample Document File (attached to first document)
   // =============================================
 
-  const docs = await storage.getDocuments();
+  const docs = await storage.getDocuments(orgId);
   const firstDoc = docs.find(d => d.docNumber === 'WI-MOL-001');
   if (firstDoc) {
-    const revisions = await storage.getDocumentRevisions(firstDoc.id);
+    const revisions = await storage.getDocumentRevisions(firstDoc.id, orgId);
     const effectiveRev = revisions.find(r => r.status === 'effective');
 
     const sampleChecksum = crypto.createHash('sha256')
@@ -778,11 +800,11 @@ async function seedDocumentControlPhase3() {
   console.log(`  ✓ Created 4 external documents`);
 
   // 3. Create Sample Access Logs for existing document (WI-MOL-001)
-  const docs = await storage.getDocuments();
+  const docs = await storage.getDocuments(demoOrg.id);
   const targetDoc = docs.find(d => d.docNumber === 'WI-MOL-001');
   if (targetDoc) {
     // Get a revision for the document
-    const revisions = await storage.getDocumentRevisions(targetDoc.id);
+    const revisions = await storage.getDocumentRevisions(targetDoc.id, demoOrg.id);
     const latestRev = revisions[0];
 
     const baseTime = new Date('2026-02-01T09:00:00Z');

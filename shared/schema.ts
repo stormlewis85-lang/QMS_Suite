@@ -1164,6 +1164,7 @@ export const changePackagePropagationRelations = relations(changePackagePropagat
 
 export const document = pgTable('document', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   docNumber: text('doc_number').unique().notNull(),
   title: text('title').notNull(),
   type: documentTypeEnum('type').notNull(),
@@ -1186,10 +1187,12 @@ export const document = pgTable('document', {
   statusIdx: index('document_status_idx').on(table.status),
   typeIdx: index('document_type_idx').on(table.type),
   docNumberIdx: index('document_doc_number_idx').on(table.docNumber),
+  orgIdIdx: index('document_org_id_idx').on(table.orgId),
 }));
 
 export const documentRevision = pgTable('document_revision', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
   rev: text('rev').notNull(),
   changeDescription: text('change_description').notNull(),
@@ -1205,10 +1208,12 @@ export const documentRevision = pgTable('document_revision', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => ({
   documentIdIdx: index('doc_revision_document_id_idx').on(table.documentId),
+  orgIdIdx: index('doc_revision_org_id_idx').on(table.orgId),
 }));
 
 export const documentDistribution = pgTable('document_distribution', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
   revisionId: uuid('revision_id').notNull().references(() => documentRevision.id, { onDelete: 'cascade' }),
   recipientName: text('recipient_name').notNull(),
@@ -1219,10 +1224,12 @@ export const documentDistribution = pgTable('document_distribution', {
   copyNumber: integer('copy_number'),
 }, (table) => ({
   documentIdIdx: index('doc_distribution_document_id_idx').on(table.documentId),
+  orgIdIdx: index('doc_distribution_org_id_idx').on(table.orgId),
 }));
 
 export const documentReview = pgTable('document_review', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   documentId: uuid('document_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
   revisionId: uuid('revision_id').references(() => documentRevision.id, { onDelete: 'set null' }),
   reviewerName: text('reviewer_name').notNull(),
@@ -1235,10 +1242,12 @@ export const documentReview = pgTable('document_review', {
 }, (table) => ({
   documentIdIdx: index('doc_review_document_id_idx').on(table.documentId),
   statusIdx: index('doc_review_status_idx').on(table.status),
+  orgIdIdx: index('doc_review_org_id_idx').on(table.orgId),
 }));
 
 export const documentLink = pgTable('document_link', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   sourceDocId: uuid('source_doc_id').notNull().references(() => document.id, { onDelete: 'cascade' }),
   targetType: text('target_type').notNull(),
   targetId: uuid('target_id').notNull(),
@@ -1246,6 +1255,7 @@ export const documentLink = pgTable('document_link', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => ({
   sourceDocIdIdx: index('doc_link_source_doc_id_idx').on(table.sourceDocId),
+  orgIdIdx: index('doc_link_org_id_idx').on(table.orgId),
 }));
 
 // ==========================================

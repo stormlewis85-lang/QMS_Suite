@@ -4144,7 +4144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents/metrics", requireAuth, async (req, res) => {
     try {
-      const metrics = await storage.getDocumentMetrics();
+      const metrics = await storage.getDocumentMetrics(req.orgId!);
       res.json(metrics);
     } catch (error) {
       console.error("Error fetching document metrics:", error);
@@ -4157,7 +4157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/documents", async (req, res) => {
     try {
       const { type, status, category, search } = req.query;
-      const documents = await storage.getDocuments({
+      const documents = await storage.getDocuments(req.orgId!, {
         type: type as string | undefined,
         status: status as string | undefined,
         category: category as string | undefined,
@@ -4178,7 +4178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Search query must be at least 2 characters" });
       }
 
-      const docs = await storage.getDocuments();
+      const docs = await storage.getDocuments(req.orgId!);
       const results: { documentId: string; docNumber: string; title: string; matchingFiles: { fileId: number; snippet: string }[] }[] = [];
 
       for (const doc of docs) {
@@ -4208,7 +4208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents/:id", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4223,12 +4223,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/documents", async (req, res) => {
     try {
-      const validatedData = insertDocumentSchema.parse(req.body);
+      const validatedData = insertDocumentSchema.parse({ ...req.body, orgId: req.orgId! });
       const newDocument = await storage.createDocument(validatedData);
 
       // Create initial revision
       await storage.createRevision({
         documentId: newDocument.id,
+        orgId: req.orgId!,
         rev: newDocument.currentRev,
         changeDescription: "Initial release",
         status: "draft",
@@ -4250,7 +4251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/documents/:id", async (req, res) => {
     try {
-      const updated = await storage.updateDocument(req.params.id, req.body);
+      const updated = await storage.updateDocument(req.params.id, req.orgId!, req.body);
       if (!updated) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4265,7 +4266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/documents/:id", async (req, res) => {
     try {
-      const success = await storage.deleteDocument(req.params.id);
+      const success = await storage.deleteDocument(req.params.id, req.orgId!);
       if (!success) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4280,11 +4281,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents/:id/revisions", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
-      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const revisions = await storage.getDocumentRevisions(req.params.id, req.orgId!);
       res.json(revisions);
     } catch (error) {
       console.error("Error fetching revisions:", error);
@@ -4296,7 +4297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/documents/:id/revisions", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4311,6 +4312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = insertDocumentRevisionSchema.parse({
         documentId: req.params.id,
+        orgId: req.orgId!,
         rev: nextRev,
         changeDescription: req.body.changeDescription || 'New revision',
         status: 'draft',
@@ -4319,7 +4321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const newRevision = await storage.createRevision(validatedData);
 
-      await storage.updateDocument(req.params.id, {
+      await storage.updateDocument(req.params.id, req.orgId!, {
         currentRev: nextRev,
         status: 'draft' as any,
       });
@@ -4339,7 +4341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/document-revisions/:id", async (req, res) => {
     try {
-      const revision = await storage.getRevisionById(req.params.id);
+      const revision = await storage.getRevisionById(req.params.id, req.orgId!);
       if (!revision) {
         return res.status(404).json({ error: "Revision not found" });
       }
@@ -4354,7 +4356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/document-revisions/:id", async (req, res) => {
     try {
-      const revision = await storage.getRevisionById(req.params.id);
+      const revision = await storage.getRevisionById(req.params.id, req.orgId!);
       if (!revision) {
         return res.status(404).json({ error: "Revision not found" });
       }
@@ -4363,7 +4365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Can only edit revisions in draft status" });
       }
 
-      const updated = await storage.updateRevision(req.params.id, req.body);
+      const updated = await storage.updateRevision(req.params.id, req.orgId!, req.body);
       res.json(updated);
     } catch (error) {
       console.error("Error updating revision:", error);
@@ -4375,7 +4377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/documents/:id/submit-review", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4390,13 +4392,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Update current revision to review status
-      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const revisions = await storage.getDocumentRevisions(req.params.id, req.orgId!);
       const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'draft');
       if (currentRevision) {
-        await storage.updateRevision(currentRevision.id, { status: 'review' as any });
+        await storage.updateRevision(currentRevision.id, req.orgId!, { status: 'review' as any });
       }
 
-      const updated = await storage.updateDocument(req.params.id, { status: 'review' as any });
+      const updated = await storage.updateDocument(req.params.id, req.orgId!, { status: 'review' as any });
       res.json(updated);
     } catch (error) {
       console.error("Error submitting for review:", error);
@@ -4413,7 +4415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "approverName is required" });
       }
 
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4427,19 +4429,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reviewDueDate = new Date(now);
       reviewDueDate.setDate(reviewDueDate.getDate() + (doc.reviewCycleDays || 365));
 
-      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const revisions = await storage.getDocumentRevisions(req.params.id, req.orgId!);
       const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'review');
       const previousEffective = revisions.find(r => r.status === 'effective');
 
       if (previousEffective) {
-        await storage.updateRevision(previousEffective.id, {
+        await storage.updateRevision(previousEffective.id, req.orgId!, {
           status: 'superseded' as any,
           supersededDate: now,
         });
       }
 
       if (currentRevision) {
-        await storage.updateRevision(currentRevision.id, {
+        await storage.updateRevision(currentRevision.id, req.orgId!, {
           status: 'effective' as any,
           approvedBy: approverName,
           approvedAt: now,
@@ -4447,7 +4449,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const updated = await storage.updateDocument(req.params.id, {
+      const updated = await storage.updateDocument(req.params.id, req.orgId!, {
         status: 'effective' as any,
         effectiveDate: now,
         reviewDueDate,
@@ -4469,7 +4471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "comments are required when rejecting" });
       }
 
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4479,17 +4481,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: transition.error });
       }
 
-      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const revisions = await storage.getDocumentRevisions(req.params.id, req.orgId!);
       const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'review');
 
       if (currentRevision) {
-        await storage.updateRevision(currentRevision.id, {
+        await storage.updateRevision(currentRevision.id, req.orgId!, {
           status: 'draft' as any,
           changeDescription: currentRevision.changeDescription + ` [REJECTED: ${comments}]`,
         });
       }
 
-      const updated = await storage.updateDocument(req.params.id, { status: 'draft' as any });
+      const updated = await storage.updateDocument(req.params.id, req.orgId!, { status: 'draft' as any });
       res.json({ ...updated, rejectionComments: comments });
     } catch (error) {
       console.error("Error rejecting document:", error);
@@ -4501,7 +4503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/documents/:id/obsolete", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4511,13 +4513,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: transition.error });
       }
 
-      const revisions = await storage.getDocumentRevisions(req.params.id);
+      const revisions = await storage.getDocumentRevisions(req.params.id, req.orgId!);
       const currentRevision = revisions.find(r => r.rev === doc.currentRev && r.status === 'effective');
       if (currentRevision) {
-        await storage.updateRevision(currentRevision.id, { status: 'obsolete' as any });
+        await storage.updateRevision(currentRevision.id, req.orgId!, { status: 'obsolete' as any });
       }
 
-      const updated = await storage.updateDocument(req.params.id, { status: 'obsolete' as any });
+      const updated = await storage.updateDocument(req.params.id, req.orgId!, { status: 'obsolete' as any });
       res.json(updated);
     } catch (error) {
       console.error("Error marking document obsolete:", error);
@@ -4529,11 +4531,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents/:id/distributions", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
-      const distributions = await storage.getDistributions(req.params.id);
+      const distributions = await storage.getDistributions(req.params.id, req.orgId!);
       res.json(distributions);
     } catch (error) {
       console.error("Error fetching distributions:", error);
@@ -4547,7 +4549,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/document-distributions/:id/acknowledge", async (req, res) => {
     try {
-      const updated = await storage.acknowledgeDistribution(req.params.id);
+      const updated = await storage.acknowledgeDistribution(req.params.id, req.orgId!);
       if (!updated) {
         return res.status(404).json({ error: "Distribution record not found" });
       }
@@ -4562,7 +4564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/document-reviews", async (req, res) => {
     try {
-      const reviews = await storage.getPendingReviews();
+      const reviews = await storage.getPendingReviews(req.orgId!);
       res.json(reviews);
     } catch (error) {
       console.error("Error fetching pending reviews:", error);
@@ -4574,7 +4576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/document-reviews/overdue", async (req, res) => {
     try {
-      const reviews = await storage.getOverdueReviews();
+      const reviews = await storage.getOverdueReviews(req.orgId!);
       res.json(reviews);
     } catch (error) {
       console.error("Error fetching overdue reviews:", error);
@@ -4586,11 +4588,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents/:id/reviews", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
-      const reviews = await storage.getReviews(req.params.id);
+      const reviews = await storage.getReviews(req.params.id, req.orgId!);
       res.json(reviews);
     } catch (error) {
       console.error("Error fetching reviews:", error);
@@ -4602,7 +4604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/documents/:id/reviews", async (req, res) => {
     try {
-      const doc = await storage.getDocumentById(req.params.id);
+      const doc = await storage.getDocumentById(req.params.id, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4610,6 +4612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertDocumentReviewSchema.parse({
         ...req.body,
         documentId: req.params.id,
+        orgId: req.orgId!,
         status: 'pending',
       });
 
@@ -4629,7 +4632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/document-reviews/:id", async (req, res) => {
     try {
-      const updated = await storage.updateReview(req.params.id, {
+      const updated = await storage.updateReview(req.params.id, req.orgId!, {
         ...req.body,
         reviewedAt: req.body.status && req.body.status !== 'pending' ? new Date() : undefined,
       });
@@ -4649,7 +4652,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/document-links", requireAuth, async (req, res) => {
     try {
-      const validatedData = insertDocumentLinkSchema.parse(req.body);
+      const validatedData = insertDocumentLinkSchema.parse({ ...req.body, orgId: req.orgId! });
       const newLink = await storage.createDocumentLink(validatedData);
       res.status(201).json(newLink);
     } catch (error) {
@@ -4666,7 +4669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/document-links/:id", requireAuth, async (req, res) => {
     try {
-      const success = await storage.deleteDocumentLink(req.params.id);
+      const success = await storage.deleteDocumentLink(req.params.id, req.orgId!);
       if (!success) {
         return res.status(404).json({ error: "Document link not found" });
       }
@@ -4701,7 +4704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.auth!.user;
 
       // Verify document exists and belongs to org
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -4849,7 +4852,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = req.auth!.user;
-      const doc = file.documentId ? await storage.getDocumentById(file.documentId) : null;
+      const doc = file.documentId ? await storage.getDocumentById(file.documentId, req.orgId!) : null;
       const now = new Date();
       const watermarkText = `CONTROLLED COPY\nDownloaded by: ${user.firstName} ${user.lastName}\nDate: ${now.toISOString().substring(0, 16).replace('T', ' ')}\nDoc: ${doc?.docNumber || 'N/A'} Rev ${doc?.currentRev || 'N/A'}`;
 
@@ -4955,7 +4958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check document is editable
       if (file.documentId) {
-        const doc = await storage.getDocumentById(file.documentId);
+        const doc = await storage.getDocumentById(file.documentId, req.orgId!);
         if (doc && doc.status !== 'draft') {
           const activeCheckout = await storage.getActiveCheckout(file.documentId);
           if (!activeCheckout || activeCheckout.checkedOutBy !== req.auth!.user.id) {
@@ -5165,7 +5168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appliedFieldValues: Record<string, string> = {};
 
       // Generate doc number
-      const existingDocs = await storage.getDocuments();
+      const existingDocs = await storage.getDocuments(req.orgId!);
       const seq = existingDocs.length + 1;
       const docNumber = generateDocNumber(
         `${template.docType === 'work_instruction' ? 'WI' : template.docType === 'procedure' ? 'SOP' : 'DOC'}-{department}-{seq:4}`,
@@ -5176,6 +5179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create document
       const doc = await storage.createDocument({
+        orgId: req.orgId!,
         docNumber,
         title,
         type: template.docType as any,
@@ -5190,6 +5194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create first revision
       const revision = await storage.createRevision({
+        orgId: req.orgId!,
         documentId: doc.id,
         rev: 'A',
         changeDescription: 'Initial draft created from template',
@@ -5239,7 +5244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { documentId } = req.params;
       const user = req.auth!.user;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -5478,7 +5483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { documentId } = req.params;
       const user = req.auth!.user;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -5508,7 +5513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get the latest revision
-      const revisions = await storage.getDocumentRevisions(documentId);
+      const revisions = await storage.getDocumentRevisions(documentId, req.orgId!);
       const latestRevision = revisions[0];
       if (!latestRevision) {
         return res.status(400).json({ error: "Document has no revisions" });
@@ -5544,7 +5549,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Update document status to review
-      await storage.updateDocument(documentId, { status: 'review' } as any);
+      await storage.updateDocument(documentId, req.orgId!, { status: 'review' } as any);
 
       // Log access
       await storage.createDocumentAccessLog({
@@ -5699,7 +5704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } as any);
 
           // Update document status to effective
-          await storage.updateDocument(instance.documentId, { status: 'effective', effectiveDate: new Date() } as any);
+          await storage.updateDocument(instance.documentId, req.orgId!, { status: 'effective', effectiveDate: new Date() } as any);
         }
 
         // Log access
@@ -5761,7 +5766,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           completedAt: new Date(),
         } as any);
 
-        await storage.updateDocument(instance.documentId, { status: 'draft' } as any);
+        await storage.updateDocument(instance.documentId, req.orgId!, { status: 'draft' } as any);
 
         // Log access
         await storage.createDocumentAccessLog({
@@ -5937,7 +5942,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { documentId } = req.params;
       const user = req.auth!.user;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -5946,7 +5951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Document must be in effective status to distribute" });
       }
 
-      const revisions = await storage.getDocumentRevisions(documentId);
+      const revisions = await storage.getDocumentRevisions(documentId, req.orgId!);
       const latestRevision = revisions[0];
       if (!latestRevision) {
         return res.status(400).json({ error: "Document has no revisions" });
@@ -6044,7 +6049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pending = await storage.getPendingAcknowledgments(req.orgId!, userId);
 
       const enriched = await Promise.all(pending.map(async (record) => {
-        const doc = await storage.getDocumentById(record.documentId);
+        const doc = await storage.getDocumentById(record.documentId, req.orgId!);
         const isOverdue = record.acknowledgmentDueDate
           ? new Date(record.acknowledgmentDueDate) < new Date()
           : false;
@@ -6122,7 +6127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.auth!.user;
       const { reason } = req.body;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -6295,12 +6300,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { documentId } = req.params;
       const user = req.auth!.user;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
 
-      const revisions = await storage.getDocumentRevisions(documentId);
+      const revisions = await storage.getDocumentRevisions(documentId, req.orgId!);
       const latestRevision = revisions[0];
       if (!latestRevision) {
         return res.status(400).json({ error: "Document has no revisions" });
@@ -6447,7 +6452,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { documentId } = req.params;
       const user = req.auth!.user;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }
@@ -6719,7 +6724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { documentId } = req.params;
       const user = req.auth!.user;
 
-      const doc = await storage.getDocumentById(documentId);
+      const doc = await storage.getDocumentById(documentId, req.orgId!);
       if (!doc) {
         return res.status(404).json({ error: "Document not found" });
       }

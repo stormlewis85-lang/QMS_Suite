@@ -379,37 +379,37 @@ export interface IStorage {
   // ============================================
 
   // Documents
-  getDocuments(filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]>;
-  getDocumentById(id: string): Promise<Document | undefined>;
+  getDocuments(orgId: string, filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]>;
+  getDocumentById(id: string, orgId: string): Promise<Document | undefined>;
   createDocument(data: InsertDocument): Promise<Document>;
-  updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document | undefined>;
-  deleteDocument(id: string): Promise<boolean>;
+  updateDocument(id: string, orgId: string, data: Partial<InsertDocument>): Promise<Document | undefined>;
+  deleteDocument(id: string, orgId: string): Promise<boolean>;
 
   // Revisions
-  getDocumentRevisions(documentId: string): Promise<DocumentRevision[]>;
-  getRevisionById(id: string): Promise<DocumentRevision | undefined>;
+  getDocumentRevisions(documentId: string, orgId: string): Promise<DocumentRevision[]>;
+  getRevisionById(id: string, orgId: string): Promise<DocumentRevision | undefined>;
   createRevision(data: InsertDocumentRevision): Promise<DocumentRevision>;
-  updateRevision(id: string, data: Partial<InsertDocumentRevision>): Promise<DocumentRevision | undefined>;
+  updateRevision(id: string, orgId: string, data: Partial<InsertDocumentRevision>): Promise<DocumentRevision | undefined>;
 
   // Distribution
-  getDistributions(documentId: string): Promise<DocumentDistribution[]>;
+  getDistributions(documentId: string, orgId: string): Promise<DocumentDistribution[]>;
   createDistribution(data: InsertDocumentDistribution): Promise<DocumentDistribution>;
-  acknowledgeDistribution(id: string): Promise<DocumentDistribution | undefined>;
+  acknowledgeDistribution(id: string, orgId: string): Promise<DocumentDistribution | undefined>;
 
   // Reviews
-  getReviews(documentId: string): Promise<DocumentReview[]>;
-  getPendingReviews(): Promise<DocumentReview[]>;
-  getOverdueReviews(): Promise<DocumentReview[]>;
+  getReviews(documentId: string, orgId: string): Promise<DocumentReview[]>;
+  getPendingReviews(orgId: string): Promise<DocumentReview[]>;
+  getOverdueReviews(orgId: string): Promise<DocumentReview[]>;
   createReview(data: InsertDocumentReview): Promise<DocumentReview>;
-  updateReview(id: string, data: Partial<InsertDocumentReview>): Promise<DocumentReview | undefined>;
+  updateReview(id: string, orgId: string, data: Partial<InsertDocumentReview>): Promise<DocumentReview | undefined>;
 
   // Links
-  getDocumentLinks(documentId: string): Promise<DocumentLink[]>;
+  getDocumentLinks(documentId: string, orgId: string): Promise<DocumentLink[]>;
   createDocumentLink(data: InsertDocumentLink): Promise<DocumentLink>;
-  deleteDocumentLink(id: string): Promise<boolean>;
+  deleteDocumentLink(id: string, orgId: string): Promise<boolean>;
 
   // Metrics
-  getDocumentMetrics(): Promise<{
+  getDocumentMetrics(orgId: string): Promise<{
     total: number;
     byStatus: Record<string, number>;
     byType: Record<string, number>;
@@ -1712,8 +1712,8 @@ class DatabaseStorage implements IStorage {
   // DOCUMENT CONTROL
   // ============================================
 
-  async getDocuments(filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]> {
-    const conditions = [];
+  async getDocuments(orgId: string, filters?: { type?: string; status?: string; category?: string; search?: string }): Promise<Document[]> {
+    const conditions = [eq(document.orgId, orgId)];
 
     if (filters?.type) {
       conditions.push(eq(document.type, filters.type as any));
@@ -1730,21 +1730,17 @@ class DatabaseStorage implements IStorage {
           ilike(document.title, `%${filters.search}%`),
           ilike(document.docNumber, `%${filters.search}%`),
           ilike(document.description, `%${filters.search}%`)
-        )
+        )!
       );
     }
 
-    if (conditions.length > 0) {
-      return await db.select().from(document)
-        .where(and(...conditions))
-        .orderBy(desc(document.updatedAt));
-    }
-
-    return await db.select().from(document).orderBy(desc(document.updatedAt));
+    return await db.select().from(document)
+      .where(and(...conditions))
+      .orderBy(desc(document.updatedAt));
   }
 
-  async getDocumentById(id: string): Promise<Document | undefined> {
-    const [result] = await db.select().from(document).where(eq(document.id, id));
+  async getDocumentById(id: string, orgId: string): Promise<Document | undefined> {
+    const [result] = await db.select().from(document).where(and(eq(document.id, id), eq(document.orgId, orgId)));
     return result;
   }
 
@@ -1753,28 +1749,28 @@ class DatabaseStorage implements IStorage {
     return newDoc;
   }
 
-  async updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document | undefined> {
+  async updateDocument(id: string, orgId: string, data: Partial<InsertDocument>): Promise<Document | undefined> {
     const [updated] = await db.update(document)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(document.id, id))
+      .where(and(eq(document.id, id), eq(document.orgId, orgId)))
       .returning();
     return updated;
   }
 
-  async deleteDocument(id: string): Promise<boolean> {
-    const result = await db.delete(document).where(eq(document.id, id));
+  async deleteDocument(id: string, orgId: string): Promise<boolean> {
+    const result = await db.delete(document).where(and(eq(document.id, id), eq(document.orgId, orgId)));
     return (result.rowCount ?? 0) > 0;
   }
 
   // Revisions
-  async getDocumentRevisions(documentId: string): Promise<DocumentRevision[]> {
+  async getDocumentRevisions(documentId: string, orgId: string): Promise<DocumentRevision[]> {
     return await db.select().from(documentRevision)
-      .where(eq(documentRevision.documentId, documentId))
+      .where(and(eq(documentRevision.documentId, documentId), eq(documentRevision.orgId, orgId)))
       .orderBy(desc(documentRevision.createdAt));
   }
 
-  async getRevisionById(id: string): Promise<DocumentRevision | undefined> {
-    const [result] = await db.select().from(documentRevision).where(eq(documentRevision.id, id));
+  async getRevisionById(id: string, orgId: string): Promise<DocumentRevision | undefined> {
+    const [result] = await db.select().from(documentRevision).where(and(eq(documentRevision.id, id), eq(documentRevision.orgId, orgId)));
     return result;
   }
 
@@ -1783,18 +1779,18 @@ class DatabaseStorage implements IStorage {
     return newRev;
   }
 
-  async updateRevision(id: string, data: Partial<InsertDocumentRevision>): Promise<DocumentRevision | undefined> {
+  async updateRevision(id: string, orgId: string, data: Partial<InsertDocumentRevision>): Promise<DocumentRevision | undefined> {
     const [updated] = await db.update(documentRevision)
       .set(data)
-      .where(eq(documentRevision.id, id))
+      .where(and(eq(documentRevision.id, id), eq(documentRevision.orgId, orgId)))
       .returning();
     return updated;
   }
 
   // Distribution
-  async getDistributions(documentId: string): Promise<DocumentDistribution[]> {
+  async getDistributions(documentId: string, orgId: string): Promise<DocumentDistribution[]> {
     return await db.select().from(documentDistribution)
-      .where(eq(documentDistribution.documentId, documentId))
+      .where(and(eq(documentDistribution.documentId, documentId), eq(documentDistribution.orgId, orgId)))
       .orderBy(desc(documentDistribution.distributedAt));
   }
 
@@ -1803,32 +1799,33 @@ class DatabaseStorage implements IStorage {
     return newDist;
   }
 
-  async acknowledgeDistribution(id: string): Promise<DocumentDistribution | undefined> {
+  async acknowledgeDistribution(id: string, orgId: string): Promise<DocumentDistribution | undefined> {
     const [updated] = await db.update(documentDistribution)
       .set({ acknowledgedAt: new Date() })
-      .where(eq(documentDistribution.id, id))
+      .where(and(eq(documentDistribution.id, id), eq(documentDistribution.orgId, orgId)))
       .returning();
     return updated;
   }
 
   // Reviews
-  async getReviews(documentId: string): Promise<DocumentReview[]> {
+  async getReviews(documentId: string, orgId: string): Promise<DocumentReview[]> {
     return await db.select().from(documentReview)
-      .where(eq(documentReview.documentId, documentId))
+      .where(and(eq(documentReview.documentId, documentId), eq(documentReview.orgId, orgId)))
       .orderBy(desc(documentReview.createdAt));
   }
 
-  async getPendingReviews(): Promise<DocumentReview[]> {
+  async getPendingReviews(orgId: string): Promise<DocumentReview[]> {
     return await db.select().from(documentReview)
-      .where(eq(documentReview.status, 'pending'))
+      .where(and(eq(documentReview.status, 'pending'), eq(documentReview.orgId, orgId)))
       .orderBy(documentReview.dueDate);
   }
 
-  async getOverdueReviews(): Promise<DocumentReview[]> {
+  async getOverdueReviews(orgId: string): Promise<DocumentReview[]> {
     return await db.select().from(documentReview)
       .where(and(
         eq(documentReview.status, 'pending'),
-        lt(documentReview.dueDate, new Date())
+        lt(documentReview.dueDate, new Date()),
+        eq(documentReview.orgId, orgId)
       ))
       .orderBy(documentReview.dueDate);
   }
@@ -1838,18 +1835,18 @@ class DatabaseStorage implements IStorage {
     return newReview;
   }
 
-  async updateReview(id: string, data: Partial<InsertDocumentReview>): Promise<DocumentReview | undefined> {
+  async updateReview(id: string, orgId: string, data: Partial<InsertDocumentReview>): Promise<DocumentReview | undefined> {
     const [updated] = await db.update(documentReview)
       .set(data)
-      .where(eq(documentReview.id, id))
+      .where(and(eq(documentReview.id, id), eq(documentReview.orgId, orgId)))
       .returning();
     return updated;
   }
 
   // Links
-  async getDocumentLinks(documentId: string): Promise<DocumentLink[]> {
+  async getDocumentLinks(documentId: string, orgId: string): Promise<DocumentLink[]> {
     return await db.select().from(documentLink)
-      .where(eq(documentLink.sourceDocId, documentId))
+      .where(and(eq(documentLink.sourceDocId, documentId), eq(documentLink.orgId, orgId)))
       .orderBy(desc(documentLink.createdAt));
   }
 
@@ -1858,13 +1855,13 @@ class DatabaseStorage implements IStorage {
     return newLink;
   }
 
-  async deleteDocumentLink(id: string): Promise<boolean> {
-    const result = await db.delete(documentLink).where(eq(documentLink.id, id));
+  async deleteDocumentLink(id: string, orgId: string): Promise<boolean> {
+    const result = await db.delete(documentLink).where(and(eq(documentLink.id, id), eq(documentLink.orgId, orgId)));
     return (result.rowCount ?? 0) > 0;
   }
 
   // Metrics
-  async getDocumentMetrics(): Promise<{
+  async getDocumentMetrics(orgId: string): Promise<{
     total: number;
     byStatus: Record<string, number>;
     byType: Record<string, number>;
@@ -1872,7 +1869,7 @@ class DatabaseStorage implements IStorage {
     pendingApprovals: number;
     recentChanges: number;
   }> {
-    const allDocs = await db.select().from(document);
+    const allDocs = await db.select().from(document).where(eq(document.orgId, orgId));
     const total = allDocs.length;
 
     const byStatus: Record<string, number> = {};
@@ -1882,7 +1879,7 @@ class DatabaseStorage implements IStorage {
       byType[doc.type] = (byType[doc.type] || 0) + 1;
     }
 
-    const overdueReviewsList = await this.getOverdueReviews();
+    const overdueReviewsList = await this.getOverdueReviews(orgId);
     const overdueReviews = overdueReviewsList.length;
 
     const pendingApprovalDocs = allDocs.filter(d => d.status === 'review');
@@ -1891,7 +1888,7 @@ class DatabaseStorage implements IStorage {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
     const recentRevisions = await db.select().from(documentRevision)
-      .where(sql`${documentRevision.createdAt} > ${oneWeekAgo}`);
+      .where(and(eq(documentRevision.orgId, orgId), sql`${documentRevision.createdAt} > ${oneWeekAgo}`));
     const recentChanges = recentRevisions.length;
 
     return { total, byStatus, byType, overdueReviews, pendingApprovals, recentChanges };
