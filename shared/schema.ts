@@ -459,7 +459,7 @@ export const pfd = pgTable('pfd', {
   moldCells: text('mold_cells'),
   cellLayoutNotes: text('cell_layout_notes'),
   mermaidDiagram: text('mermaid_diagram'),
-  diagramJson: jsonb('diagram_json').$type<any>(),
+  diagramJson: jsonb('diagram_json').$type<Record<string, unknown>>(),
   origDate: timestamp('orig_date'),
   approvedAt: timestamp('approved_at'),
   effectiveFrom: timestamp('effective_from'),
@@ -709,9 +709,9 @@ export const changePackage = pgTable('change_package', {
   priority: text('priority').notNull().default('medium'),
   targetEntityType: text('target_entity_type').notNull(),
   targetEntityId: uuid('target_entity_id').notNull(),
-  beforeSnapshot: jsonb('before_snapshot').$type<any>(),
-  afterSnapshot: jsonb('after_snapshot').$type<any>(),
-  redlineJson: jsonb('redline_json').$type<any>().default({}),
+  beforeSnapshot: jsonb('before_snapshot').$type<Record<string, unknown>>(),
+  afterSnapshot: jsonb('after_snapshot').$type<Record<string, unknown>>(),
+  redlineJson: jsonb('redline_json').$type<Record<string, unknown>>().default({}),
   impactAnalysis: jsonb('impact_analysis').$type<{
     affectedParts: { partId: string; partNumber: string; documents: string[] }[];
     apDeltas: { rowId: string; oldAP: string; newAP: string; change: string }[];

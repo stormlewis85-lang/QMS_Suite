@@ -80,12 +80,13 @@
 
 ### P3 — Low (Code Quality / Polish)
 
-[TASK-010] Type safety cleanup — replace any types in business logic | Scope: Standard | Assigned: Developer | Dependencies: none
+[TASK-010] Type safety cleanup — replace any types in business logic | Scope: Standard | Assigned: Developer | Dependencies: none | **DONE**
 - 539 total `any` occurrences. Priority targets:
   - Replace `catch (error: any)` with `catch (error: unknown)` + type narrowing (59 instances)
   - Define interfaces for JSONB columns ($type<any> in schema.ts, 4 instances)
   - Fix CapaDetail.tsx (44 any) and CapaAnalysisTools.tsx (31 any)
 - **Why:** Type safety erosion. Low runtime risk but high maintainability impact.
+- **Completed:** Replaced all 59 `catch (error: any)` with `catch (error: unknown)` in routes.ts. Added `getErrorMessage()` utility for type-safe error message extraction. Replaced 4 `$type<any>()` with `$type<Record<string, unknown>>()` in schema.ts JSONB columns. Client-side CAPA components deferred (outside autopilot scope). 250/250 unit tests pass.
 
 [TASK-011] Add pagination to list endpoints | Scope: Standard | Assigned: Developer | Dependencies: none
 - getDocuments(), getAllParts(), getAllProcesses(), getAllPFMEAs() return unbounded result sets

@@ -160,6 +160,10 @@ function resolveWorkflowAssignee(stepDef: any, context: { initiatedBy: string })
   }
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Run seeds on startup
   runAllSeeds().catch(console.error);
@@ -431,9 +435,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         size: req.file.size,
         ...result,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('File analysis failed:', error);
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -457,9 +461,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Column detection failed:', error);
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -489,9 +493,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       preview.filename = req.file.originalname;
       
       res.json(preview);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Preview generation failed:', error);
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -540,9 +544,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Import failed:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -744,8 +748,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         apDistribution,
         recentActivity,
       });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1120,9 +1124,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json({ mermaid, steps: allSteps });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error generating PFD preview:", error);
-      res.status(500).json({ error: error.message || "Failed to generate PFD preview" });
+      res.status(500).json({ error: getErrorMessage(error) || "Failed to generate PFD preview" });
     }
   });
 
@@ -1363,9 +1367,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).returning();
       
       res.json(newRow);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error copying PFMEA row:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1394,9 +1398,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.setHeader('Content-Length', result.buffer.length);
       res.send(result.buffer);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export failed:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1433,8 +1437,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       filtered.sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime());
       
       res.json(filtered);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1449,8 +1453,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.json(items);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1489,8 +1493,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).returning();
       
       res.status(201).json(newItem);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1527,8 +1531,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1572,8 +1576,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1619,8 +1623,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1644,8 +1648,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1663,8 +1667,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1723,8 +1727,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       res.json(summary);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1752,8 +1756,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       .orderBy(asc(actionItem.targetDate));
       
       res.json(items);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1772,8 +1776,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.json(items);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1784,8 +1788,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const count = await notificationService.getUnreadCount(userId);
       res.json({ count });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1796,8 +1800,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const updated = await notificationService.markAsRead(parseInt(id));
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1808,8 +1812,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await notificationService.markAllAsRead(userId);
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1820,8 +1824,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await notificationService.delete(parseInt(id));
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1832,8 +1836,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await notificationService.deleteAllRead(userId);
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1849,8 +1853,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           dueSoon: dueSoonCount,
         }
       });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -1992,9 +1996,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).returning();
       
       res.json(newRow);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error copying Control Plan row:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -2023,9 +2027,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.setHeader('Content-Length', result.buffer.length);
       res.send(result.buffer);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export failed:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -2081,9 +2085,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(exports);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Bulk export failed:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -2918,9 +2922,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const result = await generatePFMEA({ partId: id, processDefIds: processIds });
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error generating PFMEA:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -2940,11 +2944,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: type || 'Production'
       });
       res.json(result);
-    } catch (error: any) {
-      if (error.message.includes('not found')) {
-        return res.status(404).json({ error: error.message });
+    } catch (error: unknown) {
+      if (getErrorMessage(error).includes('not found')) {
+        return res.status(404).json({ error: getErrorMessage(error) });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -2971,8 +2975,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         controlPlan: cpResult,
         message: `Generated PFMEA with ${pfmeaResult.summary.totalRows} rows and Control Plan with ${cpResult.summary.totalRows} characteristics`
       });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3268,8 +3272,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       res.json(summary);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3292,9 +3296,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Auto-review failed:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3331,9 +3335,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Auto-review failed:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3581,8 +3585,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         comment,
       });
       res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3602,8 +3606,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         comment: 'Submitted for review',
       });
       res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3622,8 +3626,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         comment: comment || 'Approved',
       });
       res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3645,8 +3649,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId,
       });
       res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3660,8 +3664,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id
       );
       res.json(history);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3686,8 +3690,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         signerEmail: signerEmail || '',
       });
       res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3701,8 +3705,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id
       );
       res.json(signatures);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3713,8 +3717,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const result = await documentControlService.verifySignature(id);
       res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3731,8 +3735,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { limit, offset }
       );
       res.json(log);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3746,8 +3750,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id
       );
       res.json({ docNo });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3768,8 +3772,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.orgId!
       );
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3789,8 +3793,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         watcherUserId
       );
       res.json({ success: true });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(400).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3826,9 +3830,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Type', result.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.send(result.buffer);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3905,8 +3909,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3926,8 +3930,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3944,8 +3948,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ));
       
       res.json(sigs);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -3983,8 +3987,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.json(sig);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -4041,8 +4045,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.json(newPfmea);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -4060,8 +4064,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(desc(auditLog.at));
       
       res.json(history);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -4091,8 +4095,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .limit(parseInt(limitParam as string));
       
       res.json(logs);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -4145,8 +4149,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         controlPlan: newCP,
         controlPlanId: newCP.id,
       });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ error: getErrorMessage(error) });
     }
   });
 
@@ -5939,7 +5943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const list = await storage.createDistributionList(data);
       res.status(201).json(list);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error?.issues) {
         return res.status(400).json({ error: "Validation error: " + fromError(error).message });
       }
@@ -6519,7 +6523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const comment = await storage.createDocumentComment(data);
       res.status(201).json(comment);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error?.issues) {
         return res.status(400).json({ error: "Validation error: " + fromError(error).message });
       }
@@ -6653,7 +6657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const doc = await storage.createExternalDocument(data);
       res.status(201).json(doc);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error?.issues) {
         return res.status(400).json({ error: "Validation error: " + fromError(error).message });
       }
@@ -6791,7 +6795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const link = await storage.createDocumentLinkEnhanced(data);
       res.status(201).json(link);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error?.issues) {
         return res.status(400).json({ error: "Validation error: " + fromError(error).message });
       }
