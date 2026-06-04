@@ -2,6 +2,33 @@
 
 > Project-specific details. Read by all agents at project kickoff. Updated by Docs Agent and PM Agent as the project evolves. Overrides CONTEXT_MASTER where there's a conflict.
 
+## Project Capabilities
+
+<!-- Canonical declaration. PM checks this against each agent's Project Requirements at activation. -->
+
+### Framework
+- agents-master version: v3.4 (framework-main — DEC-007 flat framework mount; harness installed 2026-06-03)
+- Last reconciled: 2026-06-03
+
+### Infrastructure
+- Language runtimes: Node.js + TypeScript (Vite client/)
+- Package manager: npm
+- Unit/integration/E2E testing: not verified this pass — PM to reconcile on first task
+- Database: not verified this pass
+- Chrome available: yes (interactive sessions)
+
+### Active Agents
+- Tier 2 (Core): PM, Research, Architect, Developer, Test, QA, Docs
+- Tier 3 (Specialists): per Active Specialists below
+- Meta: /agent-create command — no standing Agent Creator agent
+
+### Active Domain
+software
+
+### File Structure
+- Root CLAUDE.md is project-customized (NOT a harness copy) — needs manual reconciliation with v3.4 harness rules
+- domains/ + skills/ (universal + software) seeded 2026-06-03 (DEC-007)
+
 ## Project Name
 PFMEASuite — QMS Suite
 

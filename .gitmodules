@@ -1,3 +1,4 @@
 [submodule "agents-master"]
 	path = agents-master
 	url = https://github.com/stormlewis85-lang/agent-master-repo.git
+	branch = framework-main
