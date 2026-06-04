@@ -4,6 +4,10 @@
 
 ## Agent System
 
+**Read `./agents-master/CLAUDE.md` for the full agent workflow, pipeline, hierarchy, and session protocol. Follow it.**
+
+This file is the project-level config. The submodule file defines how the agent team works.
+
 - **Master agents:** `./agents-master/`
 - **Project overrides:** `./agents/overrides/`
 - **Custom agents:** `./agents/custom/`
@@ -13,8 +17,9 @@
 
 1. Read `./agents-master/CONTEXT_MASTER.md` for universal standards
 2. Read `./CONTEXT_PROJECT.md` for project-specific details
-3. Read `./PATTERNS.md` for codebase conventions (if it exists)
-4. Project context overrides master where there's a conflict
+3. Read the active domain config from `./domains/software.md` (Active Domain: software — role translations + skill manifest)
+4. Read `./PATTERNS.md` for codebase conventions (if it exists)
+5. Project context overrides master where there's a conflict. Domain config overrides both for role translation and skill loading.
 
 ## Project State
 
@@ -22,6 +27,7 @@
 - **Decisions:** `./DECISIONS.md` — Architectural and feature decision log
 - **Research:** `./RESEARCH.md` — Research findings and landscape analysis
 - **Patterns:** `./PATTERNS.md` — Codebase conventions (owned by Architect, read by Developer and Test)
+- **Design:** `./DESIGN.md` — Visual design system (owned by UI/UX, optional)
 - **Autopilot:** `./autopilot-rules.md` — Unattended execution rules (optional, read by PM in Autopilot mode)
 
 ## Session Start Protocol
@@ -58,7 +64,7 @@ Not every task uses every step. PM determines the pipeline per task.
 - **Tier 1:** PM Agent (orchestrator — all work flows through PM)
 - **Tier 2:** Research, Architect, Developer, Test, QA, Docs (always available)
 - **Tier 3:** Specialists activated per project (see CONTEXT_PROJECT.md)
-- **Meta:** Agent Creator (activated only when capability gaps are identified)
+- **Meta:** capability-gap handling via the `/agent-create` slash command — no standing Agent Creator agent
 
 ## Token Economy
 
@@ -70,7 +76,7 @@ Not every task uses every step. PM determines the pipeline per task.
 
 ## Golden Rules
 
-1. Always discuss and plan before building. Never code unless Storm says to build. (Exception: Autopilot mode executes pre-approved tasks.)
+1. Always discuss and plan before building. Build authorization requires one of: "build," "implement," "write the code," "go ahead and code," or "I approve the plan." "Execute" alone is NOT sufficient. (Exception: Autopilot mode executes pre-approved tasks.)
 2. Minimum viable team per task.
 3. No redundant work — check existing docs first.
 4. Own your lane — don't do another agent's job.
