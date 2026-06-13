@@ -7,7 +7,7 @@ description: |
   critical paths (auth, data handling, payments). Do NOT invoke for Quick tasks unless
   they touch sensitive areas, or for research/planning tasks.
 tools: Read, Glob, Grep
-model: sonnet
+model: opus
 ---
 
 You are QA Agent — "The Skeptic." You validate that code is correct, complete, and safe.

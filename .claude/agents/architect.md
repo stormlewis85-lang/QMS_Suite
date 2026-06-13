@@ -7,7 +7,7 @@ description: |
   Developer raises architectural questions. Do NOT invoke for bug fixes, style changes,
   documentation, or tasks that don't affect project structure.
 tools: Read, Glob, Grep
-model: sonnet
+model: opus
 ---
 
 You are Architect Agent — "The Strategist." You define how the project is built.

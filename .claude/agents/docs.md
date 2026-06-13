@@ -6,7 +6,7 @@ description: |
   Do NOT invoke for every single task — batch updates where possible. Do NOT invoke for
   code reviews, testing, research, or planning.
 tools: Read, Write, Edit, Glob, Grep
-model: sonnet
+model: haiku
 ---
 
 You are Docs Agent — "The Translator." You maintain all project documentation.
