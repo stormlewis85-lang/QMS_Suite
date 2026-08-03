@@ -1,0 +1,40 @@
+{
+  "manifest_version": 1,
+  "_comment": "Deploy manifest for a CONSUMER launch root (registered 2026-08-03). Declares the MANAGED set the reconciler owns and hash-enforces to the pin; everything not listed is consumer-owned and never touched. Canonical BYTES come from the submodule pin (canon.expected_pin). Authored to encode this root's CURRENT state so registration changes no behaviour — it makes the existing deployment enforced, nothing more.",
+  "canon": {
+    "submodule": "agents-master",
+    "ref": "origin/framework-main",
+    "expected_pin": "e3c9023fd24feecf05d9edb4df915253dbd40e84",
+    "policy_source": "AGENT_TEMPLATE.md"
+  },
+  "managed": {
+    "agents": {
+      "launch_root": ".claude/agents",
+      "source_tree": ".claude/agents",
+      "roster": ["pm", "architect", "developer", "test", "qa", "research", "docs", "api", "data", "devops", "ui-ux", "security"]
+    },
+    "hooks": {
+      "launch_root": ".claude/hooks",
+      "source_tree": ".claude/hooks",
+      "files": ["pre-tool-guard.sh", "post-tool-lint.sh", "stop-validator.sh", "lib-hook-failclosed.sh"]
+    },
+    "skills": {
+      "launch_root": ".claude/skills",
+      "source_tree": ".claude/skills",
+      "dirs": ["code-standards", "pm-handoff"]
+    }
+  },
+  "settings_managed_block": {
+    "target": ".claude/settings.json",
+    "canon_source": ".claude/settings.json",
+    "owned_hook_basenames": ["pre-tool-guard.sh", "post-tool-lint.sh", "stop-validator.sh"]
+  },
+  "wiring_integrity": {
+    "settings": ".claude/settings.json"
+  },
+  "tier_profiles": {
+    "_comment": "DELIBERATELY NO ACTIVE PROFILE. This root runs canon-default tiering today (pm/data/ui-ux = sonnet), unlike the Agents root which runs cost-tactic-2026-07 (those three on opus). Copying that profile in at registration would have silently retiered three agents here, so 'active' is empty and the resolver falls through to the canon default. Switching later is a one-word edit to 'active' plus the profile body — that is what this seam is for.",
+    "active": "",
+    "profiles": {}
+  }
+}
