@@ -4,30 +4,63 @@
   "canon": {
     "submodule": "agents-master",
     "ref": "origin/framework-main",
-    "expected_pin": "de64dcc893fdde7218dbace4ea9b673fd04986cd",
+    "expected_pin": "278a18c9218c872ab13c88be0f395719419f115b",
     "policy_source": "AGENT_TEMPLATE.md"
   },
   "managed": {
     "agents": {
       "launch_root": ".claude/agents",
       "source_tree": ".claude/agents",
-      "roster": ["pm", "architect", "developer", "test", "qa", "research", "docs", "api", "data", "devops", "ui-ux", "security"]
+      "roster": [
+        "pm",
+        "architect",
+        "developer",
+        "test",
+        "qa",
+        "research",
+        "docs",
+        "api",
+        "data",
+        "devops",
+        "ui-ux",
+        "security"
+      ]
     },
     "hooks": {
       "launch_root": ".claude/hooks",
       "source_tree": ".claude/hooks",
-      "files": ["pre-tool-guard.sh", "post-tool-lint.sh", "stop-validator.sh", "lib-hook-failclosed.sh"]
+      "files": [
+        "pre-tool-guard.sh",
+        "post-tool-lint.sh",
+        "stop-validator.sh",
+        "lib-hook-failclosed.sh"
+      ]
     },
     "skills": {
       "launch_root": ".claude/skills",
       "source_tree": ".claude/skills",
-      "dirs": ["code-standards", "pm-handoff"]
+      "dirs": [
+        "code-standards",
+        "pm-handoff",
+        "api-design-principles",
+        "code-review-checklist",
+        "dependency-audit",
+        "git-workflow",
+        "migration-planner",
+        "performance-profiling",
+        "pr-workflow",
+        "testing-strategy"
+      ]
     }
   },
   "settings_managed_block": {
     "target": ".claude/settings.json",
     "canon_source": ".claude/settings.json",
-    "owned_hook_basenames": ["pre-tool-guard.sh", "post-tool-lint.sh", "stop-validator.sh"]
+    "owned_hook_basenames": [
+      "pre-tool-guard.sh",
+      "post-tool-lint.sh",
+      "stop-validator.sh"
+    ]
   },
   "wiring_integrity": {
     "settings": ".claude/settings.json"
