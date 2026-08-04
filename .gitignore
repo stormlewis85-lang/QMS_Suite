@@ -6,3 +6,22 @@ vite.config.ts.*
 *.tar.gz
 shared.zip
 nul
+# Claude Code hook logs
+.claude/logs/
+
+# Framework skills — deploy artifacts single-sourced from agents-master
+# (ROSTER_SKILLS in setup-claude.sh), overwritten on every run. Committing one
+# re-freezes it against framework updates. Project-authored skills are not
+# listed here and the deploy never touches them.
+/.claude/skills/code-standards/
+/.claude/skills/pm-handoff/
+/.claude/skills/api-design-principles/
+/.claude/skills/code-review-checklist/
+/.claude/skills/dependency-audit/
+/.claude/skills/git-workflow/
+/.claude/skills/migration-planner/
+/.claude/skills/performance-profiling/
+/.claude/skills/pr-workflow/
+/.claude/skills/systematic-debugging/
+/.claude/skills/tdd-workflow/
+/.claude/skills/testing-strategy/
