@@ -4,7 +4,7 @@
   "canon": {
     "submodule": "agents-master",
     "ref": "origin/framework-main",
-    "expected_pin": "e3c9023fd24feecf05d9edb4df915253dbd40e84",
+    "expected_pin": "de64dcc893fdde7218dbace4ea9b673fd04986cd",
     "policy_source": "AGENT_TEMPLATE.md"
   },
   "managed": {
