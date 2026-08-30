@@ -41,3 +41,22 @@
 **Rationale:** The remaining serial/uuid inconsistency (DEC-003's motivation) lives only in a module that will be extracted out of this codebase; fixing it here spends a Deep session and a risky remote-DB migration on code the plan retires. DEC-003's Document Control and actionItem/notifications phases are likewise deferred to the Phase 7 module decisions.
 **Alternatives considered:** (1) Run the migration anyway against a Neon branch — rejected, no consumer for the result. (2) Hunk-level salvage of the logger wiring across 28 route files — rejected, the logger and UUID edits are interleaved and the app-level `log()` helper already routes everything through pino.
 **Status:** Active. **Supersedes:** DEC-003 (Status now "Superseded by DEC-005").
+
+## [DEC-006] feat/design-system parked unmerged — token rewrite never reconciled with the shadcn consumer layer
+**Date:** 2026-08-30
+**Decided by:** Storm
+**Decision:** Branch `feat/design-system` (2026-04-02 work; HEAD `6817052`) stays on origin, unmerged, as a parked spec input. `DESIGN.md` on that branch is the visual spec; the CSS/tailwind implementation on it is NOT to be merged into this monolith. If the OneQMS design system is implemented, it is implemented in the app that will own it (the Hub / OneAdmin is the natural home — see the 2026-07-12 completion plan: this monolith goes read-only at Phase 6), against the findings below.
+**Review record (2026-08-30, code-review at medium, 13 candidates all CONFIRMED, 10 reported; two fixed on the branch at `6817052` — outline-border tokens and `--sidebar-border`, guarded by `tests/unit/design-tokens.test.ts`):**
+1. `.hover-elevate` / `.active-elevate-2` / `.toggle-elevate` utilities and `--elevate-1/2` deleted; every Button/Badge and several clickable cards lose all hover/pressed styling (no variant carries `hover:` classes).
+2. `--sidebar-ring` and `--sidebar-accent-foreground` still deleted (focus ring falls to Tailwind blue); `--sidebar-accent` repurposed from hover-gray to brand teal so hovered and active nav items paint identically.
+3. WCAG AA failures the same commit's `DESIGN.md` claims to pass: white-on-primary 3.85:1 light / 2.4:1 dark; white-on-warning 2.1:1; input border vs page 1.14:1.
+4. Un-layered `.animate-in` overrides tailwindcss-animate's; tooltips and context menus get the wrong entrance, dialogs keep the old one.
+5. `primary/destructive/secondary.border` config keys removed; every filled button shows a light-gray ring.
+6. `@media (pointer: coarse)` forces 44px min-height on comboboxes/typed inputs with no opt-out; compact PFMEA / Control Plan grid rows balloon on the target tablets; coverage inconsistent (`<Input>` without `type` unaffected).
+7. `--accent` changed from neutral surface to saturated teal + white foreground; table-row hovers, toggles, dropdown/select/command focus states all change behavior.
+8. Reduced-motion block is a hand list of nine classes; dialogs, sheets, accordions, press scale and smooth scroll still animate.
+9. `borderRadius` config (12/10/8) contradicts `DESIGN.md` (8/6/4) in the same commit.
+10. `DESIGN.md` drops 17 of the old guideline's 20 sections (data tables, forms, modals, wizards, FMEA table, control plan grid, process library, part details); `fontFamily.mono` removed while 57 `font-mono` uses remain.
+**Rationale:** Reconciling is Standard-to-Deep work (utility classes, sidebar tokens, contrast re-tuning, animation layering, radius scale) in a codebase the plan retires — the TASK-006 shape again (DEC-005). The spec has value; the implementation does not, here.
+**Alternatives considered:** (B) reconcile in this repo — rejected per above; (C) delete the branch and keep only `DESIGN.md` — rejected, the token work is useful reference for whoever implements it.
+**Status:** Active. **Related:** DEC-005.

@@ -4,6 +4,8 @@
 
 ## Backlog
 
+[TASK-019] OneQMS design system — implement from the parked spec, in the owning app | Scope: Deep | Assigned: UI/UX + Developer | Dependencies: home decided (Hub/OneAdmin vs here — see DEC-006) | Spec: DESIGN.md on branch feat/design-system (6817052). Ten confirmed review findings to satisfy are listed under DEC-006; add a class-presence test alongside tests/unit/design-tokens.test.ts so removed utilities/config keys with live consumers fail the build. NOT autopilot-eligible.
+
 [TASK-012] Add CSRF protection middleware | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
 [TASK-013] Add session cleanup cron/middleware for expired sessions | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
 [TASK-014] Add rate limiting to auth endpoints | Scope: Quick | Assigned: — | Dependencies: none | **DONE**
