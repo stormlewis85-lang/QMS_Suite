@@ -52,13 +52,6 @@
 
 ### P2 — Medium (Technical Debt / Maintainability)
 
-[TASK-006] Serial-to-UUID migration — CAPA module (19 tables) | Scope: Deep | Assigned: Developer | Dependencies: TASK-003
-- Migrate 19 CAPA tables from serial('id') to uuid('id').defaultRandom()
-- Dual-write approach: add uuid column, backfill, update FKs, swap, drop serial
-- Write raw SQL migration script
-- Update storage methods, routes, and client references
-- **Why:** Pattern inconsistency (34 serial vs 34 uuid). CAPA module is most isolated, safest to migrate first.
-
 [TASK-007] Split routes.ts into module routers | Scope: Standard | Assigned: Architect + Developer | Dependencies: none | **DONE**
 - Current: 11,631 lines in single file
 - Target: Express Router per module (auth, import, dashboard, parts, processes, pfmea, control-plans, documents, capa, change-packages, auto-review)
@@ -99,6 +92,8 @@
 ## In Review
 
 ## Done
+
+[TASK-006] Serial-to-UUID migration — CAPA module (19 tables) | Superseded: 2026-08-29 | Summary: RETIRED, not built. The 2026-07-12 suite completion plan declares the monolith's 19 CAPA tables dead once the consolidation-track dedup verdict ratifies OneCAPA as canonical, and freezes the monolith read-only at Phase 6 — migrating those tables is work on a module scheduled for deletion. The March 2026 working tree that attempted it is archived as branch feat/capa-uuid-migration (7855b8c; tsc 92 errors, migration 0004 never applied to the Neon dev DB) and must not merge. The unrelated pino request-logging change from the same tree was salvaged separately (feat/pino-logger). See DEC-005. Reopen only if the dedup verdict goes the other way.
 
 [TASK-012] Add CSRF protection middleware | Completed: 2026-03-02 | Summary: Created csrfProtection middleware checking X-Requested-With header or JSON content-type on POST/PUT/PATCH/DELETE. Applied globally to /api/*. Updated 10 client files with header on bodiless fetch calls. 250/250 unit tests pass.
 

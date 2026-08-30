@@ -24,7 +24,7 @@
 **Decision:** Migrate serial IDs to UUID using raw SQL migration scripts in module order: CAPA first (19 tables), then Document Control Phase 2/3 (13 tables), then actionItem/notifications (2 tables). Dual-write approach during migration.
 **Rationale:** drizzle-kit push is interactive and can't handle FK rewiring. CAPA module is most isolated with fewest cross-module references, making it safest to migrate first.
 **Alternatives considered:** (1) drizzle-kit push — rejected, interactive mode incompatible with CI. (2) Big-bang migration of all 34 tables at once — rejected, too much blast radius. (3) Keep serial IDs — rejected, pattern inconsistency and cross-module FK type mismatches (integer→uuid) cause runtime errors.
-**Status:** Active — pending TASK-006
+**Status:** Superseded by DEC-005 (2026-08-29) — TASK-006 retired; monolith CAPA scheduled for deletion under the 2026-07-12 completion plan
 
 ## [DEC-004] routes.ts split strategy
 **Date:** 2026-03-01
@@ -33,3 +33,11 @@
 **Rationale:** File grew from ~3,800 to 11,631 lines across Document Control and CAPA development. Code review, navigation, and merge conflicts are severely impacted. Pure refactor with no functional changes.
 **Alternatives considered:** (1) Keep monolithic — rejected, already causing developer friction. (2) Split by HTTP method — rejected, doesn't match domain boundaries. (3) Full microservices — rejected, premature for current scale.
 **Status:** Active — pending TASK-007
+
+## [DEC-005] CAPA serial-to-UUID migration retired — the monolith's CAPA module is scheduled for deletion, not repair
+**Date:** 2026-08-29
+**Decided by:** Storm
+**Decision:** Do not execute TASK-006. The suite completion plan (2026-07-12, on the PFMEA Suite project card) declares the 19 CAPA tables dead once the consolidation-track dedup verdict ratifies OneCAPA as the canonical CAPA module, and freezes this monolith read-only at Phase 6. A Deep migration of tables slated for deletion has no customer. The attempted working tree is preserved as archive branch `feat/capa-uuid-migration` (7855b8c) and must not merge; the pino logging it also carried is salvaged on `feat/pino-logger`.
+**Rationale:** The remaining serial/uuid inconsistency (DEC-003's motivation) lives only in a module that will be extracted out of this codebase; fixing it here spends a Deep session and a risky remote-DB migration on code the plan retires. DEC-003's Document Control and actionItem/notifications phases are likewise deferred to the Phase 7 module decisions.
+**Alternatives considered:** (1) Run the migration anyway against a Neon branch — rejected, no consumer for the result. (2) Hunk-level salvage of the logger wiring across 28 route files — rejected, the logger and UUID edits are interleaved and the app-level `log()` helper already routes everything through pino.
+**Status:** Active. **Supersedes:** DEC-003 (Status now "Superseded by DEC-005").
