@@ -39,6 +39,11 @@
     --sidebar-foreground: 210 20% 90%;
     --sidebar-muted: 222 40% 18%;
     --sidebar-accent: 168 80% 32%;
+    --sidebar-border: 222 40% 18%;
+
+    /* consumed by shadcn button/badge `outline` variants — surface-relative, overridden in .dark */
+    --button-outline: rgba(0, 0, 0, .10);
+    --badge-outline: rgba(0, 0, 0, .05);
   }
 
   .dark {
@@ -66,6 +71,9 @@
     --chart-3: 347 77% 50%;
     --chart-4: 215 20% 55%;
     --chart-5: 210 20% 70%;
+
+    --button-outline: rgba(255, 255, 255, .10);
+    --badge-outline: rgba(255, 255, 255, .05);
   }
 
   * {

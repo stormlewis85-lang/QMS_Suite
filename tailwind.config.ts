@@ -66,7 +66,8 @@ export default {
           DEFAULT: 'hsl(var(--sidebar))',
           foreground: 'hsl(var(--sidebar-foreground))',
           muted: 'hsl(var(--sidebar-muted))',
-          accent: 'hsl(var(--sidebar-accent))'
+          accent: 'hsl(var(--sidebar-accent))',
+          border: 'hsl(var(--sidebar-border))'
         }
       },
       keyframes: {
