@@ -8,6 +8,7 @@ import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 
 neonConfig.webSocketConstructor = ws;
+import logger from './logger';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -16,10 +17,10 @@ async function migrate() {
 
   try {
     await client.query('BEGIN');
-    console.log('Starting Core Platform migration...');
+    logger.info('Starting Core Platform migration...');
 
     // 1. Create enums (if not exist)
-    console.log('  Creating enums...');
+    logger.info('  Creating enums...');
     await client.query(`
       DO $$ BEGIN
         CREATE TYPE "user_role" AS ENUM('admin', 'quality_manager', 'engineer', 'viewer');
@@ -34,7 +35,7 @@ async function migrate() {
     `);
 
     // 2. Create organization table
-    console.log('  Creating organization table...');
+    logger.info('  Creating organization table...');
     await client.query(`
       CREATE TABLE IF NOT EXISTS "organization" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -51,7 +52,7 @@ async function migrate() {
     `);
 
     // 3. Create user table
-    console.log('  Creating user table...');
+    logger.info('  Creating user table...');
     await client.query(`
       CREATE TABLE IF NOT EXISTS "user" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -77,7 +78,7 @@ async function migrate() {
     await client.query(`CREATE INDEX IF NOT EXISTS "user_email_idx" ON "user" USING btree ("email");`);
 
     // 4. Create session table
-    console.log('  Creating session table...');
+    logger.info('  Creating session table...');
     await client.query(`
       CREATE TABLE IF NOT EXISTS "session" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -100,7 +101,7 @@ async function migrate() {
     await client.query(`CREATE INDEX IF NOT EXISTS "session_expires_idx" ON "session" USING btree ("expires_at");`);
 
     // 5. Create a default organization for existing data
-    console.log('  Creating default organization for existing data...');
+    logger.info('  Creating default organization for existing data...');
     const orgResult = await client.query(`
       INSERT INTO "organization" ("name", "slug", "settings")
       VALUES ('Default Organization', 'default-org', '{"defaultTimezone": "America/Detroit", "dateFormat": "MM/DD/YYYY"}')
@@ -108,7 +109,7 @@ async function migrate() {
       RETURNING "id";
     `);
     const defaultOrgId = orgResult.rows[0].id;
-    console.log(`  Default org ID: ${defaultOrgId}`);
+    logger.info(`  Default org ID: ${defaultOrgId}`);
 
     // 6. Add org_id to existing tables
     const tablesToUpdate: {
@@ -127,7 +128,7 @@ async function migrate() {
     ];
 
     for (const { table, uniqueConstraints } of tablesToUpdate) {
-      console.log(`  Adding org_id to ${table}...`);
+      logger.info(`  Adding org_id to ${table}...`);
 
       // Add column if not exists
       await client.query(`
@@ -177,7 +178,7 @@ async function migrate() {
         `);
         if (dupsResult.rows.length > 0) {
           const dupIds = dupsResult.rows.map((r: any) => r.id);
-          console.log(`    Deduplicating ${dupIds.length} duplicate(s) in ${table}...`);
+          logger.info(`    Deduplicating ${dupIds.length} duplicate(s) in ${table}...`);
           // Delete child FK references first, then the duplicates
           // Use a subquery approach that cascades through dependent tables
           for (const dupId of dupIds) {
@@ -196,10 +197,10 @@ async function migrate() {
     }
 
     await client.query('COMMIT');
-    console.log('✓ Core Platform migration completed successfully!');
+    logger.info('✓ Core Platform migration completed successfully!');
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Migration failed:', error);
+    logger.error({ err: error }, 'Migration failed');
     throw error;
   } finally {
     client.release();
@@ -208,6 +209,6 @@ async function migrate() {
 }
 
 migrate().catch((err) => {
-  console.error(err);
+  logger.error({ err }, 'Migration failed');
   process.exit(1);
 });

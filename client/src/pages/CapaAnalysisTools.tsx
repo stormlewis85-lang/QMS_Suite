@@ -48,7 +48,7 @@ function parseData(tool: any) {
 
 // ─── Is/Is Not Builder ───
 
-function IsIsNotBuilder({ tool, capaId }: { tool: any; capaId: number }) {
+function IsIsNotBuilder({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const [form, setForm] = useState({
@@ -146,7 +146,7 @@ function IsIsNotBuilder({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── 5-Why Builder ───
 
-function FiveWhyBuilder({ tool, capaId }: { tool: any; capaId: number }) {
+function FiveWhyBuilder({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const [form, setForm] = useState({
@@ -275,7 +275,7 @@ function FiveWhyBuilder({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── 3-Legged 5-Why ───
 
-function ThreeLeggedFiveWhy({ tool, capaId }: { tool: any; capaId: number }) {
+function ThreeLeggedFiveWhy({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const [form, setForm] = useState({
@@ -377,7 +377,7 @@ function ThreeLeggedFiveWhy({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── Fishbone Diagram ───
 
-function FishboneDiagram({ tool, capaId }: { tool: any; capaId: number }) {
+function FishboneDiagram({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const categories = ["Man", "Machine", "Material", "Method", "Measurement", "Environment"];
@@ -500,7 +500,7 @@ function FishboneDiagram({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── Comparative Analysis ───
 
-function ComparativeAnalysis({ tool, capaId }: { tool: any; capaId: number }) {
+function ComparativeAnalysis({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const [form, setForm] = useState({
@@ -636,7 +636,7 @@ function ComparativeAnalysis({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── Change Point Analysis ───
 
-function ChangePointAnalysis({ tool, capaId }: { tool: any; capaId: number }) {
+function ChangePointAnalysis({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const [form, setForm] = useState({
@@ -747,7 +747,7 @@ function ChangePointAnalysis({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── Generic Tool Placeholder ───
 
-function GenericToolView({ tool, capaId }: { tool: any; capaId: number }) {
+function GenericToolView({ tool, capaId }: { tool: any; capaId: string }) {
   const { toast } = useToast();
   const data = parseData(tool);
   const [notes, setNotes] = useState(data.notes || "");
@@ -785,7 +785,7 @@ function GenericToolView({ tool, capaId }: { tool: any; capaId: number }) {
 
 // ─── Tool Renderer ───
 
-function ToolRenderer({ tool, capaId }: { tool: any; capaId: number }) {
+function ToolRenderer({ tool, capaId }: { tool: any; capaId: string }) {
   switch (tool.toolType) {
     case "is_not": return <IsIsNotBuilder tool={tool} capaId={capaId} />;
     case "five_why": return <FiveWhyBuilder tool={tool} capaId={capaId} />;
@@ -801,7 +801,7 @@ function ToolRenderer({ tool, capaId }: { tool: any; capaId: number }) {
 
 export default function CapaAnalysisTools() {
   const [, params] = useRoute("/capa/:id/tools");
-  const capaId = params?.id ? parseInt(params.id) : 0;
+  const capaId = params?.id ?? '';
   const { toast } = useToast();
   const [selectedTool, setSelectedTool] = useState<any>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -810,12 +810,12 @@ export default function CapaAnalysisTools() {
 
   const { data: capa } = useQuery<any>({
     queryKey: ["/api/capas", capaId],
-    enabled: capaId > 0,
+    enabled: !!capaId,
   });
 
   const { data: tools, isLoading } = useQuery<any[]>({
     queryKey: ["/api/capas", capaId, "analysis-tools"],
-    enabled: capaId > 0,
+    enabled: !!capaId,
   });
 
   const createMutation = useMutation({

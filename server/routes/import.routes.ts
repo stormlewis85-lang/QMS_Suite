@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { importService } from "../services/import-service";
 import { upload } from "./_config";
 import { getErrorMessage } from "./_helpers";
+import logger from '../logger';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.post('/analyze', upload.single('file'), async (req, res) => {
       ...result,
     });
   } catch (error: unknown) {
-    console.error('File analysis failed:', error);
+    logger.error({ err: error }, 'File analysis failed');
     res.status(400).json({ error: getErrorMessage(error) });
   }
 });
@@ -47,7 +48,7 @@ router.post('/detect-columns', upload.single('file'), async (req, res) => {
 
     res.json(result);
   } catch (error: unknown) {
-    console.error('Column detection failed:', error);
+    logger.error({ err: error }, 'Column detection failed');
     res.status(400).json({ error: getErrorMessage(error) });
   }
 });
@@ -79,7 +80,7 @@ router.post('/preview', upload.single('file'), async (req, res) => {
 
     res.json(preview);
   } catch (error: unknown) {
-    console.error('Preview generation failed:', error);
+    logger.error({ err: error }, 'Preview generation failed');
     res.status(400).json({ error: getErrorMessage(error) });
   }
 });
@@ -130,7 +131,7 @@ router.post('/execute', upload.single('file'), async (req, res) => {
 
     res.json(result);
   } catch (error: unknown) {
-    console.error('Import failed:', error);
+    logger.error({ err: error }, 'Import failed');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });

@@ -9,6 +9,7 @@ import { db } from "../../db";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { upload } from "../_config";
 import { getErrorMessage } from "../_helpers";
+import logger from '../../logger';
 import {
   capa,
   capaTeamMember,
@@ -39,7 +40,7 @@ router.get("/capas/dashboard", requireAuth, async (req, res) => {
       .slice(0, 10);
     res.json({ metrics, recentActivity });
   } catch (error) {
-    console.error("Error fetching CAPA dashboard:", error);
+    logger.error({ err: error }, 'Error fetching CAPA dashboard');
     res.status(500).json({ error: "Failed to fetch dashboard" });
   }
 });
@@ -52,7 +53,7 @@ router.get("/capas/my-assignments", requireAuth, async (req, res) => {
     const capas = await storage.getCapasForUser(orgId, userId);
     res.json(capas);
   } catch (error) {
-    console.error("Error fetching my CAPA assignments:", error);
+    logger.error({ err: error }, 'Error fetching my CAPA assignments');
     res.status(500).json({ error: "Failed to fetch assignments" });
   }
 });
@@ -71,7 +72,7 @@ router.get("/capas/overdue", requireAuth, async (req, res) => {
       }));
     res.json(overdue);
   } catch (error) {
-    console.error("Error fetching overdue CAPAs:", error);
+    logger.error({ err: error }, 'Error fetching overdue CAPAs');
     res.status(500).json({ error: "Failed to fetch overdue CAPAs" });
   }
 });
@@ -98,7 +99,7 @@ router.get("/capas", requireAuth, async (req, res) => {
       pagination: { page: pageNum, limit: pageSize, total: capas.length },
     });
   } catch (error) {
-    console.error("Error listing CAPAs:", error);
+    logger.error({ err: error }, 'Error listing CAPAs');
     res.status(500).json({ error: "Failed to list CAPAs" });
   }
 });
@@ -125,7 +126,7 @@ router.get("/capas/export", requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename=capas-export.csv');
     res.send(csv);
   } catch (error) {
-    console.error("Error exporting CAPAs:", error);
+    logger.error({ err: error }, 'Error exporting CAPAs');
     res.status(500).json({ error: "Failed to export CAPAs" });
   }
 });
@@ -133,8 +134,7 @@ router.get("/capas/export", requireAuth, async (req, res) => {
 // Get CAPA by ID
 router.get("/capas/:id", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const id = req.params.id;
 
     const capaRecord = await storage.getCapa(id);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -154,7 +154,7 @@ router.get("/capas/:id", requireAuth, async (req, res) => {
 
     res.json({ ...capaRecord, d0, d1, d2, d3, d4, team, sources });
   } catch (error) {
-    console.error("Error fetching CAPA:", error);
+    logger.error({ err: error }, 'Error fetching CAPA');
     res.status(500).json({ error: "Failed to fetch CAPA" });
   }
 });
@@ -193,7 +193,7 @@ router.post("/capas", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error creating CAPA:", error);
+    logger.error({ err: error }, 'Error creating CAPA');
     res.status(500).json({ error: "Failed to create CAPA" });
   }
 });
@@ -201,8 +201,7 @@ router.post("/capas", requireAuth, async (req, res) => {
 // Update CAPA
 router.patch("/capas/:id", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const id = req.params.id;
 
     const existing = await storage.getCapa(id);
     if (!existing || existing.orgId !== req.orgId!) {
@@ -223,7 +222,7 @@ router.patch("/capas/:id", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error updating CAPA:", error);
+    logger.error({ err: error }, 'Error updating CAPA');
     res.status(500).json({ error: "Failed to update CAPA" });
   }
 });
@@ -231,8 +230,7 @@ router.patch("/capas/:id", requireAuth, async (req, res) => {
 // Advance discipline
 router.post("/capas/:id/advance-discipline", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const id = req.params.id;
 
     const capaRecord = await storage.getCapa(id);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -271,7 +269,7 @@ router.post("/capas/:id/advance-discipline", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error advancing discipline:", error);
+    logger.error({ err: error }, 'Error advancing discipline');
     res.status(500).json({ error: "Failed to advance discipline" });
   }
 });
@@ -279,8 +277,7 @@ router.post("/capas/:id/advance-discipline", requireAuth, async (req, res) => {
 // Hold CAPA
 router.post("/capas/:id/hold", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const id = req.params.id;
 
     const capaRecord = await storage.getCapa(id);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -305,7 +302,7 @@ router.post("/capas/:id/hold", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error putting CAPA on hold:", error);
+    logger.error({ err: error }, 'Error putting CAPA on hold');
     res.status(500).json({ error: "Failed to put CAPA on hold" });
   }
 });
@@ -313,8 +310,7 @@ router.post("/capas/:id/hold", requireAuth, async (req, res) => {
 // Resume CAPA
 router.post("/capas/:id/resume", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const id = req.params.id;
 
     const capaRecord = await storage.getCapa(id);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -346,7 +342,7 @@ router.post("/capas/:id/resume", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error resuming CAPA:", error);
+    logger.error({ err: error }, 'Error resuming CAPA');
     res.status(500).json({ error: "Failed to resume CAPA" });
   }
 });
@@ -354,8 +350,7 @@ router.post("/capas/:id/resume", requireAuth, async (req, res) => {
 // Delete CAPA (soft delete)
 router.delete("/capas/:id", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const id = req.params.id;
 
     const capaRecord = await storage.getCapa(id);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -373,7 +368,7 @@ router.delete("/capas/:id", requireAuth, requireRole("admin", "quality_manager")
 
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting CAPA:", error);
+    logger.error({ err: error }, 'Error deleting CAPA');
     res.status(500).json({ error: "Failed to delete CAPA" });
   }
 });
@@ -384,8 +379,7 @@ router.delete("/capas/:id", requireAuth, requireRole("admin", "quality_manager")
 
 router.get("/capas/:id/team", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -395,15 +389,14 @@ router.get("/capas/:id/team", requireAuth, async (req, res) => {
     const members = await storage.getCapaTeamMembers(capaId);
     res.json(members);
   } catch (error) {
-    console.error("Error fetching team members:", error);
+    logger.error({ err: error }, 'Error fetching team members');
     res.status(500).json({ error: "Failed to fetch team members" });
   }
 });
 
 router.post("/capas/:id/team", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -441,16 +434,15 @@ router.post("/capas/:id/team", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error adding team member:", error);
+    logger.error({ err: error }, 'Error adding team member');
     res.status(500).json({ error: "Failed to add team member" });
   }
 });
 
 router.patch("/capas/:id/team/:memberId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const memberId = parseInt(req.params.memberId);
-    if (isNaN(capaId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const memberId = req.params.memberId;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -465,16 +457,15 @@ router.patch("/capas/:id/team/:memberId", requireAuth, async (req, res) => {
     const updated = await storage.updateCapaTeamMember(memberId, req.body);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating team member:", error);
+    logger.error({ err: error }, 'Error updating team member');
     res.status(500).json({ error: "Failed to update team member" });
   }
 });
 
 router.delete("/capas/:id/team/:memberId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const memberId = parseInt(req.params.memberId);
-    if (isNaN(capaId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const memberId = req.params.memberId;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -500,7 +491,7 @@ router.delete("/capas/:id/team/:memberId", requireAuth, async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    console.error("Error removing team member:", error);
+    logger.error({ err: error }, 'Error removing team member');
     res.status(500).json({ error: "Failed to remove team member" });
   }
 });
@@ -511,8 +502,7 @@ router.delete("/capas/:id/team/:memberId", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/sources", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -522,15 +512,14 @@ router.get("/capas/:id/sources", requireAuth, async (req, res) => {
     const sources = await storage.getCapaSources(capaId);
     res.json(sources);
   } catch (error) {
-    console.error("Error fetching CAPA sources:", error);
+    logger.error({ err: error }, 'Error fetching CAPA sources');
     res.status(500).json({ error: "Failed to fetch sources" });
   }
 });
 
 router.post("/capas/:id/sources", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -550,16 +539,15 @@ router.post("/capas/:id/sources", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error creating CAPA source:", error);
+    logger.error({ err: error }, 'Error creating CAPA source');
     res.status(500).json({ error: "Failed to create source" });
   }
 });
 
 router.delete("/capas/:id/sources/:sourceId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const sourceId = parseInt(req.params.sourceId);
-    if (isNaN(capaId) || isNaN(sourceId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const sourceId = req.params.sourceId;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -574,7 +562,7 @@ router.delete("/capas/:id/sources/:sourceId", requireAuth, async (req, res) => {
     await storage.deleteCapaSource(sourceId);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting CAPA source:", error);
+    logger.error({ err: error }, 'Error deleting CAPA source');
     res.status(500).json({ error: "Failed to delete source" });
   }
 });
@@ -585,8 +573,7 @@ router.delete("/capas/:id/sources/:sourceId", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/attachments", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -606,15 +593,14 @@ router.get("/capas/:id/attachments", requireAuth, async (req, res) => {
 
     res.json(attachments);
   } catch (error) {
-    console.error("Error fetching attachments:", error);
+    logger.error({ err: error }, 'Error fetching attachments');
     res.status(500).json({ error: "Failed to fetch attachments" });
   }
 });
 
 router.post("/capas/:id/attachments", requireAuth, upload.single('file'), async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -651,15 +637,14 @@ router.post("/capas/:id/attachments", requireAuth, upload.single('file'), async 
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error uploading attachment:", error);
+    logger.error({ err: error }, 'Error uploading attachment');
     res.status(500).json({ error: "Failed to upload attachment" });
   }
 });
 
 router.get("/capa-attachments/:id/download", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid attachment ID" });
+    const id = req.params.id;
 
     const attachment = await storage.getCapaAttachment(id);
     if (!attachment || attachment.orgId !== req.orgId!) {
@@ -672,15 +657,14 @@ router.get("/capa-attachments/:id/download", requireAuth, async (req, res) => {
 
     res.download(attachment.storagePath, attachment.originalName);
   } catch (error) {
-    console.error("Error downloading attachment:", error);
+    logger.error({ err: error }, 'Error downloading attachment');
     res.status(500).json({ error: "Failed to download attachment" });
   }
 });
 
 router.delete("/capa-attachments/:id", requireAuth, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid attachment ID" });
+    const id = req.params.id;
 
     const attachment = await storage.getCapaAttachment(id);
     if (!attachment || attachment.orgId !== req.orgId!) {
@@ -696,7 +680,7 @@ router.delete("/capa-attachments/:id", requireAuth, async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting attachment:", error);
+    logger.error({ err: error }, 'Error deleting attachment');
     res.status(500).json({ error: "Failed to delete attachment" });
   }
 });
@@ -707,8 +691,7 @@ router.delete("/capa-attachments/:id", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/related", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -719,15 +702,14 @@ router.get("/capas/:id/related", requireAuth, async (req, res) => {
     const records = await storage.getCapaRelatedRecords(capaId, relatedType);
     res.json(records);
   } catch (error) {
-    console.error("Error fetching related records:", error);
+    logger.error({ err: error }, 'Error fetching related records');
     res.status(500).json({ error: "Failed to fetch related records" });
   }
 });
 
 router.post("/capas/:id/related", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -747,16 +729,15 @@ router.post("/capas/:id/related", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error creating related record:", error);
+    logger.error({ err: error }, 'Error creating related record');
     res.status(500).json({ error: "Failed to create related record" });
   }
 });
 
 router.delete("/capas/:id/related/:relatedId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const relatedId = parseInt(req.params.relatedId);
-    if (isNaN(capaId) || isNaN(relatedId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const relatedId = req.params.relatedId;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -771,7 +752,7 @@ router.delete("/capas/:id/related/:relatedId", requireAuth, async (req, res) => 
     await storage.deleteCapaRelatedRecord(relatedId);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting related record:", error);
+    logger.error({ err: error }, 'Error deleting related record');
     res.status(500).json({ error: "Failed to delete related record" });
   }
 });

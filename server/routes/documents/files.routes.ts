@@ -18,6 +18,7 @@ import {
   generateDocNumber,
   resolveWorkflowAssignee,
 } from "../_helpers";
+import logger from '../../logger';
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get("/documents/:documentId/files", requireAuth, async (req, res) => {
     const files = await storage.getDocumentFiles(req.orgId!, req.params.documentId);
     res.json(files);
   } catch (error) {
-    console.error("Error listing document files:", error);
+    logger.error({ err: error }, 'Error listing document files');
     res.status(500).json({ error: "Failed to list document files" });
   }
 });
@@ -114,7 +115,7 @@ router.post("/documents/:documentId/files", requireAuth, documentUpload.single('
 
     res.status(201).json(fileRecord);
   } catch (error) {
-    console.error("Error uploading file:", error);
+    logger.error({ err: error }, 'Error uploading file');
     res.status(500).json({ error: "Failed to upload file" });
   }
 });
@@ -131,7 +132,7 @@ router.get("/document-files/:id", requireAuth, async (req, res) => {
     }
     res.json(file);
   } catch (error) {
-    console.error("Error getting file:", error);
+    logger.error({ err: error }, 'Error getting file');
     res.status(500).json({ error: "Failed to get file" });
   }
 });
@@ -172,7 +173,7 @@ router.get("/document-files/:id/download", requireAuth, async (req, res) => {
     const fileStream = fs.createReadStream(file.storagePath);
     fileStream.pipe(res);
   } catch (error) {
-    console.error("Error downloading file:", error);
+    logger.error({ err: error }, 'Error downloading file');
     res.status(500).json({ error: "Failed to download file" });
   }
 });
@@ -256,7 +257,7 @@ router.get("/document-files/:id/download-watermarked", requireAuth, async (req, 
       fileStream.pipe(res);
     }
   } catch (error) {
-    console.error("Error downloading watermarked file:", error);
+    logger.error({ err: error }, 'Error downloading watermarked file');
     res.status(500).json({ error: "Failed to download watermarked file" });
   }
 });
@@ -281,7 +282,7 @@ router.get("/document-files/:id/preview", requireAuth, async (req, res) => {
     // No preview available - return file info as JSON fallback
     res.status(404).json({ error: "Preview not generated for this file" });
   } catch (error) {
-    console.error("Error getting file preview:", error);
+    logger.error({ err: error }, 'Error getting file preview');
     res.status(500).json({ error: "Failed to get file preview" });
   }
 });
@@ -337,7 +338,7 @@ router.delete("/document-files/:id", requireAuth, async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting file:", error);
+    logger.error({ err: error }, 'Error deleting file');
     res.status(500).json({ error: "Failed to delete file" });
   }
 });
@@ -357,7 +358,7 @@ router.get("/document-templates", requireAuth, async (req, res) => {
     }
     res.json(templates);
   } catch (error) {
-    console.error("Error listing templates:", error);
+    logger.error({ err: error }, 'Error listing templates');
     res.status(500).json({ error: "Failed to list document templates" });
   }
 });
@@ -381,7 +382,7 @@ router.get("/document-templates/:id", requireAuth, async (req, res) => {
 
     res.json({ ...template, defaultWorkflow });
   } catch (error) {
-    console.error("Error getting template:", error);
+    logger.error({ err: error }, 'Error getting template');
     res.status(500).json({ error: "Failed to get document template" });
   }
 });
@@ -407,7 +408,7 @@ router.post("/document-templates", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error creating template:", error);
+    logger.error({ err: error }, 'Error creating template');
     res.status(500).json({ error: "Failed to create document template" });
   }
 });
@@ -426,7 +427,7 @@ router.patch("/document-templates/:id", requireAuth, async (req, res) => {
     const updated = await storage.updateDocumentTemplate(id, req.body);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating template:", error);
+    logger.error({ err: error }, 'Error updating template');
     res.status(500).json({ error: "Failed to update document template" });
   }
 });
@@ -455,7 +456,7 @@ router.delete("/document-templates/:id", requireAuth, async (req, res) => {
 
     return res.status(400).json({ error: "Cannot delete template with status: " + existing.status });
   } catch (error) {
-    console.error("Error deleting template:", error);
+    logger.error({ err: error }, 'Error deleting template');
     res.status(500).json({ error: "Failed to delete document template" });
   }
 });
@@ -478,7 +479,7 @@ router.post("/document-templates/:id/activate", requireAuth, async (req, res) =>
     const updated = await storage.updateDocumentTemplate(id, { status: 'active', effectiveFrom: new Date() });
     res.json(updated);
   } catch (error) {
-    console.error("Error activating template:", error);
+    logger.error({ err: error }, 'Error activating template');
     res.status(500).json({ error: "Failed to activate document template" });
   }
 });
@@ -545,7 +546,7 @@ router.post("/documents/from-template", requireAuth, async (req, res) => {
 
     res.status(201).json({ document: doc, revision, appliedFieldValues });
   } catch (error) {
-    console.error("Error creating document from template:", error);
+    logger.error({ err: error }, 'Error creating document from template');
     res.status(500).json({ error: "Failed to create document from template" });
   }
 });
@@ -574,7 +575,7 @@ router.get("/documents/:documentId/checkout-status", requireAuth, async (req, re
       res.json({ isCheckedOut: false, checkout: null });
     }
   } catch (error) {
-    console.error("Error getting checkout status:", error);
+    logger.error({ err: error }, 'Error getting checkout status');
     res.status(500).json({ error: "Failed to get checkout status" });
   }
 });
@@ -636,7 +637,7 @@ router.post("/documents/:documentId/checkout", requireAuth, async (req, res) => 
 
     res.status(201).json(checkout);
   } catch (error) {
-    console.error("Error checking out document:", error);
+    logger.error({ err: error }, 'Error checking out document');
     res.status(500).json({ error: "Failed to checkout document" });
   }
 });
@@ -677,7 +678,7 @@ router.post("/documents/:documentId/checkin", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error checking in document:", error);
+    logger.error({ err: error }, 'Error checking in document');
     res.status(500).json({ error: "Failed to checkin document" });
   }
 });
@@ -719,7 +720,7 @@ router.post("/documents/:documentId/force-release", requireAuth, requireRole('ad
 
     res.json(updated);
   } catch (error) {
-    console.error("Error force releasing checkout:", error);
+    logger.error({ err: error }, 'Error force releasing checkout');
     res.status(500).json({ error: "Failed to force release checkout" });
   }
 });
@@ -730,7 +731,7 @@ router.get("/checkouts/my", requireAuth, async (req, res) => {
     const checkouts = await storage.getCheckoutsByUser(req.orgId!, req.auth!.user.id);
     res.json(checkouts);
   } catch (error) {
-    console.error("Error getting my checkouts:", error);
+    logger.error({ err: error }, 'Error getting my checkouts');
     res.status(500).json({ error: "Failed to get checkouts" });
   }
 });
@@ -741,7 +742,7 @@ router.get("/checkouts/all", requireAuth, async (req, res) => {
     const checkouts = await storage.getAllActiveCheckouts(req.orgId!);
     res.json(checkouts);
   } catch (error) {
-    console.error("Error getting all checkouts:", error);
+    logger.error({ err: error }, 'Error getting all checkouts');
     res.status(500).json({ error: "Failed to get checkouts" });
   }
 });
@@ -755,7 +756,7 @@ router.get("/approval-workflow-definitions", requireAuth, async (req, res) => {
     const defs = await storage.getApprovalWorkflowDefinitions(req.orgId!, status);
     res.json(defs);
   } catch (error) {
-    console.error("Error getting workflow definitions:", error);
+    logger.error({ err: error }, 'Error getting workflow definitions');
     res.status(500).json({ error: "Failed to get workflow definitions" });
   }
 });
@@ -769,7 +770,7 @@ router.get("/approval-workflow-definitions/:id", requireAuth, async (req, res) =
     if (!def || def.orgId !== req.orgId) return res.status(404).json({ error: "Workflow definition not found" });
     res.json(def);
   } catch (error) {
-    console.error("Error getting workflow definition:", error);
+    logger.error({ err: error }, 'Error getting workflow definition');
     res.status(500).json({ error: "Failed to get workflow definition" });
   }
 });
@@ -781,7 +782,7 @@ router.post("/approval-workflow-definitions", requireAuth, async (req, res) => {
     const def = await storage.createApprovalWorkflowDefinition(data);
     res.status(201).json(def);
   } catch (error) {
-    console.error("Error creating workflow definition:", error);
+    logger.error({ err: error }, 'Error creating workflow definition');
     res.status(500).json({ error: "Failed to create workflow definition" });
   }
 });
@@ -796,7 +797,7 @@ router.patch("/approval-workflow-definitions/:id", requireAuth, async (req, res)
     const updated = await storage.updateApprovalWorkflowDefinition(id, req.body);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating workflow definition:", error);
+    logger.error({ err: error }, 'Error updating workflow definition');
     res.status(500).json({ error: "Failed to update workflow definition" });
   }
 });
@@ -811,7 +812,7 @@ router.delete("/approval-workflow-definitions/:id", requireAuth, async (req, res
     await storage.deleteApprovalWorkflowDefinition(id);
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting workflow definition:", error);
+    logger.error({ err: error }, 'Error deleting workflow definition');
     res.status(500).json({ error: "Failed to delete workflow definition" });
   }
 });
@@ -931,7 +932,7 @@ router.post("/documents/:documentId/start-workflow", requireAuth, async (req, re
       message: `Workflow started. Assigned to ${assignee || 'pending assignment'} for ${firstStepDef.name || 'review'}.`,
     });
   } catch (error) {
-    console.error("Error starting workflow:", error);
+    logger.error({ err: error }, 'Error starting workflow');
     res.status(500).json({ error: "Failed to start approval workflow" });
   }
 });
@@ -981,7 +982,7 @@ router.get("/documents/:documentId/workflow", requireAuth, async (req, res) => {
       } : null,
     });
   } catch (error) {
-    console.error("Error getting workflow status:", error);
+    logger.error({ err: error }, 'Error getting workflow status');
     res.status(500).json({ error: "Failed to get workflow status" });
   }
 });
@@ -1065,7 +1066,7 @@ router.post("/workflow-steps/:stepId/approve", requireAuth, async (req, res) => 
 
     res.json(updatedStep);
   } catch (error) {
-    console.error("Error approving workflow step:", error);
+    logger.error({ err: error }, 'Error approving workflow step');
     res.status(500).json({ error: "Failed to approve workflow step" });
   }
 });
@@ -1126,7 +1127,7 @@ router.post("/workflow-steps/:stepId/reject", requireAuth, async (req, res) => {
 
     res.json(updatedStep);
   } catch (error) {
-    console.error("Error rejecting workflow step:", error);
+    logger.error({ err: error }, 'Error rejecting workflow step');
     res.status(500).json({ error: "Failed to reject workflow step" });
   }
 });
@@ -1178,7 +1179,7 @@ router.post("/workflow-steps/:stepId/delegate", requireAuth, async (req, res) =>
 
     res.json(updatedStep);
   } catch (error) {
-    console.error("Error delegating workflow step:", error);
+    logger.error({ err: error }, 'Error delegating workflow step');
     res.status(500).json({ error: "Failed to delegate workflow step" });
   }
 });

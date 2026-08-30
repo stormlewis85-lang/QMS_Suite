@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { getErrorMessage } from "../_helpers";
+import logger from '../../logger';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get("/distribution-lists", requireAuth, async (req, res) => {
     const lists = await storage.getDistributionLists(req.orgId!, status);
     res.json(lists);
   } catch (error) {
-    console.error("Error fetching distribution lists:", error);
+    logger.error({ err: error }, 'Error fetching distribution lists');
     res.status(500).json({ error: "Failed to fetch distribution lists" });
   }
 });
@@ -45,7 +46,7 @@ router.get("/distribution-lists/:id", requireAuth, async (req, res) => {
     }
     res.json(list);
   } catch (error) {
-    console.error("Error fetching distribution list:", error);
+    logger.error({ err: error }, 'Error fetching distribution list');
     res.status(500).json({ error: "Failed to fetch distribution list" });
   }
 });
@@ -64,7 +65,7 @@ router.post("/distribution-lists", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: "Validation error: " + fromError(error).message });
     }
-    console.error("Error creating distribution list:", error);
+    logger.error({ err: error }, 'Error creating distribution list');
     res.status(500).json({ error: "Failed to create distribution list" });
   }
 });
@@ -83,7 +84,7 @@ router.patch("/distribution-lists/:id", requireAuth, async (req, res) => {
     const updated = await storage.updateDistributionList(id, req.body);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating distribution list:", error);
+    logger.error({ err: error }, 'Error updating distribution list');
     res.status(500).json({ error: "Failed to update distribution list" });
   }
 });
@@ -102,7 +103,7 @@ router.delete("/distribution-lists/:id", requireAuth, async (req, res) => {
     await storage.deleteDistributionList(id);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting distribution list:", error);
+    logger.error({ err: error }, 'Error deleting distribution list');
     res.status(500).json({ error: "Failed to delete distribution list" });
   }
 });
@@ -197,7 +198,7 @@ router.post("/documents/:documentId/distribute", requireAuth, async (req, res) =
       message: `Distributed to ${records.length} recipients. Acknowledgment due in ${ackDueDays} days.`,
     });
   } catch (error) {
-    console.error("Error distributing document:", error);
+    logger.error({ err: error }, 'Error distributing document');
     res.status(500).json({ error: "Failed to distribute document" });
   }
 });
@@ -210,7 +211,7 @@ router.get("/documents/:documentId/distributions", requireAuth, async (req, res)
     const records = await storage.getDocumentDistributionRecords(req.orgId!, documentId, status);
     res.json(records);
   } catch (error) {
-    console.error("Error fetching distributions:", error);
+    logger.error({ err: error }, 'Error fetching distributions');
     res.status(500).json({ error: "Failed to fetch distributions" });
   }
 });
@@ -237,7 +238,7 @@ router.get("/my/acknowledgments", requireAuth, async (req, res) => {
 
     res.json(enriched);
   } catch (error) {
-    console.error("Error fetching acknowledgments:", error);
+    logger.error({ err: error }, 'Error fetching acknowledgments');
     res.status(500).json({ error: "Failed to fetch acknowledgments" });
   }
 });
@@ -288,7 +289,7 @@ router.post("/distributions/:id/acknowledge", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error acknowledging distribution:", error);
+    logger.error({ err: error }, 'Error acknowledging distribution');
     res.status(500).json({ error: "Failed to acknowledge distribution" });
   }
 });
@@ -336,7 +337,7 @@ router.post("/documents/:documentId/recall", requireAuth, async (req, res) => {
       message: `Recalled from ${recalledCount} recipients.`,
     });
   } catch (error) {
-    console.error("Error recalling document:", error);
+    logger.error({ err: error }, 'Error recalling document');
     res.status(500).json({ error: "Failed to recall document" });
   }
 });
@@ -366,7 +367,7 @@ router.get("/documents/:documentId/access-log", requireAuth, async (req, res) =>
 
     res.json(logs);
   } catch (error) {
-    console.error("Error fetching access logs:", error);
+    logger.error({ err: error }, 'Error fetching access logs');
     res.status(500).json({ error: "Failed to fetch access logs" });
   }
 });
@@ -404,7 +405,7 @@ router.get("/documents/:documentId/access-log/stats", requireAuth, async (req, r
       byUser: Array.from(userMap.values()).sort((a, b) => b.count - a.count),
     });
   } catch (error) {
-    console.error("Error fetching access log stats:", error);
+    logger.error({ err: error }, 'Error fetching access log stats');
     res.status(500).json({ error: "Failed to fetch access log stats" });
   }
 });
@@ -430,7 +431,7 @@ router.get("/audit-log", requireAuth, async (req, res) => {
 
     res.json(logs);
   } catch (error) {
-    console.error("Error fetching audit log:", error);
+    logger.error({ err: error }, 'Error fetching audit log');
     res.status(500).json({ error: "Failed to fetch audit log" });
   }
 });
@@ -460,7 +461,7 @@ router.get("/audit-log/export", requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csvHeader + csvRows);
   } catch (error) {
-    console.error("Error exporting audit log:", error);
+    logger.error({ err: error }, 'Error exporting audit log');
     res.status(500).json({ error: "Failed to export audit log" });
   }
 });
@@ -543,7 +544,7 @@ router.post("/documents/:documentId/print", requireAuth, async (req, res) => {
       watermarkedFileUrl: `/api/document-files/${fileId}/download-watermarked`,
     });
   } catch (error) {
-    console.error("Error recording print:", error);
+    logger.error({ err: error }, 'Error recording print');
     res.status(500).json({ error: "Failed to record print" });
   }
 });
@@ -555,7 +556,7 @@ router.get("/documents/:documentId/print-logs", requireAuth, async (req, res) =>
     const logs = await storage.getDocumentPrintLogs(req.orgId!, documentId);
     res.json(logs);
   } catch (error) {
-    console.error("Error fetching print logs:", error);
+    logger.error({ err: error }, 'Error fetching print logs');
     res.status(500).json({ error: "Failed to fetch print logs" });
   }
 });
@@ -599,7 +600,7 @@ router.post("/print-logs/:id/recall-copies", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error recalling copies:", error);
+    logger.error({ err: error }, 'Error recalling copies');
     res.status(500).json({ error: "Failed to recall copies" });
   }
 });
@@ -614,7 +615,7 @@ router.get("/documents/:documentId/comments", requireAuth, async (req, res) => {
     const comments = await storage.getDocumentComments(req.orgId!, documentId, includeDeleted);
     res.json(comments);
   } catch (error) {
-    console.error("Error fetching comments:", error);
+    logger.error({ err: error }, 'Error fetching comments');
     res.status(500).json({ error: "Failed to fetch comments" });
   }
 });
@@ -644,7 +645,7 @@ router.post("/documents/:documentId/comments", requireAuth, async (req, res) => 
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: "Validation error: " + fromError(error).message });
     }
-    console.error("Error creating comment:", error);
+    logger.error({ err: error }, 'Error creating comment');
     res.status(500).json({ error: "Failed to create comment" });
   }
 });
@@ -678,7 +679,7 @@ router.patch("/comments/:id", requireAuth, async (req, res) => {
     });
     res.json(updated);
   } catch (error) {
-    console.error("Error updating comment:", error);
+    logger.error({ err: error }, 'Error updating comment');
     res.status(500).json({ error: "Failed to update comment" });
   }
 });
@@ -697,7 +698,7 @@ router.delete("/comments/:id", requireAuth, async (req, res) => {
     await storage.softDeleteDocumentComment(id);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting comment:", error);
+    logger.error({ err: error }, 'Error deleting comment');
     res.status(500).json({ error: "Failed to delete comment" });
   }
 });
@@ -720,7 +721,7 @@ router.post("/comments/:id/resolve", requireAuth, async (req, res) => {
     const resolved = await storage.resolveCommentThread(id, req.auth!.user.id);
     res.json(resolved);
   } catch (error) {
-    console.error("Error resolving comment:", error);
+    logger.error({ err: error }, 'Error resolving comment');
     res.status(500).json({ error: "Failed to resolve comment" });
   }
 });
@@ -742,7 +743,7 @@ router.get("/external-documents", requireAuth, async (req, res) => {
     const docs = await storage.getExternalDocuments(req.orgId!, source, status);
     res.json(docs);
   } catch (error) {
-    console.error("Error fetching external documents:", error);
+    logger.error({ err: error }, 'Error fetching external documents');
     res.status(500).json({ error: "Failed to fetch external documents" });
   }
 });
@@ -759,7 +760,7 @@ router.get("/external-documents/:id", requireAuth, async (req, res) => {
     }
     res.json(doc);
   } catch (error) {
-    console.error("Error fetching external document:", error);
+    logger.error({ err: error }, 'Error fetching external document');
     res.status(500).json({ error: "Failed to fetch external document" });
   }
 });
@@ -778,7 +779,7 @@ router.post("/external-documents", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: "Validation error: " + fromError(error).message });
     }
-    console.error("Error creating external document:", error);
+    logger.error({ err: error }, 'Error creating external document');
     res.status(500).json({ error: "Failed to create external document" });
   }
 });
@@ -800,7 +801,7 @@ router.patch("/external-documents/:id", requireAuth, async (req, res) => {
     });
     res.json(updated);
   } catch (error) {
-    console.error("Error updating external document:", error);
+    logger.error({ err: error }, 'Error updating external document');
     res.status(500).json({ error: "Failed to update external document" });
   }
 });
@@ -819,7 +820,7 @@ router.delete("/external-documents/:id", requireAuth, async (req, res) => {
     await storage.deleteExternalDocument(id);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting external document:", error);
+    logger.error({ err: error }, 'Error deleting external document');
     res.status(500).json({ error: "Failed to delete external document" });
   }
 });
@@ -846,7 +847,7 @@ router.post("/external-documents/:id/check-update", requireAuth, async (req, res
 
     res.json(updated);
   } catch (error) {
-    console.error("Error checking external document update:", error);
+    logger.error({ err: error }, 'Error checking external document update');
     res.status(500).json({ error: "Failed to check for updates" });
   }
 });
@@ -859,7 +860,7 @@ router.get("/links/broken", requireAuth, async (req, res) => {
     const brokenLinks = await storage.getBrokenLinks(req.orgId!);
     res.json(brokenLinks);
   } catch (error) {
-    console.error("Error fetching broken links:", error);
+    logger.error({ err: error }, 'Error fetching broken links');
     res.status(500).json({ error: "Failed to fetch broken links" });
   }
 });
@@ -871,7 +872,7 @@ router.get("/documents/:documentId/links", requireAuth, async (req, res) => {
     const links = await storage.getDocumentLinksFrom(req.orgId!, documentId);
     res.json(links);
   } catch (error) {
-    console.error("Error fetching document links:", error);
+    logger.error({ err: error }, 'Error fetching document links');
     res.status(500).json({ error: "Failed to fetch document links" });
   }
 });
@@ -886,7 +887,7 @@ router.get("/links/to/:targetType/:targetId", requireAuth, async (req, res) => {
     const links = await storage.getDocumentLinksTo(req.orgId!, targetType, targetId);
     res.json(links);
   } catch (error) {
-    console.error("Error fetching links to target:", error);
+    logger.error({ err: error }, 'Error fetching links to target');
     res.status(500).json({ error: "Failed to fetch links" });
   }
 });
@@ -916,7 +917,7 @@ router.post("/documents/:documentId/links", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: "Validation error: " + fromError(error).message });
     }
-    console.error("Error creating document link:", error);
+    logger.error({ err: error }, 'Error creating document link');
     res.status(500).json({ error: "Failed to create document link" });
   }
 });
@@ -940,7 +941,7 @@ router.delete("/links/:id", requireAuth, async (req, res) => {
     await storage.deleteDocumentLinkEnhanced(id);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting link:", error);
+    logger.error({ err: error }, 'Error deleting link');
     res.status(500).json({ error: "Failed to delete link" });
   }
 });
@@ -959,7 +960,7 @@ router.post("/links/:id/verify", requireAuth, async (req, res) => {
     const verified = await storage.verifyDocumentLink(id, req.auth!.user.id);
     res.json(verified);
   } catch (error) {
-    console.error("Error verifying link:", error);
+    logger.error({ err: error }, 'Error verifying link');
     res.status(500).json({ error: "Failed to verify link" });
   }
 });
@@ -979,7 +980,7 @@ router.post("/links/:id/mark-broken", requireAuth, async (req, res) => {
     const broken = await storage.markLinkBroken(id, reason || 'Marked as broken');
     res.json(broken);
   } catch (error) {
-    console.error("Error marking link as broken:", error);
+    logger.error({ err: error }, 'Error marking link as broken');
     res.status(500).json({ error: "Failed to mark link as broken" });
   }
 });

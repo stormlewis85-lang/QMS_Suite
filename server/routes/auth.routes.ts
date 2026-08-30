@@ -11,6 +11,7 @@ import {
 } from "../auth";
 import { requireAuth, SESSION_COOKIE } from "../middleware/auth";
 import { authRateLimit, registerRateLimit } from "./_config";
+import logger from '../logger';
 
 const router = Router();
 
@@ -89,7 +90,7 @@ router.post('/register', registerRateLimit, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error('Register error:', error);
+    logger.error({ err: error }, 'Register error');
     res.status(500).json({ error: 'Registration failed' });
   }
 });
@@ -180,7 +181,7 @@ router.post('/login', authRateLimit, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error('Login error:', error);
+    logger.error({ err: error }, 'Login error');
     res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -198,7 +199,7 @@ router.post('/logout', requireAuth, async (req, res) => {
     res.clearCookie(SESSION_COOKIE);
     res.json({ success: true });
   } catch (error) {
-    console.error('Logout error:', error);
+    logger.error({ err: error }, 'Logout error');
     res.status(500).json({ error: 'Logout failed' });
   }
 });
@@ -244,7 +245,7 @@ router.post('/refresh', requireAuth, async (req, res) => {
       token: newToken,
     });
   } catch (error) {
-    console.error('Refresh error:', error);
+    logger.error({ err: error }, 'Refresh error');
     res.status(500).json({ error: 'Session refresh failed' });
   }
 });

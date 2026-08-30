@@ -11,6 +11,7 @@ import { calculateAP } from "../services/ap-calculator";
 import { generatePFMEA } from "../services/pfmea-generator";
 import { generateControlPlan } from "../services/control-plan-generator";
 import { getErrorMessage } from "./_helpers";
+import logger from '../logger';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get("/pfmea", async (req, res) => {
     const pfmeas = await storage.getPFMEAsByPartId(partId);
     res.json(pfmeas);
   } catch (error) {
-    console.error("Error fetching PFMEAs:", error);
+    logger.error({ err: error }, 'Error fetching PFMEAs');
     res.status(500).json({ error: "Failed to fetch PFMEAs" });
   }
 });
@@ -36,7 +37,7 @@ router.get("/pfmea/:id", async (req, res) => {
     }
     res.json(pfmeaDoc);
   } catch (error) {
-    console.error("Error fetching PFMEA:", error);
+    logger.error({ err: error }, 'Error fetching PFMEA');
     res.status(500).json({ error: "Failed to fetch PFMEA" });
   }
 });
@@ -49,7 +50,7 @@ router.get("/pfmeas", async (req, res) => {
     const result = await storage.getAllPFMEAs(req.orgId!, { limit, offset });
     res.json(req.query.limit || req.query.offset ? result : result.data);
   } catch (error) {
-    console.error("Error fetching PFMEAs:", error);
+    logger.error({ err: error }, 'Error fetching PFMEAs');
     res.status(500).json({ error: "Failed to fetch PFMEAs" });
   }
 });
@@ -62,7 +63,7 @@ router.get("/pfmeas/:id", async (req, res) => {
     }
     res.json(pfmeaDoc);
   } catch (error) {
-    console.error("Error fetching PFMEA:", error);
+    logger.error({ err: error }, 'Error fetching PFMEA');
     res.status(500).json({ error: "Failed to fetch PFMEA" });
   }
 });
@@ -72,7 +73,7 @@ router.get("/pfmeas/:id/rows", async (req, res) => {
     const rows = await storage.getPFMEARows(req.params.id);
     res.json(rows);
   } catch (error) {
-    console.error("Error fetching PFMEA rows:", error);
+    logger.error({ err: error }, 'Error fetching PFMEA rows');
     res.status(500).json({ error: "Failed to fetch PFMEA rows" });
   }
 });
@@ -87,7 +88,7 @@ router.get("/pfmeas/:id/details", async (req, res) => {
     const partData = await storage.getPartById(pfmeaDoc.partId);
     res.json({ ...pfmeaDoc, rows, part: partData });
   } catch (error) {
-    console.error("Error fetching PFMEA details:", error);
+    logger.error({ err: error }, 'Error fetching PFMEA details');
     res.status(500).json({ error: "Failed to fetch PFMEA details" });
   }
 });
@@ -111,7 +112,7 @@ router.post("/calculate-ap", async (req, res) => {
     const result = calculateAP({ severity: s, occurrence: o, detection: d });
     res.json({ ap: result.priority, reason: result.description });
   } catch (error) {
-    console.error("Error calculating AP:", error);
+    logger.error({ err: error }, 'Error calculating AP');
     res.status(500).json({ error: "Failed to calculate AP" });
   }
 });
@@ -127,7 +128,7 @@ router.post("/pfmeas", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating PFMEA:", error);
+    logger.error({ err: error }, 'Error creating PFMEA');
     res.status(500).json({ error: "Failed to create PFMEA" });
   }
 });
@@ -142,7 +143,7 @@ router.post("/pfmea", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating PFMEA:", error);
+    logger.error({ err: error }, 'Error creating PFMEA');
     res.status(500).json({ error: "Failed to create PFMEA" });
   }
 });
@@ -161,7 +162,7 @@ router.post("/pfmeas/:id/rows", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating PFMEA row:", error);
+    logger.error({ err: error }, 'Error creating PFMEA row');
     res.status(500).json({ error: "Failed to create PFMEA row" });
   }
 });
@@ -179,7 +180,7 @@ router.post("/pfmea/:id/rows", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating PFMEA row:", error);
+    logger.error({ err: error }, 'Error creating PFMEA row');
     res.status(500).json({ error: "Failed to create PFMEA row" });
   }
 });
@@ -193,7 +194,7 @@ router.get("/pfmea-rows/:id", async (req, res) => {
     }
     res.json(row[0]);
   } catch (error) {
-    console.error("Error fetching PFMEA row:", error);
+    logger.error({ err: error }, 'Error fetching PFMEA row');
     res.status(500).json({ error: "Failed to fetch PFMEA row" });
   }
 });
@@ -211,7 +212,7 @@ router.patch("/pfmea-rows/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating PFMEA row:", error);
+    logger.error({ err: error }, 'Error updating PFMEA row');
     res.status(500).json({ error: "Failed to update PFMEA row" });
   }
 });
@@ -253,7 +254,7 @@ router.post('/pfmea-rows/:id/copy', async (req, res) => {
 
     res.json(newRow);
   } catch (error: unknown) {
-    console.error('Error copying PFMEA row:', error);
+    logger.error({ err: error }, 'Error copying PFMEA row');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -284,7 +285,7 @@ router.get('/pfmeas/:id/export', async (req, res) => {
     res.setHeader('Content-Length', result.buffer.length);
     res.send(result.buffer);
   } catch (error: unknown) {
-    console.error('Export failed:', error);
+    logger.error({ err: error }, 'Export failed');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -662,7 +663,7 @@ router.delete("/pfmeas/:id", async (req, res) => {
     await db.delete(pfmea).where(eq(pfmea.id, pfmeaId));
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting PFMEA:", error);
+    logger.error({ err: error }, 'Error deleting PFMEA');
     res.status(500).json({ error: "Failed to delete PFMEA" });
   }
 });
@@ -931,7 +932,7 @@ router.post("/parts/:id/generate-pfmea", async (req, res) => {
     const result = await generatePFMEA({ partId: id, processDefIds: processIds });
     res.json(result);
   } catch (error: unknown) {
-    console.error("Error generating PFMEA:", error);
+    logger.error({ err: error }, 'Error generating PFMEA');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });

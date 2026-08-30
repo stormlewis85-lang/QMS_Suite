@@ -4,6 +4,7 @@ import { organization, user, document, documentRevision, documentReview, approva
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { eq, count } from "drizzle-orm";
+import logger from "./logger";
 
 // Helper to hash passwords
 async function hashPassword(password: string): Promise<string> {
@@ -18,14 +19,14 @@ async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string 
   // Check if organization already exists
   const existingOrg = await storage.getOrganizationBySlug('acme-manufacturing');
   if (existingOrg) {
-    console.log("  Core platform seed data already exists, skipping.");
+    logger.info("  Core platform seed data already exists, skipping.");
     // Return existing IDs for use by other seeds
     const users = await storage.getUsersByOrgId(existingOrg.id);
     const admin = users.find(u => u.role === 'admin');
     return { orgId: existingOrg.id, adminUserId: admin?.id ?? users[0]?.id ?? '' };
   }
 
-  console.log("  Seeding Core Platform data...");
+  logger.info("  Seeding Core Platform data...");
 
   // 1. Create demo organization
   const demoOrg = await storage.createOrganization({
@@ -36,7 +37,7 @@ async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string 
       dateFormat: 'MM/DD/YYYY',
     },
   });
-  console.log(`  ✓ Created organization: ${demoOrg.name}`);
+  logger.info(`  ✓ Created organization: ${demoOrg.name}`);
 
   // 2. Create demo users
   const adminPasswordHash = await hashPassword('admin123');
@@ -51,7 +52,7 @@ async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string 
     role: 'admin',
     status: 'active',
   });
-  console.log(`  ✓ Created admin user: ${adminUser.email}`);
+  logger.info(`  ✓ Created admin user: ${adminUser.email}`);
 
   const qmUser = await storage.createUser({
     orgId: demoOrg.id,
@@ -62,7 +63,7 @@ async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string 
     role: 'quality_manager',
     status: 'active',
   });
-  console.log(`  ✓ Created quality manager: ${qmUser.email}`);
+  logger.info(`  ✓ Created quality manager: ${qmUser.email}`);
 
   const engineerUser = await storage.createUser({
     orgId: demoOrg.id,
@@ -73,16 +74,16 @@ async function seedCorePlatform(): Promise<{ orgId: string; adminUserId: string 
     role: 'engineer',
     status: 'active',
   });
-  console.log(`  ✓ Created engineer: ${engineerUser.email}`);
+  logger.info(`  ✓ Created engineer: ${engineerUser.email}`);
 
-  console.log("  ✓ Core Platform seed data created (1 org, 3 users).");
+  logger.info("  ✓ Core Platform seed data created (1 org, 3 users).");
   return { orgId: demoOrg.id, adminUserId: adminUser.id };
 }
 
 async function seedDocumentControl() {
   const demoOrg = await storage.getOrganizationBySlug('acme-manufacturing');
   if (!demoOrg) {
-    console.log("  No demo org found, skipping Document Control seed.");
+    logger.info("  No demo org found, skipping Document Control seed.");
     return;
   }
   const orgId = demoOrg.id;
@@ -90,11 +91,11 @@ async function seedDocumentControl() {
   // Check if documents already exist
   const existingResult = await storage.getDocuments(orgId);
   if (existingResult.data.length > 0) {
-    console.log("  Document Control seed data already exists, skipping.");
+    logger.info("  Document Control seed data already exists, skipping.");
     return;
   }
 
-  console.log("  Seeding Document Control data...");
+  logger.info("  Seeding Document Control data...");
 
   // Create sample documents
   const doc1 = await storage.createDocument({
@@ -316,7 +317,7 @@ async function seedDocumentControl() {
     dueDate: futureDue,
   });
 
-  console.log("  ✓ Document Control seed data created (6 documents, 7 revisions, 2 reviews).");
+  logger.info("  ✓ Document Control seed data created (6 documents, 7 revisions, 2 reviews).");
 }
 
 /**
@@ -326,17 +327,17 @@ async function seedDocumentControlPhase2() {
   // Check if workflow definitions already exist
   const demoOrg = await storage.getOrganizationBySlug('acme-manufacturing');
   if (!demoOrg) {
-    console.log("  No demo org found, skipping DC Phase 2 seed.");
+    logger.info("  No demo org found, skipping DC Phase 2 seed.");
     return;
   }
 
   const existingDefs = await storage.getApprovalWorkflowDefinitions(demoOrg.id);
   if (existingDefs.length > 0) {
-    console.log("  DC Phase 2 seed data already exists, skipping.");
+    logger.info("  DC Phase 2 seed data already exists, skipping.");
     return;
   }
 
-  console.log("  Seeding DC Phase 2 data...");
+  logger.info("  Seeding DC Phase 2 data...");
   const orgId = demoOrg.id;
 
   // Get users for references
@@ -377,7 +378,7 @@ async function seedDocumentControlPhase2() {
     status: 'active',
     createdBy: adminUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created workflow: ${wfStandard.name}`);
+  logger.info(`  ✓ Created workflow: ${wfStandard.name}`);
 
   const wfQuick = await storage.createApprovalWorkflowDefinition({
     orgId,
@@ -397,7 +398,7 @@ async function seedDocumentControlPhase2() {
     status: 'active',
     createdBy: adminUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created workflow: ${wfQuick.name}`);
+  logger.info(`  ✓ Created workflow: ${wfQuick.name}`);
 
   const wfSafety = await storage.createApprovalWorkflowDefinition({
     orgId,
@@ -439,7 +440,7 @@ async function seedDocumentControlPhase2() {
     status: 'active',
     createdBy: adminUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created workflow: ${wfSafety.name}`);
+  logger.info(`  ✓ Created workflow: ${wfSafety.name}`);
 
   // =============================================
   // 4 Document Templates
@@ -466,7 +467,7 @@ async function seedDocumentControlPhase2() {
     defaultReviewCycleDays: 365,
     createdBy: adminUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created template: ${tmplWI.name}`);
+  logger.info(`  ✓ Created template: ${tmplWI.name}`);
 
   const tmplProc = await storage.createDocumentTemplate({
     orgId,
@@ -487,7 +488,7 @@ async function seedDocumentControlPhase2() {
     defaultReviewCycleDays: 730,
     createdBy: adminUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created template: ${tmplProc.name}`);
+  logger.info(`  ✓ Created template: ${tmplProc.name}`);
 
   const tmplChk = await storage.createDocumentTemplate({
     orgId,
@@ -507,7 +508,7 @@ async function seedDocumentControlPhase2() {
     defaultReviewCycleDays: 365,
     createdBy: qmUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created template: ${tmplChk.name}`);
+  logger.info(`  ✓ Created template: ${tmplChk.name}`);
 
   const tmplSpec = await storage.createDocumentTemplate({
     orgId,
@@ -528,7 +529,7 @@ async function seedDocumentControlPhase2() {
     defaultReviewCycleDays: 365,
     createdBy: engUser?.id ?? 'system',
   });
-  console.log(`  ✓ Created template: ${tmplSpec.name}`);
+  logger.info(`  ✓ Created template: ${tmplSpec.name}`);
 
   // =============================================
   // Sample Document File (attached to first document)
@@ -562,7 +563,7 @@ async function seedDocumentControlPhase2() {
       pageCount: 5,
       uploadedBy: engUser?.id ?? 'system',
     });
-    console.log(`  ✓ Created sample file: ${sampleFile.originalName}`);
+    logger.info(`  ✓ Created sample file: ${sampleFile.originalName}`);
 
     // =============================================
     // Sample Completed Workflow Instance
@@ -655,28 +656,28 @@ async function seedDocumentControlPhase2() {
         }),
       });
 
-      console.log(`  ✓ Created completed workflow instance with 3 steps`);
+      logger.info(`  ✓ Created completed workflow instance with 3 steps`);
     }
   }
 
-  console.log("  ✓ DC Phase 2 seed data created (3 workflows, 4 templates, 1 file, 1 workflow instance).");
+  logger.info("  ✓ DC Phase 2 seed data created (3 workflows, 4 templates, 1 file, 1 workflow instance).");
 }
 
 async function seedDocumentControlPhase3() {
   // Check if distribution lists already exist
   const demoOrg = await storage.getOrganizationBySlug('acme-manufacturing');
   if (!demoOrg) {
-    console.log("  No demo org found, skipping DC Phase 3 seed.");
+    logger.info("  No demo org found, skipping DC Phase 3 seed.");
     return;
   }
 
   const existingLists = await storage.getDistributionLists(demoOrg.id);
   if (existingLists.length > 0) {
-    console.log("  DC Phase 3 seed data already exists, skipping.");
+    logger.info("  DC Phase 3 seed data already exists, skipping.");
     return;
   }
 
-  console.log("  Seeding DC Phase 3 data...");
+  logger.info("  Seeding DC Phase 3 data...");
 
   // 1. Create 3 Distribution Lists
   const dlProd = await storage.createDistributionList({
@@ -731,7 +732,7 @@ async function seedDocumentControlPhase3() {
     createdBy: 'admin',
   });
 
-  console.log(`  ✓ Created ${[dlProd, dlQual, dlAll].length} distribution lists`);
+  logger.info(`  ✓ Created ${[dlProd, dlQual, dlAll].length} distribution lists`);
 
   // 2. Create 4 External Documents
   const extIatf = await storage.createExternalDocument({
@@ -797,7 +798,7 @@ async function seedDocumentControlPhase3() {
     createdBy: 'admin',
   });
 
-  console.log(`  ✓ Created 4 external documents`);
+  logger.info(`  ✓ Created 4 external documents`);
 
   // 3. Create Sample Access Logs for existing document (WI-MOL-001)
   const docsResult2 = await storage.getDocuments(demoOrg.id);
@@ -845,7 +846,7 @@ async function seedDocumentControlPhase3() {
       previousHash = logHash;
     }
 
-    console.log(`  ✓ Created ${logEntries.length} access log entries for ${targetDoc.docNumber}`);
+    logger.info(`  ✓ Created ${logEntries.length} access log entries for ${targetDoc.docNumber}`);
 
     // 4. Create Sample Comments (threaded)
     const parentComment = await storage.createDocumentComment({
@@ -880,10 +881,10 @@ async function seedDocumentControlPhase3() {
     // Resolve the thread
     await storage.resolveCommentThread(parentComment.id, 'admin');
 
-    console.log(`  ✓ Created comment thread (1 parent + 2 replies, resolved) for ${targetDoc.docNumber}`);
+    logger.info(`  ✓ Created comment thread (1 parent + 2 replies, resolved) for ${targetDoc.docNumber}`);
   }
 
-  console.log("  ✓ DC Phase 3 seed data created (3 distribution lists, 4 external docs, access logs, comments).");
+  logger.info("  ✓ DC Phase 3 seed data created (3 distribution lists, 4 external docs, access logs, comments).");
 }
 
 /**
@@ -893,21 +894,21 @@ async function seedCAPA() {
   // Check if CAPAs already exist
   const [capaCount] = await db.select({ value: count() }).from(capa);
   if (capaCount.value > 0) {
-    console.log("  CAPA seed data already exists, skipping.");
+    logger.info("  CAPA seed data already exists, skipping.");
     return;
   }
 
   const demoOrg = await storage.getOrganizationBySlug('acme-manufacturing');
   if (!demoOrg) {
-    console.log("  No demo org found, skipping CAPA seed.");
+    logger.info("  No demo org found, skipping CAPA seed.");
     return;
   }
 
-  console.log("  Seeding CAPA/8D data...");
+  logger.info("  Seeding CAPA/8D data...");
   const orgId = demoOrg.id;
   const users = await storage.getUsersByOrgId(orgId);
   if (users.length === 0) {
-    console.log("  No users found in demo org, skipping CAPA seed.");
+    logger.info("  No users found in demo org, skipping CAPA seed.");
     return;
   }
   const adminUser = users.find(u => u.role === 'admin') ?? users[0];
@@ -1318,7 +1319,7 @@ async function seedCAPA() {
     completedBy: engUser.id,
   });
 
-  console.log(`  ✓ CAPA-1 created (closed, full D0-D8, 13 audit logs, 5 analysis tools)`);
+  logger.info(`  ✓ CAPA-1 created (closed, full D0-D8, 13 audit logs, 5 analysis tools)`);
 
   // =============================================
   // CAPA 2: In Progress at D4 (Internal NCR)
@@ -1429,7 +1430,7 @@ async function seedCAPA() {
     createdBy: engUser.id,
   });
 
-  console.log(`  ✓ CAPA-2 created (in progress at D4, D0-D3 complete)`);
+  logger.info(`  ✓ CAPA-2 created (in progress at D4, D0-D3 complete)`);
 
   // =============================================
   // CAPA 3: New (Audit Finding) — Only D0 started
@@ -1467,7 +1468,7 @@ async function seedCAPA() {
     createdBy: qmUser.id,
   });
 
-  console.log(`  ✓ CAPA-3 created (new, D0 awareness only)`);
+  logger.info(`  ✓ CAPA-3 created (new, D0 awareness only)`);
 
   // Metric snapshot
   await storage.createCapaMetricSnapshot({
@@ -1488,15 +1489,15 @@ async function seedCAPA() {
     costSavings: 150000,
   });
 
-  console.log("  ✓ CAPA/8D seed data created (3 CAPAs, team members, disciplines, audit logs, analysis tools, metrics).");
+  logger.info("  ✓ CAPA/8D seed data created (3 CAPAs, team members, disciplines, audit logs, analysis tools, metrics).");
 }
 
 export async function runAllSeeds() {
-  console.log("Running seeds...");
+  logger.info("Running seeds...");
   await seedCorePlatform();
   await seedDocumentControl();
   await seedDocumentControlPhase2();
   await seedDocumentControlPhase3();
   await seedCAPA();
-  console.log("✓ All seeds completed.");
+  logger.info("✓ All seeds completed.");
 }

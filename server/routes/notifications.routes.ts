@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { notificationService } from "../services/notification-service";
 import { getErrorMessage } from "./_helpers";
+import logger from '../logger';
 
 const router = Router();
 

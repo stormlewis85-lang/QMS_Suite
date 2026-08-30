@@ -8,6 +8,7 @@ import { eq, desc, inArray } from "drizzle-orm";
 import { pfmea, controlPlan, controlPlanRow, autoReviewRun } from "@shared/schema";
 import { insertControlPlanSchema, insertControlPlanRowSchema } from "@shared/schema";
 import { getErrorMessage } from "./_helpers";
+import logger from "../logger";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get("/control-plans", async (req, res) => {
       res.json(controlPlans);
     }
   } catch (error) {
-    console.error("Error fetching control plans:", error);
+    logger.error({ err: error }, "Error fetching control plans");
     res.status(500).json({ error: "Failed to fetch control plans" });
   }
 });
@@ -36,7 +37,7 @@ router.get("/control-plans/:id", async (req, res) => {
     }
     res.json(cp);
   } catch (error) {
-    console.error("Error fetching control plan:", error);
+    logger.error({ err: error }, "Error fetching control plan");
     res.status(500).json({ error: "Failed to fetch control plan" });
   }
 });
@@ -46,7 +47,7 @@ router.get("/control-plans/:id/rows", async (req, res) => {
     const rows = await storage.getControlPlanRows(req.params.id);
     res.json(rows);
   } catch (error) {
-    console.error("Error fetching control plan rows:", error);
+    logger.error({ err: error }, "Error fetching control plan rows");
     res.status(500).json({ error: "Failed to fetch control plan rows" });
   }
 });
@@ -61,7 +62,7 @@ router.post("/control-plans", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating control plan:", error);
+    logger.error({ err: error }, "Error creating control plan");
     res.status(500).json({ error: "Failed to create control plan" });
   }
 });
@@ -79,7 +80,7 @@ router.post("/control-plans/:id/rows", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating control plan row:", error);
+    logger.error({ err: error }, "Error creating control plan row");
     res.status(500).json({ error: "Failed to create control plan row" });
   }
 });
@@ -97,7 +98,7 @@ router.patch("/control-plan-rows/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating control plan row:", error);
+    logger.error({ err: error }, "Error updating control plan row");
     res.status(500).json({ error: "Failed to update control plan row" });
   }
 });
@@ -149,7 +150,7 @@ router.post('/control-plan-rows/:id/copy', async (req, res) => {
 
     res.json(newRow);
   } catch (error: unknown) {
-    console.error('Error copying Control Plan row:', error);
+    logger.error({ err: error }, 'Error copying Control Plan row');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -180,7 +181,7 @@ router.get('/control-plans/:id/export', async (req, res) => {
     res.setHeader('Content-Length', result.buffer.length);
     res.send(result.buffer);
   } catch (error: unknown) {
-    console.error('Export failed:', error);
+    logger.error({ err: error }, 'Export failed');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -238,7 +239,7 @@ router.get('/parts/:id/export-all', async (req, res) => {
 
     res.json(exports);
   } catch (error: unknown) {
-    console.error('Bulk export failed:', error);
+    logger.error({ err: error }, 'Bulk export failed');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -259,7 +260,7 @@ router.delete("/control-plans/:id", async (req, res) => {
     await db.delete(controlPlan).where(eq(controlPlan.id, cpId));
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting control plan:", error);
+    logger.error({ err: error }, "Error deleting control plan");
     res.status(500).json({ error: "Failed to delete control plan" });
   }
 });

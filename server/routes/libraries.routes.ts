@@ -16,6 +16,7 @@ import {
   type ControlType,
   type ControlEffectiveness,
 } from "@shared/schema";
+import logger from "../logger";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get("/equipment", async (req, res) => {
     const equipment = await storage.getAllEquipment(req.orgId!);
     res.json(equipment);
   } catch (error) {
-    console.error("Error fetching equipment:", error);
+    logger.error({ err: error }, "Error fetching equipment");
     res.status(500).json({ error: "Failed to fetch equipment" });
   }
 });
@@ -39,7 +40,7 @@ router.get("/equipment/:id", async (req, res) => {
     }
     res.json(equipment);
   } catch (error) {
-    console.error("Error fetching equipment:", error);
+    logger.error({ err: error }, "Error fetching equipment");
     res.status(500).json({ error: "Failed to fetch equipment" });
   }
 });
@@ -54,7 +55,7 @@ router.post("/equipment", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating equipment:", error);
+    logger.error({ err: error }, "Error creating equipment");
     res.status(500).json({ error: "Failed to create equipment" });
   }
 });
@@ -72,7 +73,7 @@ router.patch("/equipment/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating equipment:", error);
+    logger.error({ err: error }, "Error updating equipment");
     res.status(500).json({ error: "Failed to update equipment" });
   }
 });
@@ -85,7 +86,7 @@ router.delete("/equipment/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting equipment:", error);
+    logger.error({ err: error }, "Error deleting equipment");
     res.status(500).json({ error: "Failed to delete equipment" });
   }
 });
@@ -104,7 +105,7 @@ router.post("/equipment/:id/error-proofing", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating error-proofing control:", error);
+    logger.error({ err: error }, "Error creating error-proofing control");
     res.status(500).json({ error: "Failed to create error-proofing control" });
   }
 });
@@ -122,7 +123,7 @@ router.patch("/equipment-error-proofing/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating error-proofing control:", error);
+    logger.error({ err: error }, "Error updating error-proofing control");
     res.status(500).json({ error: "Failed to update error-proofing control" });
   }
 });
@@ -135,7 +136,7 @@ router.delete("/equipment-error-proofing/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting error-proofing control:", error);
+    logger.error({ err: error }, "Error deleting error-proofing control");
     res.status(500).json({ error: "Failed to delete error-proofing control" });
   }
 });
@@ -154,7 +155,7 @@ router.post("/equipment/:id/control-methods", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating control method:", error);
+    logger.error({ err: error }, "Error creating control method");
     res.status(500).json({ error: "Failed to create control method" });
   }
 });
@@ -172,7 +173,7 @@ router.patch("/equipment-control-methods/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating control method:", error);
+    logger.error({ err: error }, "Error updating control method");
     res.status(500).json({ error: "Failed to update control method" });
   }
 });
@@ -185,7 +186,7 @@ router.delete("/equipment-control-methods/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting control method:", error);
+    logger.error({ err: error }, "Error deleting control method");
     res.status(500).json({ error: "Failed to delete control method" });
   }
 });
@@ -212,7 +213,7 @@ router.get("/failure-modes", async (req, res) => {
     const failureModes = await storage.getAllFailureModes(filters);
     res.json(failureModes);
   } catch (error) {
-    console.error("Error fetching failure modes:", error);
+    logger.error({ err: error }, "Error fetching failure modes");
     res.status(500).json({ error: "Failed to fetch failure modes" });
   }
 });
@@ -225,7 +226,7 @@ router.get("/failure-modes/:id", async (req, res) => {
     }
     res.json(failureMode);
   } catch (error) {
-    console.error("Error fetching failure mode:", error);
+    logger.error({ err: error }, "Error fetching failure mode");
     res.status(500).json({ error: "Failed to fetch failure mode" });
   }
 });
@@ -240,7 +241,7 @@ router.post("/failure-modes", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating failure mode:", error);
+    logger.error({ err: error }, "Error creating failure mode");
     res.status(500).json({ error: "Failed to create failure mode" });
   }
 });
@@ -258,7 +259,7 @@ router.patch("/failure-modes/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating failure mode:", error);
+    logger.error({ err: error }, "Error updating failure mode");
     res.status(500).json({ error: "Failed to update failure mode" });
   }
 });
@@ -271,7 +272,7 @@ router.delete("/failure-modes/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting failure mode:", error);
+    logger.error({ err: error }, "Error deleting failure mode");
     res.status(500).json({ error: "Failed to delete failure mode" });
   }
 });
@@ -282,7 +283,7 @@ router.post("/failure-modes/:id/adopt", async (req, res) => {
     await storage.updateFailureModeLastUsed(req.params.id);
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Error updating failure mode last used:", error);
+    logger.error({ err: error }, "Error updating failure mode last used");
     res.status(500).json({ error: "Failed to update failure mode" });
   }
 });
@@ -299,7 +300,7 @@ router.post("/catalog-links", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating catalog link:", error);
+    logger.error({ err: error }, "Error creating catalog link");
     res.status(500).json({ error: "Failed to create catalog link" });
   }
 });
@@ -309,7 +310,7 @@ router.get("/catalog-links/by-template/:templateRowId", async (req, res) => {
     const links = await storage.getCatalogLinksByTemplateRowId(req.params.templateRowId);
     res.json(links);
   } catch (error) {
-    console.error("Error fetching catalog links:", error);
+    logger.error({ err: error }, "Error fetching catalog links");
     res.status(500).json({ error: "Failed to fetch catalog links" });
   }
 });
@@ -319,7 +320,7 @@ router.get("/catalog-links/by-catalog/:catalogItemId", async (req, res) => {
     const links = await storage.getCatalogLinksByCatalogItemId(req.params.catalogItemId);
     res.json(links);
   } catch (error) {
-    console.error("Error fetching catalog links:", error);
+    logger.error({ err: error }, "Error fetching catalog links");
     res.status(500).json({ error: "Failed to fetch catalog links" });
   }
 });
@@ -349,7 +350,7 @@ router.get("/controls-library", async (req, res) => {
     const controls = await storage.getAllControls(filters);
     res.json(controls);
   } catch (error) {
-    console.error("Error fetching controls:", error);
+    logger.error({ err: error }, "Error fetching controls");
     res.status(500).json({ error: "Failed to fetch controls" });
   }
 });
@@ -362,7 +363,7 @@ router.get("/controls-library/:id", async (req, res) => {
     }
     res.json(control);
   } catch (error) {
-    console.error("Error fetching control:", error);
+    logger.error({ err: error }, "Error fetching control");
     res.status(500).json({ error: "Failed to fetch control" });
   }
 });
@@ -377,7 +378,7 @@ router.post("/controls-library", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating control:", error);
+    logger.error({ err: error }, "Error creating control");
     res.status(500).json({ error: "Failed to create control" });
   }
 });
@@ -395,7 +396,7 @@ router.patch("/controls-library/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating control:", error);
+    logger.error({ err: error }, "Error updating control");
     res.status(500).json({ error: "Failed to update control" });
   }
 });
@@ -408,7 +409,7 @@ router.delete("/controls-library/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting control:", error);
+    logger.error({ err: error }, "Error deleting control");
     res.status(500).json({ error: "Failed to delete control" });
   }
 });
@@ -419,7 +420,7 @@ router.post("/controls-library/:id/adopt", async (req, res) => {
     await storage.updateControlLastUsed(req.params.id);
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Error updating control last used:", error);
+    logger.error({ err: error }, "Error updating control last used");
     res.status(500).json({ error: "Failed to update control" });
   }
 });
@@ -431,7 +432,7 @@ router.get("/control-pairings", async (req, res) => {
     const pairings = await storage.getAllControlPairings();
     res.json(pairings);
   } catch (error) {
-    console.error("Error fetching control pairings:", error);
+    logger.error({ err: error }, "Error fetching control pairings");
     res.status(500).json({ error: "Failed to fetch control pairings" });
   }
 });
@@ -441,7 +442,7 @@ router.get("/control-pairings/by-failure-mode/:failureModeId", async (req, res) 
     const pairings = await storage.getControlPairingsByFailureModeId(req.params.failureModeId);
     res.json(pairings);
   } catch (error) {
-    console.error("Error fetching control pairings:", error);
+    logger.error({ err: error }, "Error fetching control pairings");
     res.status(500).json({ error: "Failed to fetch control pairings" });
   }
 });
@@ -456,7 +457,7 @@ router.post("/control-pairings", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating control pairing:", error);
+    logger.error({ err: error }, "Error creating control pairing");
     res.status(500).json({ error: "Failed to create control pairing" });
   }
 });
@@ -469,7 +470,7 @@ router.delete("/control-pairings/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting control pairing:", error);
+    logger.error({ err: error }, "Error deleting control pairing");
     res.status(500).json({ error: "Failed to delete control pairing" });
   }
 });
@@ -481,7 +482,7 @@ router.get("/processes/:processId/fmea-template-rows", async (req, res) => {
     const rows = await storage.getFmeaTemplateRowsByProcessId(req.params.processId);
     res.json(rows);
   } catch (error) {
-    console.error("Error fetching FMEA template rows:", error);
+    logger.error({ err: error }, "Error fetching FMEA template rows");
     res.status(500).json({ error: "Failed to fetch FMEA template rows" });
   }
 });
@@ -494,7 +495,7 @@ router.get("/fmea-template-rows/:id", async (req, res) => {
     }
     res.json(row);
   } catch (error) {
-    console.error("Error fetching FMEA template row:", error);
+    logger.error({ err: error }, "Error fetching FMEA template row");
     res.status(500).json({ error: "Failed to fetch FMEA template row" });
   }
 });
@@ -512,7 +513,7 @@ router.post("/processes/:processId/fmea-template-rows", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating FMEA template row:", error);
+    logger.error({ err: error }, "Error creating FMEA template row");
     res.status(500).json({ error: "Failed to create FMEA template row" });
   }
 });
@@ -530,7 +531,7 @@ router.patch("/fmea-template-rows/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating FMEA template row:", error);
+    logger.error({ err: error }, "Error updating FMEA template row");
     res.status(500).json({ error: "Failed to update FMEA template row" });
   }
 });
@@ -543,7 +544,7 @@ router.delete("/fmea-template-rows/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting FMEA template row:", error);
+    logger.error({ err: error }, "Error deleting FMEA template row");
     res.status(500).json({ error: "Failed to delete FMEA template row" });
   }
 });
@@ -556,7 +557,7 @@ router.post("/fmea-template-rows/:id/duplicate", async (req, res) => {
     }
     res.status(201).json(duplicatedRow);
   } catch (error) {
-    console.error("Error duplicating FMEA template row:", error);
+    logger.error({ err: error }, "Error duplicating FMEA template row");
     res.status(500).json({ error: "Failed to duplicate FMEA template row" });
   }
 });
@@ -568,7 +569,7 @@ router.get("/processes/:processId/control-template-rows", async (req, res) => {
     const rows = await storage.getControlTemplateRowsByProcessId(req.params.processId);
     res.json(rows);
   } catch (error) {
-    console.error("Error fetching control template rows:", error);
+    logger.error({ err: error }, "Error fetching control template rows");
     res.status(500).json({ error: "Failed to fetch control template rows" });
   }
 });
@@ -581,7 +582,7 @@ router.get("/control-template-rows/:id", async (req, res) => {
     }
     res.json(row);
   } catch (error) {
-    console.error("Error fetching control template row:", error);
+    logger.error({ err: error }, "Error fetching control template row");
     res.status(500).json({ error: "Failed to fetch control template row" });
   }
 });
@@ -599,7 +600,7 @@ router.post("/processes/:processId/control-template-rows", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating control template row:", error);
+    logger.error({ err: error }, "Error creating control template row");
     res.status(500).json({ error: "Failed to create control template row" });
   }
 });
@@ -617,7 +618,7 @@ router.patch("/control-template-rows/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating control template row:", error);
+    logger.error({ err: error }, "Error updating control template row");
     res.status(500).json({ error: "Failed to update control template row" });
   }
 });
@@ -630,7 +631,7 @@ router.delete("/control-template-rows/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting control template row:", error);
+    logger.error({ err: error }, "Error deleting control template row");
     res.status(500).json({ error: "Failed to delete control template row" });
   }
 });
@@ -643,7 +644,7 @@ router.post("/control-template-rows/:id/duplicate", async (req, res) => {
     }
     res.status(201).json(duplicatedRow);
   } catch (error) {
-    console.error("Error duplicating control template row:", error);
+    logger.error({ err: error }, "Error duplicating control template row");
     res.status(500).json({ error: "Failed to duplicate control template row" });
   }
 });

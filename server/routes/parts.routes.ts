@@ -3,6 +3,7 @@ import { z } from "zod";
 import { fromError } from "zod-validation-error";
 import { storage } from "../storage";
 import { insertPartSchema } from "@shared/schema";
+import logger from '../logger';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.get("/parts", async (req, res) => {
     const result = await storage.getAllParts(req.orgId!, { limit, offset });
     res.json(req.query.limit || req.query.offset ? result : result.data);
   } catch (error) {
-    console.error("Error fetching parts:", error);
+    logger.error({ err: error }, 'Error fetching parts');
     res.status(500).json({ error: "Failed to fetch parts" });
   }
 });
@@ -26,7 +27,7 @@ router.get("/parts/:id", async (req, res) => {
     }
     res.json(part);
   } catch (error) {
-    console.error("Error fetching part:", error);
+    logger.error({ err: error }, 'Error fetching part');
     res.status(500).json({ error: "Failed to fetch part" });
   }
 });
@@ -36,7 +37,7 @@ router.get("/parts/:id/pfmeas", async (req, res) => {
     const pfmeas = await storage.getPFMEAsByPartId(req.params.id);
     res.json(pfmeas);
   } catch (error) {
-    console.error("Error fetching part PFMEAs:", error);
+    logger.error({ err: error }, 'Error fetching part PFMEAs');
     res.status(500).json({ error: "Failed to fetch part PFMEAs" });
   }
 });
@@ -46,7 +47,7 @@ router.get("/parts/:id/control-plans", async (req, res) => {
     const controlPlans = await storage.getControlPlansByPartId(req.params.id);
     res.json(controlPlans);
   } catch (error) {
-    console.error("Error fetching part control plans:", error);
+    logger.error({ err: error }, 'Error fetching part control plans');
     res.status(500).json({ error: "Failed to fetch part control plans" });
   }
 });
@@ -56,7 +57,7 @@ router.get("/parts/:id/processes", async (req, res) => {
     const mappings = await storage.getPartProcessMappings(req.params.id);
     res.json(mappings);
   } catch (error) {
-    console.error("Error fetching part processes:", error);
+    logger.error({ err: error }, 'Error fetching part processes');
     res.status(500).json({ error: "Failed to fetch part processes" });
   }
 });
@@ -71,7 +72,7 @@ router.post("/parts", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating part:", error);
+    logger.error({ err: error }, 'Error creating part');
     res.status(500).json({ error: "Failed to create part" });
   }
 });
@@ -85,7 +86,7 @@ router.patch("/parts/:id", async (req, res) => {
     }
     res.json(updated);
   } catch (error) {
-    console.error("Error updating part:", error);
+    logger.error({ err: error }, 'Error updating part');
     res.status(500).json({ error: "Failed to update part" });
   }
 });
@@ -96,7 +97,7 @@ router.delete("/parts/:id", async (req, res) => {
     await storage.deletePart(req.params.id);
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting part:", error);
+    logger.error({ err: error }, 'Error deleting part');
     res.status(500).json({ error: "Failed to delete part" });
   }
 });

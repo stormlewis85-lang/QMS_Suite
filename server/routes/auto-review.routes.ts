@@ -9,6 +9,7 @@ import {
 } from "../autoReviewService";
 import { autoReviewService } from "../services/auto-review";
 import { getErrorMessage } from "./_helpers";
+import logger from "../logger";
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.post("/pfmeas/:id/auto-review", async (req, res) => {
     const result = await runAutoReviewService(id, latestCPId, req.body.runBy);
     res.json(result);
   } catch (error) {
-    console.error("Auto-review error:", error);
+    logger.error({ err: error }, "Auto-review error");
     res.status(500).json({ message: "Failed to run auto-review" });
   }
 });
@@ -47,7 +48,7 @@ router.post("/control-plans/:id/auto-review", async (req, res) => {
     const result = await runAutoReviewService(latestPFMEAId, id, req.body.runBy);
     res.json(result);
   } catch (error) {
-    console.error("Auto-review error:", error);
+    logger.error({ err: error }, "Auto-review error");
     res.status(500).json({ message: "Failed to run auto-review" });
   }
 });
@@ -63,7 +64,7 @@ router.get("/auto-reviews", async (req, res) => {
     );
     res.json(history);
   } catch (error) {
-    console.error("Error fetching auto-review history:", error);
+    logger.error({ err: error }, "Error fetching auto-review history");
     res.status(500).json({ message: "Failed to fetch auto-review history" });
   }
 });
@@ -78,7 +79,7 @@ router.get("/auto-reviews/:id", async (req, res) => {
     }
     res.json(run);
   } catch (error) {
-    console.error("Error fetching auto-review run:", error);
+    logger.error({ err: error }, "Error fetching auto-review run");
     res.status(500).json({ message: "Failed to fetch auto-review run" });
   }
 });
@@ -94,7 +95,7 @@ router.post("/auto-review-findings/:id/resolve", async (req, res) => {
     }
     res.json(finding);
   } catch (error) {
-    console.error("Error resolving finding:", error);
+    logger.error({ err: error }, "Error resolving finding");
     res.status(500).json({ message: "Failed to resolve finding" });
   }
 });
@@ -110,7 +111,7 @@ router.post("/auto-review-findings/:id/waive", async (req, res) => {
     }
     res.json(finding);
   } catch (error) {
-    console.error("Error waiving finding:", error);
+    logger.error({ err: error }, "Error waiving finding");
     res.status(500).json({ message: "Failed to waive finding" });
   }
 });
@@ -184,7 +185,7 @@ router.post("/parts/:id/auto-review", async (req, res) => {
       results,
     });
   } catch (error) {
-    console.error("Auto-review error:", error);
+    logger.error({ err: error }, "Auto-review error");
     res.status(500).json({ message: "Failed to run auto-review" });
   }
 });
@@ -207,7 +208,7 @@ router.post('/auto-review/run', async (req, res) => {
     const result = await runAutoReviewService(pfmeaId, controlPlanId, runBy);
     res.json(result);
   } catch (error) {
-    console.error('Auto-review error:', error);
+    logger.error({ err: error }, 'Auto-review error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to run auto-review'
     });
@@ -227,7 +228,7 @@ router.get('/auto-review/history', async (req, res) => {
 
     res.json(history);
   } catch (error) {
-    console.error('Get history error:', error);
+    logger.error({ err: error }, 'Get history error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get history'
     });
@@ -281,7 +282,7 @@ router.post('/auto-review/validate', async (req, res) => {
 
     res.json(result);
   } catch (error: unknown) {
-    console.error('Auto-review failed:', error);
+    logger.error({ err: error }, 'Auto-review failed');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -297,7 +298,7 @@ router.get('/auto-review/:runId', async (req, res) => {
 
     res.json(run);
   } catch (error) {
-    console.error('Get run error:', error);
+    logger.error({ err: error }, 'Get run error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get run'
     });
@@ -318,7 +319,7 @@ router.post('/auto-review/findings/:findingId/resolve', async (req, res) => {
     await resolveFinding(req.params.findingId, resolution, resolvedBy);
     res.json({ success: true });
   } catch (error) {
-    console.error('Resolve finding error:', error);
+    logger.error({ err: error }, 'Resolve finding error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to resolve finding'
     });
@@ -339,7 +340,7 @@ router.post('/auto-review/findings/:findingId/waive', async (req, res) => {
     await waiveFinding(req.params.findingId, waiverReason);
     res.json({ success: true });
   } catch (error) {
-    console.error('Waive finding error:', error);
+    logger.error({ err: error }, 'Waive finding error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to waive finding'
     });

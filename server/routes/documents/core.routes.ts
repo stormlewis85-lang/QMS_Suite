@@ -22,6 +22,7 @@ import {
 } from "@shared/schema";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { getErrorMessage } from "../_helpers";
+import logger from '../../logger';
 
 const router = Router();
 
@@ -298,7 +299,7 @@ router.get('/documents/:type/:id/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.buffer);
   } catch (error: unknown) {
-    console.error('Export error:', error);
+    logger.error({ err: error }, 'Export error');
     res.status(500).json({ error: getErrorMessage(error) });
   }
 });
@@ -352,7 +353,7 @@ router.get("/documents/metrics", requireAuth, async (req, res) => {
     const metrics = await storage.getDocumentMetrics(req.orgId!);
     res.json(metrics);
   } catch (error) {
-    console.error("Error fetching document metrics:", error);
+    logger.error({ err: error }, 'Error fetching document metrics');
     res.status(500).json({ error: "Failed to fetch document metrics" });
   }
 });
@@ -372,7 +373,7 @@ router.get("/documents", async (req, res) => {
     }, { limit, offset });
     res.json(lim || off ? result : result.data);
   } catch (error) {
-    console.error("Error fetching documents:", error);
+    logger.error({ err: error }, 'Error fetching documents');
     res.status(500).json({ error: "Failed to fetch documents" });
   }
 });
@@ -406,7 +407,7 @@ router.get("/documents/search", requireAuth, async (req, res) => {
 
     res.json(results);
   } catch (error) {
-    console.error("Error searching documents:", error);
+    logger.error({ err: error }, 'Error searching documents');
     res.status(500).json({ error: "Failed to search documents" });
   }
 });
@@ -421,7 +422,7 @@ router.get("/documents/:id", async (req, res) => {
     }
     res.json(doc);
   } catch (error) {
-    console.error("Error fetching document:", error);
+    logger.error({ err: error }, 'Error fetching document');
     res.status(500).json({ error: "Failed to fetch document" });
   }
 });
@@ -449,7 +450,7 @@ router.post("/documents", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating document:", error);
+    logger.error({ err: error }, 'Error creating document');
     res.status(500).json({ error: "Failed to create document" });
   }
 });
@@ -464,7 +465,7 @@ router.patch("/documents/:id", async (req, res) => {
     }
     res.json(updated);
   } catch (error) {
-    console.error("Error updating document:", error);
+    logger.error({ err: error }, 'Error updating document');
     res.status(500).json({ error: "Failed to update document" });
   }
 });
@@ -479,7 +480,7 @@ router.delete("/documents/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting document:", error);
+    logger.error({ err: error }, 'Error deleting document');
     res.status(500).json({ error: "Failed to delete document" });
   }
 });
@@ -495,7 +496,7 @@ router.get("/documents/:id/revisions", async (req, res) => {
     const revisions = await storage.getDocumentRevisions(req.params.id, req.orgId!);
     res.json(revisions);
   } catch (error) {
-    console.error("Error fetching revisions:", error);
+    logger.error({ err: error }, 'Error fetching revisions');
     res.status(500).json({ error: "Failed to fetch revisions" });
   }
 });
@@ -539,7 +540,7 @@ router.post("/documents/:id/revisions", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating revision:", error);
+    logger.error({ err: error }, 'Error creating revision');
     res.status(500).json({ error: "Failed to create revision" });
   }
 });
@@ -554,7 +555,7 @@ router.get("/document-revisions/:id", async (req, res) => {
     }
     res.json(revision);
   } catch (error) {
-    console.error("Error fetching revision:", error);
+    logger.error({ err: error }, 'Error fetching revision');
     res.status(500).json({ error: "Failed to fetch revision" });
   }
 });
@@ -575,7 +576,7 @@ router.patch("/document-revisions/:id", async (req, res) => {
     const updated = await storage.updateRevision(req.params.id, req.orgId!, req.body);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating revision:", error);
+    logger.error({ err: error }, 'Error updating revision');
     res.status(500).json({ error: "Failed to update revision" });
   }
 });
@@ -608,7 +609,7 @@ router.post("/documents/:id/submit-review", async (req, res) => {
     const updated = await storage.updateDocument(req.params.id, req.orgId!, { status: 'review' as any });
     res.json(updated);
   } catch (error) {
-    console.error("Error submitting for review:", error);
+    logger.error({ err: error }, 'Error submitting for review');
     res.status(500).json({ error: "Failed to submit for review" });
   }
 });
@@ -664,7 +665,7 @@ router.post("/documents/:id/approve", async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error("Error approving document:", error);
+    logger.error({ err: error }, 'Error approving document');
     res.status(500).json({ error: "Failed to approve document" });
   }
 });
@@ -701,7 +702,7 @@ router.post("/documents/:id/reject", async (req, res) => {
     const updated = await storage.updateDocument(req.params.id, req.orgId!, { status: 'draft' as any });
     res.json({ ...updated, rejectionComments: comments });
   } catch (error) {
-    console.error("Error rejecting document:", error);
+    logger.error({ err: error }, 'Error rejecting document');
     res.status(500).json({ error: "Failed to reject document" });
   }
 });
@@ -729,7 +730,7 @@ router.post("/documents/:id/obsolete", async (req, res) => {
     const updated = await storage.updateDocument(req.params.id, req.orgId!, { status: 'obsolete' as any });
     res.json(updated);
   } catch (error) {
-    console.error("Error marking document obsolete:", error);
+    logger.error({ err: error }, 'Error marking document obsolete');
     res.status(500).json({ error: "Failed to mark document obsolete" });
   }
 });
@@ -745,7 +746,7 @@ router.get("/documents/:id/distributions", async (req, res) => {
     const distributions = await storage.getDistributions(req.params.id, req.orgId!);
     res.json(distributions);
   } catch (error) {
-    console.error("Error fetching distributions:", error);
+    logger.error({ err: error }, 'Error fetching distributions');
     res.status(500).json({ error: "Failed to fetch distributions" });
   }
 });
@@ -760,7 +761,7 @@ router.post("/document-distributions/:id/acknowledge", async (req, res) => {
     }
     res.json(updated);
   } catch (error) {
-    console.error("Error acknowledging distribution:", error);
+    logger.error({ err: error }, 'Error acknowledging distribution');
     res.status(500).json({ error: "Failed to acknowledge distribution" });
   }
 });
@@ -772,7 +773,7 @@ router.get("/document-reviews", async (req, res) => {
     const reviews = await storage.getPendingReviews(req.orgId!);
     res.json(reviews);
   } catch (error) {
-    console.error("Error fetching pending reviews:", error);
+    logger.error({ err: error }, 'Error fetching pending reviews');
     res.status(500).json({ error: "Failed to fetch pending reviews" });
   }
 });
@@ -784,7 +785,7 @@ router.get("/document-reviews/overdue", async (req, res) => {
     const reviews = await storage.getOverdueReviews(req.orgId!);
     res.json(reviews);
   } catch (error) {
-    console.error("Error fetching overdue reviews:", error);
+    logger.error({ err: error }, 'Error fetching overdue reviews');
     res.status(500).json({ error: "Failed to fetch overdue reviews" });
   }
 });
@@ -800,7 +801,7 @@ router.get("/documents/:id/reviews", async (req, res) => {
     const reviews = await storage.getReviews(req.params.id, req.orgId!);
     res.json(reviews);
   } catch (error) {
-    console.error("Error fetching reviews:", error);
+    logger.error({ err: error }, 'Error fetching reviews');
     res.status(500).json({ error: "Failed to fetch reviews" });
   }
 });
@@ -828,7 +829,7 @@ router.post("/documents/:id/reviews", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating review:", error);
+    logger.error({ err: error }, 'Error creating review');
     res.status(500).json({ error: "Failed to create review" });
   }
 });
@@ -846,7 +847,7 @@ router.patch("/document-reviews/:id", async (req, res) => {
     }
     res.json(updated);
   } catch (error) {
-    console.error("Error updating review:", error);
+    logger.error({ err: error }, 'Error updating review');
     res.status(500).json({ error: "Failed to update review" });
   }
 });
@@ -863,7 +864,7 @@ router.post("/document-links", requireAuth, async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating document link:", error);
+    logger.error({ err: error }, 'Error creating document link');
     res.status(500).json({ error: "Failed to create document link" });
   }
 });
@@ -878,7 +879,7 @@ router.delete("/document-links/:id", requireAuth, async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting document link:", error);
+    logger.error({ err: error }, 'Error deleting document link');
     res.status(500).json({ error: "Failed to delete document link" });
   }
 });

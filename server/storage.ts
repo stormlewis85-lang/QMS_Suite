@@ -557,7 +557,7 @@ export interface IStorage {
 
   // CAPA Core
   getCapas(orgId: string, filters?: { status?: string; priority?: string; sourceType?: string; search?: string }): Promise<Capa[]>;
-  getCapa(id: number): Promise<Capa | undefined>;
+  getCapa(id: string): Promise<Capa | undefined>;
   getCapaByNumber(orgId: string, capaNumber: string): Promise<Capa | undefined>;
   getCapasByStatus(orgId: string, status: string): Promise<Capa[]>;
   getCapasByPriority(orgId: string, priority: string): Promise<Capa[]>;
@@ -566,128 +566,128 @@ export interface IStorage {
   getOverdueCapas(orgId: string): Promise<Capa[]>;
   getCapaMetrics(orgId: string): Promise<{ total: number; byStatus: Record<string, number>; byPriority: Record<string, number>; avgClosureTime: number }>;
   createCapa(data: InsertCapa): Promise<Capa>;
-  updateCapa(id: number, data: Partial<InsertCapa>): Promise<Capa | undefined>;
-  updateCapaStatus(id: number, status: string, userId: string): Promise<Capa | undefined>;
-  softDeleteCapa(id: number, userId: string): Promise<void>;
+  updateCapa(id: string, data: Partial<InsertCapa>): Promise<Capa | undefined>;
+  updateCapaStatus(id: string, status: string, userId: string): Promise<Capa | undefined>;
+  softDeleteCapa(id: string, userId: string): Promise<void>;
   searchCapas(orgId: string, searchText: string): Promise<Capa[]>;
 
   // CAPA Team Members
-  getCapaTeamMembers(capaId: number): Promise<CapaTeamMember[]>;
-  getCapaTeamMember(id: number): Promise<CapaTeamMember | undefined>;
-  getCapaChampion(capaId: number): Promise<CapaTeamMember | undefined>;
-  getCapaLeader(capaId: number): Promise<CapaTeamMember | undefined>;
+  getCapaTeamMembers(capaId: string): Promise<CapaTeamMember[]>;
+  getCapaTeamMember(id: string): Promise<CapaTeamMember | undefined>;
+  getCapaChampion(capaId: string): Promise<CapaTeamMember | undefined>;
+  getCapaLeader(capaId: string): Promise<CapaTeamMember | undefined>;
   getUserCapaAssignments(orgId: string, userId: string): Promise<CapaTeamMember[]>;
   createCapaTeamMember(data: InsertCapaTeamMember): Promise<CapaTeamMember>;
-  updateCapaTeamMember(id: number, data: Partial<InsertCapaTeamMember>): Promise<CapaTeamMember | undefined>;
-  removeCapaTeamMember(id: number, reason: string): Promise<void>;
-  updateCapaTeamMemberActivity(id: number): Promise<void>;
+  updateCapaTeamMember(id: string, data: Partial<InsertCapaTeamMember>): Promise<CapaTeamMember | undefined>;
+  removeCapaTeamMember(id: string, reason: string): Promise<void>;
+  updateCapaTeamMemberActivity(id: string): Promise<void>;
 
   // CAPA Sources
-  getCapaSources(capaId: number): Promise<CapaSource[]>;
-  getCapaSource(id: number): Promise<CapaSource | undefined>;
+  getCapaSources(capaId: string): Promise<CapaSource[]>;
+  getCapaSource(id: string): Promise<CapaSource | undefined>;
   getCapaSourceByExternalId(orgId: string, sourceType: string, externalId: string): Promise<CapaSource | undefined>;
   createCapaSource(data: InsertCapaSource): Promise<CapaSource>;
-  updateCapaSource(id: number, data: Partial<InsertCapaSource>): Promise<CapaSource | undefined>;
-  deleteCapaSource(id: number): Promise<void>;
+  updateCapaSource(id: string, data: Partial<InsertCapaSource>): Promise<CapaSource | undefined>;
+  deleteCapaSource(id: string): Promise<void>;
 
   // CAPA Attachments
-  getCapaAttachments(capaId: number, discipline?: string): Promise<CapaAttachment[]>;
-  getCapaAttachment(id: number): Promise<CapaAttachment | undefined>;
-  getCapaEvidence(capaId: number): Promise<CapaAttachment[]>;
+  getCapaAttachments(capaId: string, discipline?: string): Promise<CapaAttachment[]>;
+  getCapaAttachment(id: string): Promise<CapaAttachment | undefined>;
+  getCapaEvidence(capaId: string): Promise<CapaAttachment[]>;
   createCapaAttachment(data: InsertCapaAttachment): Promise<CapaAttachment>;
-  updateCapaAttachment(id: number, data: Partial<InsertCapaAttachment>): Promise<CapaAttachment | undefined>;
-  softDeleteCapaAttachment(id: number, userId: string, reason: string): Promise<void>;
+  updateCapaAttachment(id: string, data: Partial<InsertCapaAttachment>): Promise<CapaAttachment | undefined>;
+  softDeleteCapaAttachment(id: string, userId: string, reason: string): Promise<void>;
 
   // CAPA Related Records
-  getCapaRelatedRecords(capaId: number, relatedType?: string): Promise<CapaRelatedRecord[]>;
-  getCapaRelatedRecord(id: number): Promise<CapaRelatedRecord | undefined>;
+  getCapaRelatedRecords(capaId: string, relatedType?: string): Promise<CapaRelatedRecord[]>;
+  getCapaRelatedRecord(id: string): Promise<CapaRelatedRecord | undefined>;
   getCapasForRelatedRecord(relatedType: string, relatedId: number): Promise<Capa[]>;
   createCapaRelatedRecord(data: InsertCapaRelatedRecord): Promise<CapaRelatedRecord>;
-  updateCapaRelatedRecord(id: number, data: Partial<InsertCapaRelatedRecord>): Promise<CapaRelatedRecord | undefined>;
-  deleteCapaRelatedRecord(id: number): Promise<void>;
-  verifyCapaRelatedRecord(id: number, userId: string): Promise<CapaRelatedRecord | undefined>;
+  updateCapaRelatedRecord(id: string, data: Partial<InsertCapaRelatedRecord>): Promise<CapaRelatedRecord | undefined>;
+  deleteCapaRelatedRecord(id: string): Promise<void>;
+  verifyCapaRelatedRecord(id: string, userId: string): Promise<CapaRelatedRecord | undefined>;
 
   // CAPA Number Sequence
   getNextCapaNumber(orgId: string): Promise<string>;
   getCurrentSequence(orgId: string, year: number): Promise<CapaNumberSequence | undefined>;
 
   // CAPA D0: Emergency Response
-  getCapaD0(capaId: number): Promise<CapaD0Emergency | undefined>;
+  getCapaD0(capaId: string): Promise<CapaD0Emergency | undefined>;
   createCapaD0(data: InsertCapaD0Emergency): Promise<CapaD0Emergency>;
-  updateCapaD0(capaId: number, data: Partial<InsertCapaD0Emergency>): Promise<CapaD0Emergency | undefined>;
-  completeD0(capaId: number, userId: string): Promise<CapaD0Emergency | undefined>;
-  verifyD0(capaId: number, userId: string): Promise<CapaD0Emergency | undefined>;
+  updateCapaD0(capaId: string, data: Partial<InsertCapaD0Emergency>): Promise<CapaD0Emergency | undefined>;
+  completeD0(capaId: string, userId: string): Promise<CapaD0Emergency | undefined>;
+  verifyD0(capaId: string, userId: string): Promise<CapaD0Emergency | undefined>;
   getCapasWithSafetyImpact(orgId: string): Promise<Capa[]>;
   getCapasWithRegulatoryImpact(orgId: string): Promise<Capa[]>;
 
   // CAPA D1: Team Formation
-  getCapaD1(capaId: number): Promise<CapaD1TeamDetail | undefined>;
+  getCapaD1(capaId: string): Promise<CapaD1TeamDetail | undefined>;
   createCapaD1(data: InsertCapaD1TeamDetail): Promise<CapaD1TeamDetail>;
-  updateCapaD1(capaId: number, data: Partial<InsertCapaD1TeamDetail>): Promise<CapaD1TeamDetail | undefined>;
-  completeD1(capaId: number, userId: string): Promise<CapaD1TeamDetail | undefined>;
-  verifyD1(capaId: number, userId: string): Promise<CapaD1TeamDetail | undefined>;
+  updateCapaD1(capaId: string, data: Partial<InsertCapaD1TeamDetail>): Promise<CapaD1TeamDetail | undefined>;
+  completeD1(capaId: string, userId: string): Promise<CapaD1TeamDetail | undefined>;
+  verifyD1(capaId: string, userId: string): Promise<CapaD1TeamDetail | undefined>;
 
   // CAPA D2: Problem Description
-  getCapaD2(capaId: number): Promise<CapaD2Problem | undefined>;
+  getCapaD2(capaId: string): Promise<CapaD2Problem | undefined>;
   createCapaD2(data: InsertCapaD2Problem): Promise<CapaD2Problem>;
-  updateCapaD2(capaId: number, data: Partial<InsertCapaD2Problem>): Promise<CapaD2Problem | undefined>;
-  completeD2(capaId: number, userId: string): Promise<CapaD2Problem | undefined>;
-  verifyD2(capaId: number, userId: string): Promise<CapaD2Problem | undefined>;
+  updateCapaD2(capaId: string, data: Partial<InsertCapaD2Problem>): Promise<CapaD2Problem | undefined>;
+  completeD2(capaId: string, userId: string): Promise<CapaD2Problem | undefined>;
+  verifyD2(capaId: string, userId: string): Promise<CapaD2Problem | undefined>;
 
   // CAPA D3: Interim Containment
-  getCapaD3(capaId: number): Promise<CapaD3Containment | undefined>;
+  getCapaD3(capaId: string): Promise<CapaD3Containment | undefined>;
   createCapaD3(data: InsertCapaD3Containment): Promise<CapaD3Containment>;
-  updateCapaD3(capaId: number, data: Partial<InsertCapaD3Containment>): Promise<CapaD3Containment | undefined>;
-  completeD3(capaId: number, userId: string): Promise<CapaD3Containment | undefined>;
-  verifyD3(capaId: number, userId: string): Promise<CapaD3Containment | undefined>;
+  updateCapaD3(capaId: string, data: Partial<InsertCapaD3Containment>): Promise<CapaD3Containment | undefined>;
+  completeD3(capaId: string, userId: string): Promise<CapaD3Containment | undefined>;
+  verifyD3(capaId: string, userId: string): Promise<CapaD3Containment | undefined>;
   getActiveContainments(orgId: string): Promise<CapaD3Containment[]>;
 
   // CAPA D4: Root Cause Analysis
-  getCapaD4(capaId: number): Promise<CapaD4RootCause | undefined>;
+  getCapaD4(capaId: string): Promise<CapaD4RootCause | undefined>;
   createCapaD4(data: InsertCapaD4RootCause): Promise<CapaD4RootCause>;
-  updateCapaD4(capaId: number, data: Partial<InsertCapaD4RootCause>): Promise<CapaD4RootCause | undefined>;
-  completeD4(capaId: number, userId: string): Promise<CapaD4RootCause | undefined>;
-  verifyD4(capaId: number, userId: string): Promise<CapaD4RootCause | undefined>;
+  updateCapaD4(capaId: string, data: Partial<InsertCapaD4RootCause>): Promise<CapaD4RootCause | undefined>;
+  completeD4(capaId: string, userId: string): Promise<CapaD4RootCause | undefined>;
+  verifyD4(capaId: string, userId: string): Promise<CapaD4RootCause | undefined>;
 
   // CAPA D4 Root Cause Candidates
-  getD4Candidates(capaId: number): Promise<CapaD4RootCauseCandidate[]>;
-  getD4Candidate(id: number): Promise<CapaD4RootCauseCandidate | undefined>;
-  getConfirmedRootCauses(capaId: number): Promise<CapaD4RootCauseCandidate[]>;
+  getD4Candidates(capaId: string): Promise<CapaD4RootCauseCandidate[]>;
+  getD4Candidate(id: string): Promise<CapaD4RootCauseCandidate | undefined>;
+  getConfirmedRootCauses(capaId: string): Promise<CapaD4RootCauseCandidate[]>;
   createD4Candidate(data: InsertCapaD4RootCauseCandidate): Promise<CapaD4RootCauseCandidate>;
-  updateD4Candidate(id: number, data: Partial<InsertCapaD4RootCauseCandidate>): Promise<CapaD4RootCauseCandidate | undefined>;
-  deleteD4Candidate(id: number): Promise<void>;
+  updateD4Candidate(id: string, data: Partial<InsertCapaD4RootCauseCandidate>): Promise<CapaD4RootCauseCandidate | undefined>;
+  deleteD4Candidate(id: string): Promise<void>;
 
   // CAPA D5: Corrective Actions
-  getCapaD5(capaId: number): Promise<CapaD5CorrectiveAction | undefined>;
+  getCapaD5(capaId: string): Promise<CapaD5CorrectiveAction | undefined>;
   createCapaD5(data: InsertCapaD5CorrectiveAction): Promise<CapaD5CorrectiveAction>;
-  updateCapaD5(capaId: number, data: Partial<InsertCapaD5CorrectiveAction>): Promise<CapaD5CorrectiveAction | undefined>;
-  completeD5(capaId: number, userId: string): Promise<CapaD5CorrectiveAction | undefined>;
-  verifyD5(capaId: number, userId: string): Promise<CapaD5CorrectiveAction | undefined>;
+  updateCapaD5(capaId: string, data: Partial<InsertCapaD5CorrectiveAction>): Promise<CapaD5CorrectiveAction | undefined>;
+  completeD5(capaId: string, userId: string): Promise<CapaD5CorrectiveAction | undefined>;
+  verifyD5(capaId: string, userId: string): Promise<CapaD5CorrectiveAction | undefined>;
 
   // CAPA D6: Validation
-  getCapaD6(capaId: number): Promise<CapaD6Validation | undefined>;
+  getCapaD6(capaId: string): Promise<CapaD6Validation | undefined>;
   createCapaD6(data: InsertCapaD6Validation): Promise<CapaD6Validation>;
-  updateCapaD6(capaId: number, data: Partial<InsertCapaD6Validation>): Promise<CapaD6Validation | undefined>;
-  completeD6(capaId: number, userId: string): Promise<CapaD6Validation | undefined>;
-  verifyD6(capaId: number, userId: string): Promise<CapaD6Validation | undefined>;
+  updateCapaD6(capaId: string, data: Partial<InsertCapaD6Validation>): Promise<CapaD6Validation | undefined>;
+  completeD6(capaId: string, userId: string): Promise<CapaD6Validation | undefined>;
+  verifyD6(capaId: string, userId: string): Promise<CapaD6Validation | undefined>;
 
   // CAPA D7: Preventive Actions
-  getCapaD7(capaId: number): Promise<CapaD7Preventive | undefined>;
+  getCapaD7(capaId: string): Promise<CapaD7Preventive | undefined>;
   createCapaD7(data: InsertCapaD7Preventive): Promise<CapaD7Preventive>;
-  updateCapaD7(capaId: number, data: Partial<InsertCapaD7Preventive>): Promise<CapaD7Preventive | undefined>;
-  completeD7(capaId: number, userId: string): Promise<CapaD7Preventive | undefined>;
-  verifyD7(capaId: number, userId: string): Promise<CapaD7Preventive | undefined>;
+  updateCapaD7(capaId: string, data: Partial<InsertCapaD7Preventive>): Promise<CapaD7Preventive | undefined>;
+  completeD7(capaId: string, userId: string): Promise<CapaD7Preventive | undefined>;
+  verifyD7(capaId: string, userId: string): Promise<CapaD7Preventive | undefined>;
 
   // CAPA D8: Closure
-  getCapaD8(capaId: number): Promise<CapaD8Closure | undefined>;
+  getCapaD8(capaId: string): Promise<CapaD8Closure | undefined>;
   createCapaD8(data: InsertCapaD8Closure): Promise<CapaD8Closure>;
-  updateCapaD8(capaId: number, data: Partial<InsertCapaD8Closure>): Promise<CapaD8Closure | undefined>;
-  completeD8(capaId: number, userId: string): Promise<CapaD8Closure | undefined>;
-  verifyD8(capaId: number, userId: string): Promise<CapaD8Closure | undefined>;
+  updateCapaD8(capaId: string, data: Partial<InsertCapaD8Closure>): Promise<CapaD8Closure | undefined>;
+  completeD8(capaId: string, userId: string): Promise<CapaD8Closure | undefined>;
+  verifyD8(capaId: string, userId: string): Promise<CapaD8Closure | undefined>;
 
   // CAPA Audit Log (immutable)
-  getCapaAuditLogs(capaId: number, limit?: number): Promise<CapaAuditLog[]>;
-  getCapaAuditLogsByAction(capaId: number, action: string): Promise<CapaAuditLog[]>;
+  getCapaAuditLogs(capaId: string, limit?: number): Promise<CapaAuditLog[]>;
+  getCapaAuditLogsByAction(capaId: string, action: string): Promise<CapaAuditLog[]>;
   getCapaAuditLogsByUser(orgId: string, userId: string, limit?: number): Promise<CapaAuditLog[]>;
   createCapaAuditLog(data: InsertCapaAuditLog): Promise<CapaAuditLog>;
   getRecentCapaActivity(orgId: string, limit?: number): Promise<CapaAuditLog[]>;
@@ -698,15 +698,15 @@ export interface IStorage {
   createCapaMetricSnapshot(data: InsertCapaMetricSnapshot): Promise<CapaMetricSnapshot>;
 
   // CAPA Analysis Tools
-  getCapaAnalysisTools(capaId: number): Promise<CapaAnalysisTool[]>;
-  getCapaAnalysisToolsByType(capaId: number, toolType: string): Promise<CapaAnalysisTool[]>;
-  getCapaAnalysisTool(id: number): Promise<CapaAnalysisTool | undefined>;
+  getCapaAnalysisTools(capaId: string): Promise<CapaAnalysisTool[]>;
+  getCapaAnalysisToolsByType(capaId: string, toolType: string): Promise<CapaAnalysisTool[]>;
+  getCapaAnalysisTool(id: string): Promise<CapaAnalysisTool | undefined>;
   createCapaAnalysisTool(data: InsertCapaAnalysisTool): Promise<CapaAnalysisTool>;
-  updateCapaAnalysisTool(id: number, updates: Partial<CapaAnalysisTool>): Promise<CapaAnalysisTool>;
-  deleteCapaAnalysisTool(id: number): Promise<void>;
-  completeCapaAnalysisTool(id: number, userId: string, conclusion: string): Promise<CapaAnalysisTool>;
-  verifyCapaAnalysisTool(id: number, userId: string): Promise<CapaAnalysisTool>;
-  linkAnalysisToolToRootCause(id: number): Promise<CapaAnalysisTool>;
+  updateCapaAnalysisTool(id: string, updates: Partial<CapaAnalysisTool>): Promise<CapaAnalysisTool>;
+  deleteCapaAnalysisTool(id: string): Promise<void>;
+  completeCapaAnalysisTool(id: string, userId: string, conclusion: string): Promise<CapaAnalysisTool>;
+  verifyCapaAnalysisTool(id: string, userId: string): Promise<CapaAnalysisTool>;
+  linkAnalysisToolToRootCause(id: string): Promise<CapaAnalysisTool>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -2671,7 +2671,7 @@ class DatabaseStorage implements IStorage {
     return db.select().from(capa).where(and(...conditions)).orderBy(desc(capa.createdAt));
   }
 
-  async getCapa(id: number): Promise<Capa | undefined> {
+  async getCapa(id: string): Promise<Capa | undefined> {
     const [result] = await db.select().from(capa).where(eq(capa.id, id));
     return result;
   }
@@ -2746,12 +2746,12 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapa(id: number, data: Partial<InsertCapa>): Promise<Capa | undefined> {
+  async updateCapa(id: string, data: Partial<InsertCapa>): Promise<Capa | undefined> {
     const [result] = await db.update(capa).set({ ...data, updatedAt: new Date() }).where(eq(capa.id, id)).returning();
     return result;
   }
 
-  async updateCapaStatus(id: number, status: string, userId: string): Promise<Capa | undefined> {
+  async updateCapaStatus(id: string, status: string, userId: string): Promise<Capa | undefined> {
     const updates: any = { status, updatedAt: new Date() };
     // Set discipline based on status
     const disciplineMap: Record<string, string> = {
@@ -2769,7 +2769,7 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async softDeleteCapa(id: number, userId: string): Promise<void> {
+  async softDeleteCapa(id: string, userId: string): Promise<void> {
     await db.update(capa).set({ deletedAt: new Date(), updatedAt: new Date() } as any).where(eq(capa.id, id));
   }
 
@@ -2788,16 +2788,16 @@ class DatabaseStorage implements IStorage {
 
   // --- CAPA Team Members ---
 
-  async getCapaTeamMembers(capaId: number): Promise<CapaTeamMember[]> {
+  async getCapaTeamMembers(capaId: string): Promise<CapaTeamMember[]> {
     return db.select().from(capaTeamMember).where(eq(capaTeamMember.capaId, capaId)).orderBy(capaTeamMember.role);
   }
 
-  async getCapaTeamMember(id: number): Promise<CapaTeamMember | undefined> {
+  async getCapaTeamMember(id: string): Promise<CapaTeamMember | undefined> {
     const [result] = await db.select().from(capaTeamMember).where(eq(capaTeamMember.id, id));
     return result;
   }
 
-  async getCapaChampion(capaId: number): Promise<CapaTeamMember | undefined> {
+  async getCapaChampion(capaId: string): Promise<CapaTeamMember | undefined> {
     const [result] = await db.select().from(capaTeamMember).where(and(
       eq(capaTeamMember.capaId, capaId),
       eq(capaTeamMember.isChampion, 1),
@@ -2806,7 +2806,7 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getCapaLeader(capaId: number): Promise<CapaTeamMember | undefined> {
+  async getCapaLeader(capaId: string): Promise<CapaTeamMember | undefined> {
     const [result] = await db.select().from(capaTeamMember).where(and(
       eq(capaTeamMember.capaId, capaId),
       eq(capaTeamMember.isLeader, 1),
@@ -2828,26 +2828,26 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaTeamMember(id: number, data: Partial<InsertCapaTeamMember>): Promise<CapaTeamMember | undefined> {
+  async updateCapaTeamMember(id: string, data: Partial<InsertCapaTeamMember>): Promise<CapaTeamMember | undefined> {
     const [result] = await db.update(capaTeamMember).set(data).where(eq(capaTeamMember.id, id)).returning();
     return result;
   }
 
-  async removeCapaTeamMember(id: number, reason: string): Promise<void> {
+  async removeCapaTeamMember(id: string, reason: string): Promise<void> {
     await db.update(capaTeamMember).set({ leftAt: new Date(), leftReason: reason } as any).where(eq(capaTeamMember.id, id));
   }
 
-  async updateCapaTeamMemberActivity(id: number): Promise<void> {
+  async updateCapaTeamMemberActivity(id: string): Promise<void> {
     await db.update(capaTeamMember).set({ lastActivityAt: new Date() } as any).where(eq(capaTeamMember.id, id));
   }
 
   // --- CAPA Sources ---
 
-  async getCapaSources(capaId: number): Promise<CapaSource[]> {
+  async getCapaSources(capaId: string): Promise<CapaSource[]> {
     return db.select().from(capaSource).where(eq(capaSource.capaId, capaId));
   }
 
-  async getCapaSource(id: number): Promise<CapaSource | undefined> {
+  async getCapaSource(id: string): Promise<CapaSource | undefined> {
     const [result] = await db.select().from(capaSource).where(eq(capaSource.id, id));
     return result;
   }
@@ -2866,29 +2866,29 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaSource(id: number, data: Partial<InsertCapaSource>): Promise<CapaSource | undefined> {
+  async updateCapaSource(id: string, data: Partial<InsertCapaSource>): Promise<CapaSource | undefined> {
     const [result] = await db.update(capaSource).set({ ...data, updatedAt: new Date() }).where(eq(capaSource.id, id)).returning();
     return result;
   }
 
-  async deleteCapaSource(id: number): Promise<void> {
+  async deleteCapaSource(id: string): Promise<void> {
     await db.delete(capaSource).where(eq(capaSource.id, id));
   }
 
   // --- CAPA Attachments ---
 
-  async getCapaAttachments(capaId: number, discipline?: string): Promise<CapaAttachment[]> {
+  async getCapaAttachments(capaId: string, discipline?: string): Promise<CapaAttachment[]> {
     const conditions = [eq(capaAttachment.capaId, capaId), isNull(capaAttachment.deletedAt)];
     if (discipline) conditions.push(eq(capaAttachment.discipline, discipline));
     return db.select().from(capaAttachment).where(and(...conditions));
   }
 
-  async getCapaAttachment(id: number): Promise<CapaAttachment | undefined> {
+  async getCapaAttachment(id: string): Promise<CapaAttachment | undefined> {
     const [result] = await db.select().from(capaAttachment).where(eq(capaAttachment.id, id));
     return result;
   }
 
-  async getCapaEvidence(capaId: number): Promise<CapaAttachment[]> {
+  async getCapaEvidence(capaId: string): Promise<CapaAttachment[]> {
     return db.select().from(capaAttachment).where(and(
       eq(capaAttachment.capaId, capaId),
       eq(capaAttachment.isEvidence, 1),
@@ -2901,24 +2901,24 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaAttachment(id: number, data: Partial<InsertCapaAttachment>): Promise<CapaAttachment | undefined> {
+  async updateCapaAttachment(id: string, data: Partial<InsertCapaAttachment>): Promise<CapaAttachment | undefined> {
     const [result] = await db.update(capaAttachment).set(data).where(eq(capaAttachment.id, id)).returning();
     return result;
   }
 
-  async softDeleteCapaAttachment(id: number, userId: string, reason: string): Promise<void> {
+  async softDeleteCapaAttachment(id: string, userId: string, reason: string): Promise<void> {
     await db.update(capaAttachment).set({ deletedAt: new Date(), deletedBy: userId, deletionReason: reason } as any).where(eq(capaAttachment.id, id));
   }
 
   // --- CAPA Related Records ---
 
-  async getCapaRelatedRecords(capaId: number, relatedType?: string): Promise<CapaRelatedRecord[]> {
+  async getCapaRelatedRecords(capaId: string, relatedType?: string): Promise<CapaRelatedRecord[]> {
     const conditions = [eq(capaRelatedRecord.capaId, capaId)];
     if (relatedType) conditions.push(eq(capaRelatedRecord.relatedType, relatedType));
     return db.select().from(capaRelatedRecord).where(and(...conditions));
   }
 
-  async getCapaRelatedRecord(id: number): Promise<CapaRelatedRecord | undefined> {
+  async getCapaRelatedRecord(id: string): Promise<CapaRelatedRecord | undefined> {
     const [result] = await db.select().from(capaRelatedRecord).where(eq(capaRelatedRecord.id, id));
     return result;
   }
@@ -2939,16 +2939,16 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaRelatedRecord(id: number, data: Partial<InsertCapaRelatedRecord>): Promise<CapaRelatedRecord | undefined> {
+  async updateCapaRelatedRecord(id: string, data: Partial<InsertCapaRelatedRecord>): Promise<CapaRelatedRecord | undefined> {
     const [result] = await db.update(capaRelatedRecord).set(data).where(eq(capaRelatedRecord.id, id)).returning();
     return result;
   }
 
-  async deleteCapaRelatedRecord(id: number): Promise<void> {
+  async deleteCapaRelatedRecord(id: string): Promise<void> {
     await db.delete(capaRelatedRecord).where(eq(capaRelatedRecord.id, id));
   }
 
-  async verifyCapaRelatedRecord(id: number, userId: string): Promise<CapaRelatedRecord | undefined> {
+  async verifyCapaRelatedRecord(id: string, userId: string): Promise<CapaRelatedRecord | undefined> {
     const [result] = await db.update(capaRelatedRecord)
       .set({ verifiedAt: new Date(), verifiedBy: userId } as any)
       .where(eq(capaRelatedRecord.id, id))
@@ -2986,7 +2986,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D0: Emergency Response
   // ============================================
 
-  async getCapaD0(capaId: number): Promise<CapaD0Emergency | undefined> {
+  async getCapaD0(capaId: string): Promise<CapaD0Emergency | undefined> {
     const [result] = await db.select().from(capaD0Emergency).where(eq(capaD0Emergency.capaId, capaId));
     return result;
   }
@@ -2996,19 +2996,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD0(capaId: number, data: Partial<InsertCapaD0Emergency>): Promise<CapaD0Emergency | undefined> {
+  async updateCapaD0(capaId: string, data: Partial<InsertCapaD0Emergency>): Promise<CapaD0Emergency | undefined> {
     const [result] = await db.update(capaD0Emergency).set({ ...data, updatedAt: new Date() }).where(eq(capaD0Emergency.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD0(capaId: number, userId: string): Promise<CapaD0Emergency | undefined> {
+  async completeD0(capaId: string, userId: string): Promise<CapaD0Emergency | undefined> {
     const [result] = await db.update(capaD0Emergency)
       .set({ d0CompletedAt: new Date(), d0CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD0Emergency.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD0(capaId: number, userId: string): Promise<CapaD0Emergency | undefined> {
+  async verifyD0(capaId: string, userId: string): Promise<CapaD0Emergency | undefined> {
     const [result] = await db.update(capaD0Emergency)
       .set({ d0VerifiedAt: new Date(), d0VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD0Emergency.capaId, capaId)).returning();
@@ -3041,7 +3041,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D1: Team Formation
   // ============================================
 
-  async getCapaD1(capaId: number): Promise<CapaD1TeamDetail | undefined> {
+  async getCapaD1(capaId: string): Promise<CapaD1TeamDetail | undefined> {
     const [result] = await db.select().from(capaD1TeamDetail).where(eq(capaD1TeamDetail.capaId, capaId));
     return result;
   }
@@ -3051,19 +3051,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD1(capaId: number, data: Partial<InsertCapaD1TeamDetail>): Promise<CapaD1TeamDetail | undefined> {
+  async updateCapaD1(capaId: string, data: Partial<InsertCapaD1TeamDetail>): Promise<CapaD1TeamDetail | undefined> {
     const [result] = await db.update(capaD1TeamDetail).set({ ...data, updatedAt: new Date() }).where(eq(capaD1TeamDetail.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD1(capaId: number, userId: string): Promise<CapaD1TeamDetail | undefined> {
+  async completeD1(capaId: string, userId: string): Promise<CapaD1TeamDetail | undefined> {
     const [result] = await db.update(capaD1TeamDetail)
       .set({ d1CompletedAt: new Date(), d1CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD1TeamDetail.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD1(capaId: number, userId: string): Promise<CapaD1TeamDetail | undefined> {
+  async verifyD1(capaId: string, userId: string): Promise<CapaD1TeamDetail | undefined> {
     const [result] = await db.update(capaD1TeamDetail)
       .set({ d1VerifiedAt: new Date(), d1VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD1TeamDetail.capaId, capaId)).returning();
@@ -3074,7 +3074,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D2: Problem Description
   // ============================================
 
-  async getCapaD2(capaId: number): Promise<CapaD2Problem | undefined> {
+  async getCapaD2(capaId: string): Promise<CapaD2Problem | undefined> {
     const [result] = await db.select().from(capaD2Problem).where(eq(capaD2Problem.capaId, capaId));
     return result;
   }
@@ -3084,19 +3084,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD2(capaId: number, data: Partial<InsertCapaD2Problem>): Promise<CapaD2Problem | undefined> {
+  async updateCapaD2(capaId: string, data: Partial<InsertCapaD2Problem>): Promise<CapaD2Problem | undefined> {
     const [result] = await db.update(capaD2Problem).set({ ...data, updatedAt: new Date() }).where(eq(capaD2Problem.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD2(capaId: number, userId: string): Promise<CapaD2Problem | undefined> {
+  async completeD2(capaId: string, userId: string): Promise<CapaD2Problem | undefined> {
     const [result] = await db.update(capaD2Problem)
       .set({ d2CompletedAt: new Date(), d2CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD2Problem.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD2(capaId: number, userId: string): Promise<CapaD2Problem | undefined> {
+  async verifyD2(capaId: string, userId: string): Promise<CapaD2Problem | undefined> {
     const [result] = await db.update(capaD2Problem)
       .set({ d2VerifiedAt: new Date(), d2VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD2Problem.capaId, capaId)).returning();
@@ -3107,7 +3107,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D3: Interim Containment
   // ============================================
 
-  async getCapaD3(capaId: number): Promise<CapaD3Containment | undefined> {
+  async getCapaD3(capaId: string): Promise<CapaD3Containment | undefined> {
     const [result] = await db.select().from(capaD3Containment).where(eq(capaD3Containment.capaId, capaId));
     return result;
   }
@@ -3117,19 +3117,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD3(capaId: number, data: Partial<InsertCapaD3Containment>): Promise<CapaD3Containment | undefined> {
+  async updateCapaD3(capaId: string, data: Partial<InsertCapaD3Containment>): Promise<CapaD3Containment | undefined> {
     const [result] = await db.update(capaD3Containment).set({ ...data, updatedAt: new Date() }).where(eq(capaD3Containment.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD3(capaId: number, userId: string): Promise<CapaD3Containment | undefined> {
+  async completeD3(capaId: string, userId: string): Promise<CapaD3Containment | undefined> {
     const [result] = await db.update(capaD3Containment)
       .set({ d3CompletedAt: new Date(), d3CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD3Containment.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD3(capaId: number, userId: string): Promise<CapaD3Containment | undefined> {
+  async verifyD3(capaId: string, userId: string): Promise<CapaD3Containment | undefined> {
     const [result] = await db.update(capaD3Containment)
       .set({ d3VerifiedAt: new Date(), d3VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD3Containment.capaId, capaId)).returning();
@@ -3148,7 +3148,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D4: Root Cause Analysis
   // ============================================
 
-  async getCapaD4(capaId: number): Promise<CapaD4RootCause | undefined> {
+  async getCapaD4(capaId: string): Promise<CapaD4RootCause | undefined> {
     const [result] = await db.select().from(capaD4RootCause).where(eq(capaD4RootCause.capaId, capaId));
     return result;
   }
@@ -3158,19 +3158,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD4(capaId: number, data: Partial<InsertCapaD4RootCause>): Promise<CapaD4RootCause | undefined> {
+  async updateCapaD4(capaId: string, data: Partial<InsertCapaD4RootCause>): Promise<CapaD4RootCause | undefined> {
     const [result] = await db.update(capaD4RootCause).set({ ...data, updatedAt: new Date() }).where(eq(capaD4RootCause.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD4(capaId: number, userId: string): Promise<CapaD4RootCause | undefined> {
+  async completeD4(capaId: string, userId: string): Promise<CapaD4RootCause | undefined> {
     const [result] = await db.update(capaD4RootCause)
       .set({ d4CompletedAt: new Date(), d4CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD4RootCause.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD4(capaId: number, userId: string): Promise<CapaD4RootCause | undefined> {
+  async verifyD4(capaId: string, userId: string): Promise<CapaD4RootCause | undefined> {
     const [result] = await db.update(capaD4RootCause)
       .set({ d4VerifiedAt: new Date(), d4VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD4RootCause.capaId, capaId)).returning();
@@ -3181,16 +3181,16 @@ class DatabaseStorage implements IStorage {
   // CAPA D4 Root Cause Candidates
   // ============================================
 
-  async getD4Candidates(capaId: number): Promise<CapaD4RootCauseCandidate[]> {
+  async getD4Candidates(capaId: string): Promise<CapaD4RootCauseCandidate[]> {
     return db.select().from(capaD4RootCauseCandidate).where(eq(capaD4RootCauseCandidate.capaId, capaId));
   }
 
-  async getD4Candidate(id: number): Promise<CapaD4RootCauseCandidate | undefined> {
+  async getD4Candidate(id: string): Promise<CapaD4RootCauseCandidate | undefined> {
     const [result] = await db.select().from(capaD4RootCauseCandidate).where(eq(capaD4RootCauseCandidate.id, id));
     return result;
   }
 
-  async getConfirmedRootCauses(capaId: number): Promise<CapaD4RootCauseCandidate[]> {
+  async getConfirmedRootCauses(capaId: string): Promise<CapaD4RootCauseCandidate[]> {
     return db.select().from(capaD4RootCauseCandidate).where(and(
       eq(capaD4RootCauseCandidate.capaId, capaId),
       eq(capaD4RootCauseCandidate.isRootCause, 1)
@@ -3202,12 +3202,12 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateD4Candidate(id: number, data: Partial<InsertCapaD4RootCauseCandidate>): Promise<CapaD4RootCauseCandidate | undefined> {
+  async updateD4Candidate(id: string, data: Partial<InsertCapaD4RootCauseCandidate>): Promise<CapaD4RootCauseCandidate | undefined> {
     const [result] = await db.update(capaD4RootCauseCandidate).set({ ...data, updatedAt: new Date() }).where(eq(capaD4RootCauseCandidate.id, id)).returning();
     return result;
   }
 
-  async deleteD4Candidate(id: number): Promise<void> {
+  async deleteD4Candidate(id: string): Promise<void> {
     await db.delete(capaD4RootCauseCandidate).where(eq(capaD4RootCauseCandidate.id, id));
   }
 
@@ -3215,7 +3215,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D5: Corrective Actions
   // ============================================
 
-  async getCapaD5(capaId: number): Promise<CapaD5CorrectiveAction | undefined> {
+  async getCapaD5(capaId: string): Promise<CapaD5CorrectiveAction | undefined> {
     const [result] = await db.select().from(capaD5CorrectiveAction).where(eq(capaD5CorrectiveAction.capaId, capaId));
     return result;
   }
@@ -3225,19 +3225,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD5(capaId: number, data: Partial<InsertCapaD5CorrectiveAction>): Promise<CapaD5CorrectiveAction | undefined> {
+  async updateCapaD5(capaId: string, data: Partial<InsertCapaD5CorrectiveAction>): Promise<CapaD5CorrectiveAction | undefined> {
     const [result] = await db.update(capaD5CorrectiveAction).set({ ...data, updatedAt: new Date() }).where(eq(capaD5CorrectiveAction.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD5(capaId: number, userId: string): Promise<CapaD5CorrectiveAction | undefined> {
+  async completeD5(capaId: string, userId: string): Promise<CapaD5CorrectiveAction | undefined> {
     const [result] = await db.update(capaD5CorrectiveAction)
       .set({ d5CompletedAt: new Date(), d5CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD5CorrectiveAction.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD5(capaId: number, userId: string): Promise<CapaD5CorrectiveAction | undefined> {
+  async verifyD5(capaId: string, userId: string): Promise<CapaD5CorrectiveAction | undefined> {
     const [result] = await db.update(capaD5CorrectiveAction)
       .set({ d5VerifiedAt: new Date(), d5VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD5CorrectiveAction.capaId, capaId)).returning();
@@ -3248,7 +3248,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D6: Validation
   // ============================================
 
-  async getCapaD6(capaId: number): Promise<CapaD6Validation | undefined> {
+  async getCapaD6(capaId: string): Promise<CapaD6Validation | undefined> {
     const [result] = await db.select().from(capaD6Validation).where(eq(capaD6Validation.capaId, capaId));
     return result;
   }
@@ -3258,19 +3258,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD6(capaId: number, data: Partial<InsertCapaD6Validation>): Promise<CapaD6Validation | undefined> {
+  async updateCapaD6(capaId: string, data: Partial<InsertCapaD6Validation>): Promise<CapaD6Validation | undefined> {
     const [result] = await db.update(capaD6Validation).set({ ...data, updatedAt: new Date() }).where(eq(capaD6Validation.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD6(capaId: number, userId: string): Promise<CapaD6Validation | undefined> {
+  async completeD6(capaId: string, userId: string): Promise<CapaD6Validation | undefined> {
     const [result] = await db.update(capaD6Validation)
       .set({ d6CompletedAt: new Date(), d6CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD6Validation.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD6(capaId: number, userId: string): Promise<CapaD6Validation | undefined> {
+  async verifyD6(capaId: string, userId: string): Promise<CapaD6Validation | undefined> {
     const [result] = await db.update(capaD6Validation)
       .set({ d6VerifiedAt: new Date(), d6VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD6Validation.capaId, capaId)).returning();
@@ -3281,7 +3281,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D7: Preventive Actions
   // ============================================
 
-  async getCapaD7(capaId: number): Promise<CapaD7Preventive | undefined> {
+  async getCapaD7(capaId: string): Promise<CapaD7Preventive | undefined> {
     const [result] = await db.select().from(capaD7Preventive).where(eq(capaD7Preventive.capaId, capaId));
     return result;
   }
@@ -3291,19 +3291,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD7(capaId: number, data: Partial<InsertCapaD7Preventive>): Promise<CapaD7Preventive | undefined> {
+  async updateCapaD7(capaId: string, data: Partial<InsertCapaD7Preventive>): Promise<CapaD7Preventive | undefined> {
     const [result] = await db.update(capaD7Preventive).set({ ...data, updatedAt: new Date() }).where(eq(capaD7Preventive.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD7(capaId: number, userId: string): Promise<CapaD7Preventive | undefined> {
+  async completeD7(capaId: string, userId: string): Promise<CapaD7Preventive | undefined> {
     const [result] = await db.update(capaD7Preventive)
       .set({ d7CompletedAt: new Date(), d7CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD7Preventive.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD7(capaId: number, userId: string): Promise<CapaD7Preventive | undefined> {
+  async verifyD7(capaId: string, userId: string): Promise<CapaD7Preventive | undefined> {
     const [result] = await db.update(capaD7Preventive)
       .set({ d7VerifiedAt: new Date(), d7VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD7Preventive.capaId, capaId)).returning();
@@ -3314,7 +3314,7 @@ class DatabaseStorage implements IStorage {
   // CAPA D8: Closure
   // ============================================
 
-  async getCapaD8(capaId: number): Promise<CapaD8Closure | undefined> {
+  async getCapaD8(capaId: string): Promise<CapaD8Closure | undefined> {
     const [result] = await db.select().from(capaD8Closure).where(eq(capaD8Closure.capaId, capaId));
     return result;
   }
@@ -3324,19 +3324,19 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaD8(capaId: number, data: Partial<InsertCapaD8Closure>): Promise<CapaD8Closure | undefined> {
+  async updateCapaD8(capaId: string, data: Partial<InsertCapaD8Closure>): Promise<CapaD8Closure | undefined> {
     const [result] = await db.update(capaD8Closure).set({ ...data, updatedAt: new Date() }).where(eq(capaD8Closure.capaId, capaId)).returning();
     return result;
   }
 
-  async completeD8(capaId: number, userId: string): Promise<CapaD8Closure | undefined> {
+  async completeD8(capaId: string, userId: string): Promise<CapaD8Closure | undefined> {
     const [result] = await db.update(capaD8Closure)
       .set({ d8CompletedAt: new Date(), d8CompletedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD8Closure.capaId, capaId)).returning();
     return result;
   }
 
-  async verifyD8(capaId: number, userId: string): Promise<CapaD8Closure | undefined> {
+  async verifyD8(capaId: string, userId: string): Promise<CapaD8Closure | undefined> {
     const [result] = await db.update(capaD8Closure)
       .set({ d8VerifiedAt: new Date(), d8VerifiedBy: userId, updatedAt: new Date() } as any)
       .where(eq(capaD8Closure.capaId, capaId)).returning();
@@ -3347,7 +3347,7 @@ class DatabaseStorage implements IStorage {
   // CAPA Audit Log (immutable)
   // ============================================
 
-  async getCapaAuditLogs(capaId: number, limit?: number): Promise<CapaAuditLog[]> {
+  async getCapaAuditLogs(capaId: string, limit?: number): Promise<CapaAuditLog[]> {
     const query = db.select().from(capaAuditLog)
       .where(eq(capaAuditLog.capaId, capaId))
       .orderBy(desc(capaAuditLog.timestamp));
@@ -3355,7 +3355,7 @@ class DatabaseStorage implements IStorage {
     return query;
   }
 
-  async getCapaAuditLogsByAction(capaId: number, action: string): Promise<CapaAuditLog[]> {
+  async getCapaAuditLogsByAction(capaId: string, action: string): Promise<CapaAuditLog[]> {
     return db.select().from(capaAuditLog)
       .where(and(eq(capaAuditLog.capaId, capaId), eq(capaAuditLog.action, action)))
       .orderBy(desc(capaAuditLog.timestamp));
@@ -3417,13 +3417,13 @@ class DatabaseStorage implements IStorage {
   // CAPA ANALYSIS TOOLS
   // ============================================
 
-  async getCapaAnalysisTools(capaId: number): Promise<CapaAnalysisTool[]> {
+  async getCapaAnalysisTools(capaId: string): Promise<CapaAnalysisTool[]> {
     return db.select().from(capaAnalysisTool)
       .where(eq(capaAnalysisTool.capaId, capaId))
       .orderBy(capaAnalysisTool.createdAt);
   }
 
-  async getCapaAnalysisToolsByType(capaId: number, toolType: string): Promise<CapaAnalysisTool[]> {
+  async getCapaAnalysisToolsByType(capaId: string, toolType: string): Promise<CapaAnalysisTool[]> {
     return db.select().from(capaAnalysisTool)
       .where(and(
         eq(capaAnalysisTool.capaId, capaId),
@@ -3432,7 +3432,7 @@ class DatabaseStorage implements IStorage {
       .orderBy(capaAnalysisTool.createdAt);
   }
 
-  async getCapaAnalysisTool(id: number): Promise<CapaAnalysisTool | undefined> {
+  async getCapaAnalysisTool(id: string): Promise<CapaAnalysisTool | undefined> {
     const [result] = await db.select().from(capaAnalysisTool)
       .where(eq(capaAnalysisTool.id, id));
     return result;
@@ -3443,7 +3443,7 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateCapaAnalysisTool(id: number, updates: Partial<CapaAnalysisTool>): Promise<CapaAnalysisTool> {
+  async updateCapaAnalysisTool(id: string, updates: Partial<CapaAnalysisTool>): Promise<CapaAnalysisTool> {
     const [result] = await db.update(capaAnalysisTool)
       .set({ ...updates, updatedAt: new Date() } as any)
       .where(eq(capaAnalysisTool.id, id))
@@ -3451,11 +3451,11 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async deleteCapaAnalysisTool(id: number): Promise<void> {
+  async deleteCapaAnalysisTool(id: string): Promise<void> {
     await db.delete(capaAnalysisTool).where(eq(capaAnalysisTool.id, id));
   }
 
-  async completeCapaAnalysisTool(id: number, userId: string, conclusion: string): Promise<CapaAnalysisTool> {
+  async completeCapaAnalysisTool(id: string, userId: string, conclusion: string): Promise<CapaAnalysisTool> {
     const [result] = await db.update(capaAnalysisTool)
       .set({
         status: 'complete',
@@ -3469,7 +3469,7 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async verifyCapaAnalysisTool(id: number, userId: string): Promise<CapaAnalysisTool> {
+  async verifyCapaAnalysisTool(id: string, userId: string): Promise<CapaAnalysisTool> {
     const [result] = await db.update(capaAnalysisTool)
       .set({
         status: 'verified',
@@ -3482,7 +3482,7 @@ class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async linkAnalysisToolToRootCause(id: number): Promise<CapaAnalysisTool> {
+  async linkAnalysisToolToRootCause(id: string): Promise<CapaAnalysisTool> {
     const [result] = await db.update(capaAnalysisTool)
       .set({ linkedToRootCause: 1, updatedAt: new Date() } as any)
       .where(eq(capaAnalysisTool.id, id))

@@ -14,6 +14,7 @@ import XLSX from 'xlsx';
 import { db } from './db';
 import * as schema from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import logger from './logger';
 
 // ============================================================================
 // CONFIGURATION
@@ -79,17 +80,17 @@ function calculateAP(severity: number, occurrence: number, detection: number): s
 // ============================================================================
 
 async function importEosPpap() {
-  console.log('🚀 Starting EOS PPAP Import...\n');
+  logger.info('🚀 Starting EOS PPAP Import...\n');
 
   // Load workbook
-  console.log('📂 Loading Excel file...');
+  logger.info('📂 Loading Excel file...');
   const workbook = XLSX.readFile(EXCEL_FILE);
-  console.log('   Sheets found:', workbook.SheetNames.join(', '));
+  logger.info('   Sheets found:', workbook.SheetNames.join(', '));
   
   // ============================================================================
   // 1. PARSE PROCESS FLOW SHEET
   // ============================================================================
-  console.log('\n📋 Parsing Process Flow...');
+  logger.info('\n📋 Parsing Process Flow...');
   
   const pfSheet = workbook.Sheets['11_Process Flow'];
   const pfData = XLSX.utils.sheet_to_json(pfSheet, { header: 1 }) as any[][];
@@ -123,12 +124,12 @@ async function importEosPpap() {
     });
   }
   
-  console.log(`   ✓ Found ${processSteps.length} process steps`);
+  logger.info(`   ✓ Found ${processSteps.length} process steps`);
 
   // ============================================================================
   // 2. PARSE PFMEA SHEET
   // ============================================================================
-  console.log('\n📋 Parsing PFMEA...');
+  logger.info('\n📋 Parsing PFMEA...');
   
   const fmeaSheet = workbook.Sheets['12_PFMEA'];
   const fmeaData = XLSX.utils.sheet_to_json(fmeaSheet, { header: 1 }) as any[][];
@@ -186,14 +187,14 @@ async function importEosPpap() {
     });
   }
   
-  console.log(`   ✓ Found ${fmeaRows.length} PFMEA rows`);
-  console.log(`   ✓ CQT (Critical): ${fmeaRows.filter(r => r.classColumn === 'CQT').length}`);
-  console.log(`   ✓ With Actions: ${fmeaRows.filter(r => r.actionStatus !== 'none').length}`);
+  logger.info(`   ✓ Found ${fmeaRows.length} PFMEA rows`);
+  logger.info(`   ✓ CQT (Critical): ${fmeaRows.filter(r => r.classColumn === 'CQT').length}`);
+  logger.info(`   ✓ With Actions: ${fmeaRows.filter(r => r.actionStatus !== 'none').length}`);
 
   // ============================================================================
   // 3. PARSE CONTROL PLAN SHEET
   // ============================================================================
-  console.log('\n📋 Parsing Control Plan...');
+  logger.info('\n📋 Parsing Control Plan...');
   
   const cpSheet = workbook.Sheets['13_Control Plan'];
   const cpData = XLSX.utils.sheet_to_json(cpSheet, { header: 1 }) as any[][];
@@ -245,16 +246,16 @@ async function importEosPpap() {
     });
   }
   
-  console.log(`   ✓ Found ${cpRows.length} Control Plan characteristics`);
-  console.log(`   ✓ CQT (Critical): ${cpRows.filter(r => r.classColumn === 'CQT').length}`);
+  logger.info(`   ✓ Found ${cpRows.length} Control Plan characteristics`);
+  logger.info(`   ✓ CQT (Critical): ${cpRows.filter(r => r.classColumn === 'CQT').length}`);
 
   // ============================================================================
   // 4. INSERT INTO DATABASE
   // ============================================================================
-  console.log('\n💾 Inserting into database...');
+  logger.info('\n💾 Inserting into database...');
 
   // 4.1 Create Part
-  console.log('   Creating Part...');
+  logger.info('   Creating Part...');
   const [newPart] = await db.insert(schema.part).values({
     customer: pfdHeader.customer,
     program: 'EOS',
@@ -266,10 +267,10 @@ async function importEosPpap() {
     primaryEquipment: pfdHeader.equipment,
     csrNotes: 'CQT characteristics require Cpk ≥ 1.67. Critical: Brittleness, Seal Height, Flatness.',
   }).returning();
-  console.log(`   ✓ Part created: ${newPart.id}`);
+  logger.info(`   ✓ Part created: ${newPart.id}`);
 
   // 4.2 Create Process Definition
-  console.log('   Creating Process Definition...');
+  logger.info('   Creating Process Definition...');
   const [newProcessDef] = await db.insert(schema.processDef).values({
     name: 'EOS Bipolar Stiffener - Injection Molding + Overmold',
     rev: '1.0.0',
@@ -278,10 +279,10 @@ async function importEosPpap() {
     createdBy: SEED_USER_ID,
     changeNote: 'Imported from EOS PPAP v14',
   }).returning();
-  console.log(`   ✓ Process Definition created: ${newProcessDef.id}`);
+  logger.info(`   ✓ Process Definition created: ${newProcessDef.id}`);
 
   // 4.3 Create Process Steps
-  console.log('   Creating Process Steps...');
+  logger.info('   Creating Process Steps...');
   const stepIdMap = new Map<number, string>();
   
   for (const step of processSteps) {
@@ -297,17 +298,17 @@ async function importEosPpap() {
     }).returning();
     stepIdMap.set(step.seq, newStep.id);
   }
-  console.log(`   ✓ ${processSteps.length} Process Steps created`);
+  logger.info(`   ✓ ${processSteps.length} Process Steps created`);
 
   // 4.4 Create FMEA Template Rows
-  console.log('   Creating FMEA Template Rows...');
+  logger.info('   Creating FMEA Template Rows...');
   const fmeaTemplateIdMap = new Map<string, string>();
   
   let fmeaIndex = 0;
   for (const row of fmeaRows) {
     const stepId = stepIdMap.get(row.processNo);
     if (!stepId) {
-      console.warn(`   ⚠ No step found for Process No ${row.processNo}`);
+      logger.warn(`   ⚠ No step found for Process No ${row.processNo}`);
       continue;
     }
     
@@ -334,10 +335,10 @@ async function importEosPpap() {
     fmeaTemplateIdMap.set(`${row.processNo}-${fmeaIndex}`, newRow.id);
     fmeaIndex++;
   }
-  console.log(`   ✓ ${fmeaRows.length} FMEA Template Rows created`);
+  logger.info(`   ✓ ${fmeaRows.length} FMEA Template Rows created`);
 
   // 4.5 Create Control Template Rows
-  console.log('   Creating Control Template Rows...');
+  logger.info('   Creating Control Template Rows...');
   
   for (const row of cpRows) {
     await db.insert(schema.controlTemplateRow).values({
@@ -357,10 +358,10 @@ async function importEosPpap() {
       defaultResponsibility: row.responsibility,
     });
   }
-  console.log(`   ✓ ${cpRows.length} Control Template Rows created`);
+  logger.info(`   ✓ ${cpRows.length} Control Template Rows created`);
 
   // 4.6 Create Part-Process Mapping
-  console.log('   Creating Part-Process Mapping...');
+  logger.info('   Creating Part-Process Mapping...');
   await db.insert(schema.partProcessMap).values({
     partId: newPart.id,
     processDefId: newProcessDef.id,
@@ -368,10 +369,10 @@ async function importEosPpap() {
     sequence: 1,
     assumptions: 'Full PPAP documentation imported from EOS v14',
   });
-  console.log(`   ✓ Part-Process Mapping created`);
+  logger.info(`   ✓ Part-Process Mapping created`);
 
   // 4.7 Create PFD (Part-Level Instance)
-  console.log('   Creating PFD Document...');
+  logger.info('   Creating PFD Document...');
   const mermaidDiagram = generateMermaid(processSteps);
   
   const [newPfd] = await db.insert(schema.pfd).values({
@@ -387,10 +388,10 @@ async function importEosPpap() {
     diagramJson: { steps: processSteps },
     docNo: 'EOS-PFD-001',
   }).returning();
-  console.log(`   ✓ PFD created: ${newPfd.id}`);
+  logger.info(`   ✓ PFD created: ${newPfd.id}`);
 
   // 4.8 Create PFD Steps
-  console.log('   Creating PFD Steps...');
+  logger.info('   Creating PFD Steps...');
   for (const step of processSteps) {
     const sourceStepId = stepIdMap.get(step.seq);
     await db.insert(schema.pfdStep).values({
@@ -406,10 +407,10 @@ async function importEosPpap() {
       controlMethod: step.controlMethod,
     });
   }
-  console.log(`   ✓ ${processSteps.length} PFD Steps created`);
+  logger.info(`   ✓ ${processSteps.length} PFD Steps created`);
 
   // 4.9 Create PFMEA (Part-Level Instance)
-  console.log('   Creating PFMEA Document...');
+  logger.info('   Creating PFMEA Document...');
   const [newPfmea] = await db.insert(schema.pfmea).values({
     partId: newPart.id,
     rev: '1.0.0',
@@ -424,10 +425,10 @@ async function importEosPpap() {
     revisionDate: new Date(pfmeaHeader.revisionDate),
     docNo: pfmeaHeader.pfmeaNumber,
   }).returning();
-  console.log(`   ✓ PFMEA created: ${newPfmea.id}`);
+  logger.info(`   ✓ PFMEA created: ${newPfmea.id}`);
 
   // 4.10 Create PFMEA Rows
-  console.log('   Creating PFMEA Rows...');
+  logger.info('   Creating PFMEA Rows...');
   let rowIndex = 0;
   for (const row of fmeaRows) {
     const templateRowId = fmeaTemplateIdMap.get(`${row.processNo}-${rowIndex}`);
@@ -468,10 +469,10 @@ async function importEosPpap() {
     });
     rowIndex++;
   }
-  console.log(`   ✓ ${fmeaRows.length} PFMEA Rows created`);
+  logger.info(`   ✓ ${fmeaRows.length} PFMEA Rows created`);
 
   // 4.11 Create Control Plan (Part-Level Instance)
-  console.log('   Creating Control Plan Document...');
+  logger.info('   Creating Control Plan Document...');
   const [newControlPlan] = await db.insert(schema.controlPlan).values({
     partId: newPart.id,
     rev: '1.0.0',
@@ -485,10 +486,10 @@ async function importEosPpap() {
     customer: cpHeader.customer,
     docNo: cpHeader.controlPlanNumber,
   }).returning();
-  console.log(`   ✓ Control Plan created: ${newControlPlan.id}`);
+  logger.info(`   ✓ Control Plan created: ${newControlPlan.id}`);
 
   // 4.12 Create Control Plan Rows
-  console.log('   Creating Control Plan Rows...');
+  logger.info('   Creating Control Plan Rows...');
   for (const row of cpRows) {
     await db.insert(schema.controlPlanRow).values({
       controlPlanId: newControlPlan.id,
@@ -510,34 +511,34 @@ async function importEosPpap() {
       responsibility: row.responsibility,
     });
   }
-  console.log(`   ✓ ${cpRows.length} Control Plan Rows created`);
+  logger.info(`   ✓ ${cpRows.length} Control Plan Rows created`);
 
   // ============================================================================
   // SUMMARY
   // ============================================================================
-  console.log('\n' + '═'.repeat(60));
-  console.log('✅ EOS PPAP IMPORT COMPLETE!');
-  console.log('═'.repeat(60));
-  console.log('\nSummary:');
-  console.log('─'.repeat(60));
-  console.log(`Part:             ${newPart.partName} (${newPart.partNumber})`);
-  console.log(`Customer:         ${newPart.customer}`);
-  console.log(`Process:          ${newProcessDef.name}`);
-  console.log(`─`.repeat(60));
-  console.log(`Process Steps:    ${processSteps.length}`);
-  console.log(`PFMEA Rows:       ${fmeaRows.length}`);
-  console.log(`  └─ CQT:         ${fmeaRows.filter(r => r.classColumn === 'CQT').length}`);
-  console.log(`  └─ Actions:     ${fmeaRows.filter(r => r.actionStatus !== 'none').length}`);
-  console.log(`CP Chars:         ${cpRows.length}`);
-  console.log(`  └─ CQT:         ${cpRows.filter(r => r.classColumn === 'CQT').length}`);
-  console.log('─'.repeat(60));
-  console.log('\n📌 Record IDs:');
-  console.log(`  Part ID:         ${newPart.id}`);
-  console.log(`  Process Def ID:  ${newProcessDef.id}`);
-  console.log(`  PFD ID:          ${newPfd.id}`);
-  console.log(`  PFMEA ID:        ${newPfmea.id}`);
-  console.log(`  Control Plan ID: ${newControlPlan.id}`);
-  console.log('\n🎉 You can now view your EOS data in the Parts page!');
+  logger.info('\n' + '═'.repeat(60));
+  logger.info('✅ EOS PPAP IMPORT COMPLETE!');
+  logger.info('═'.repeat(60));
+  logger.info('\nSummary:');
+  logger.info('─'.repeat(60));
+  logger.info(`Part:             ${newPart.partName} (${newPart.partNumber})`);
+  logger.info(`Customer:         ${newPart.customer}`);
+  logger.info(`Process:          ${newProcessDef.name}`);
+  logger.info(`─`.repeat(60));
+  logger.info(`Process Steps:    ${processSteps.length}`);
+  logger.info(`PFMEA Rows:       ${fmeaRows.length}`);
+  logger.info(`  └─ CQT:         ${fmeaRows.filter(r => r.classColumn === 'CQT').length}`);
+  logger.info(`  └─ Actions:     ${fmeaRows.filter(r => r.actionStatus !== 'none').length}`);
+  logger.info(`CP Chars:         ${cpRows.length}`);
+  logger.info(`  └─ CQT:         ${cpRows.filter(r => r.classColumn === 'CQT').length}`);
+  logger.info('─'.repeat(60));
+  logger.info('\n📌 Record IDs:');
+  logger.info(`  Part ID:         ${newPart.id}`);
+  logger.info(`  Process Def ID:  ${newProcessDef.id}`);
+  logger.info(`  PFD ID:          ${newPfd.id}`);
+  logger.info(`  PFMEA ID:        ${newPfmea.id}`);
+  logger.info(`  Control Plan ID: ${newControlPlan.id}`);
+  logger.info('\n🎉 You can now view your EOS data in the Parts page!');
 }
 
 // ============================================================================
@@ -579,10 +580,10 @@ function generateMermaid(steps: any[]): string {
 
 importEosPpap()
   .then(() => {
-    console.log('\n✨ Done!');
+    logger.info('\n✨ Done!');
     process.exit(0);
   })
   .catch((error) => {
-    console.error('\n❌ Import failed:', error);
+    logger.error({ err: error }, 'Import failed');
     process.exit(1);
   });

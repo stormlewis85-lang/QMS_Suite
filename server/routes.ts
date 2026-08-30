@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { runAllSeeds } from "./seed";
 import { requireAuth } from "./middleware/auth";
 import { csrfProtection } from "./middleware/csrf";
+import logger from "./logger";
 
 // Route modules
 import { authRouter } from "./routes/auth.routes";
@@ -23,7 +24,7 @@ import { capaRouter } from "./routes/capa";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Run seeds on startup
-  runAllSeeds().catch(console.error);
+  runAllSeeds().catch((err) => logger.error({ err }, 'Seed failed'));
 
   // Add cookie parser middleware
   app.use(cookieParser());
@@ -66,10 +67,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const deleted = await storage.deleteExpiredSessions();
       if (deleted > 0) {
-        console.log(`Session cleanup: removed ${deleted} expired sessions`);
+        logger.info({ deleted }, 'Session cleanup: removed expired sessions');
       }
     } catch (error: unknown) {
-      console.error("Session cleanup error:", error);
+      logger.error({ err: error }, 'Session cleanup error');
     }
   }, SESSION_CLEANUP_INTERVAL);
 

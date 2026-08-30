@@ -4,6 +4,7 @@ import { fromError } from "zod-validation-error";
 import { storage } from "../storage";
 import { insertProcessDefSchema, insertProcessStepSchema } from "@shared/schema";
 import { getErrorMessage } from "./_helpers";
+import logger from '../logger';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.get("/processes", async (req, res) => {
     const result = await storage.getAllProcesses(req.orgId!, { limit, offset });
     res.json(req.query.limit || req.query.offset ? result : result.data);
   } catch (error) {
-    console.error("Error fetching processes:", error);
+    logger.error({ err: error }, 'Error fetching processes');
     res.status(500).json({ error: "Failed to fetch processes" });
   }
 });
@@ -27,7 +28,7 @@ router.get("/processes/:id", async (req, res) => {
     }
     res.json(process);
   } catch (error) {
-    console.error("Error fetching process:", error);
+    logger.error({ err: error }, 'Error fetching process');
     res.status(500).json({ error: "Failed to fetch process" });
   }
 });
@@ -60,7 +61,7 @@ router.post("/processes", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating process:", error);
+    logger.error({ err: error }, 'Error creating process');
     res.status(500).json({ error: "Failed to create process" });
   }
 });
@@ -78,7 +79,7 @@ router.patch("/processes/:id", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating process:", error);
+    logger.error({ err: error }, 'Error updating process');
     res.status(500).json({ error: "Failed to update process" });
   }
 });
@@ -91,7 +92,7 @@ router.delete("/processes/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting process:", error);
+    logger.error({ err: error }, 'Error deleting process');
     res.status(500).json({ error: "Failed to delete process" });
   }
 });
@@ -102,7 +103,7 @@ router.get("/processes/:processId/steps", async (req, res) => {
     const steps = await storage.getStepsByProcessId(req.params.processId);
     res.json(steps);
   } catch (error) {
-    console.error("Error fetching process steps:", error);
+    logger.error({ err: error }, 'Error fetching process steps');
     res.status(500).json({ error: "Failed to fetch process steps" });
   }
 });
@@ -138,7 +139,7 @@ router.post("/processes/:processId/steps", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error creating process step:", error);
+    logger.error({ err: error }, 'Error creating process step');
     res.status(500).json({ error: "Failed to create process step" });
   }
 });
@@ -178,7 +179,7 @@ router.patch("/processes/:processId/steps/:stepId", async (req, res) => {
       const validationError = fromError(error);
       return res.status(400).json({ error: validationError.toString() });
     }
-    console.error("Error updating process step:", error);
+    logger.error({ err: error }, 'Error updating process step');
     res.status(500).json({ error: "Failed to update process step" });
   }
 });
@@ -193,7 +194,7 @@ router.delete("/processes/:processId/steps/:stepId", async (req, res) => {
     await storage.resequenceSteps(req.params.processId);
     res.status(204).send();
   } catch (error) {
-    console.error("Error deleting process step:", error);
+    logger.error({ err: error }, 'Error deleting process step');
     res.status(500).json({ error: "Failed to delete process step" });
   }
 });
@@ -204,7 +205,7 @@ router.get("/processes/steps/:stepId/children", async (req, res) => {
     const children = await storage.getChildSteps(req.params.stepId);
     res.json(children);
   } catch (error) {
-    console.error("Error fetching child steps:", error);
+    logger.error({ err: error }, 'Error fetching child steps');
     res.status(500).json({ error: "Failed to fetch child steps" });
   }
 });
@@ -219,7 +220,7 @@ router.get("/pfd", async (req, res) => {
     const pfds = await storage.getPFDsByPartId(partId);
     res.json(pfds);
   } catch (error) {
-    console.error("Error fetching PFDs:", error);
+    logger.error({ err: error }, 'Error fetching PFDs');
     res.status(500).json({ error: "Failed to fetch PFDs" });
   }
 });
@@ -232,7 +233,7 @@ router.get("/pfd/:id", async (req, res) => {
     }
     res.json(pfdDoc);
   } catch (error) {
-    console.error("Error fetching PFD:", error);
+    logger.error({ err: error }, 'Error fetching PFD');
     res.status(500).json({ error: "Failed to fetch PFD" });
   }
 });
@@ -286,7 +287,7 @@ router.post("/pfd/preview", async (req, res) => {
 
     res.json({ mermaid, steps: allSteps });
   } catch (error: unknown) {
-    console.error("Error generating PFD preview:", error);
+    logger.error({ err: error }, 'Error generating PFD preview');
     res.status(500).json({ error: getErrorMessage(error) || "Failed to generate PFD preview" });
   }
 });

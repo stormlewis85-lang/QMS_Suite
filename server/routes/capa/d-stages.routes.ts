@@ -4,6 +4,7 @@ import { z } from "zod";
 import { fromError } from "zod-validation-error";
 import { storage } from "../../storage";
 import { requireAuth, requireRole } from "../../middleware/auth";
+import logger from '../../logger';
 import {
   insertCapaD0EmergencySchema,
   insertCapaD1TeamDetailSchema,
@@ -26,8 +27,7 @@ const router = Router();
 
 router.get("/capas/:id/d0", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -37,15 +37,14 @@ router.get("/capas/:id/d0", requireAuth, async (req, res) => {
     const d0 = await storage.getCapaD0(capaId);
     res.json(d0 || null);
   } catch (error) {
-    console.error("Error fetching D0:", error);
+    logger.error({ err: error }, 'Error fetching D0');
     res.status(500).json({ error: "Failed to fetch D0 data" });
   }
 });
 
 router.put("/capas/:id/d0", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -70,7 +69,7 @@ router.put("/capas/:id/d0", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error updating D0:", error);
+    logger.error({ err: error }, 'Error updating D0');
     res.status(500).json({ error: "Failed to update D0 data" });
   }
 });
@@ -78,8 +77,7 @@ router.put("/capas/:id/d0", requireAuth, async (req, res) => {
 // D0 emergency actions (stored in emergencyActions JSON array)
 router.post("/capas/:id/d0/emergency-actions", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -109,7 +107,7 @@ router.post("/capas/:id/d0/emergency-actions", requireAuth, async (req, res) => 
 
     res.status(201).json(newAction);
   } catch (error) {
-    console.error("Error adding emergency action:", error);
+    logger.error({ err: error }, 'Error adding emergency action');
     res.status(500).json({ error: "Failed to add emergency action" });
   }
 });
@@ -117,8 +115,7 @@ router.post("/capas/:id/d0/emergency-actions", requireAuth, async (req, res) => 
 // Update emergency action by index/id
 router.patch("/capas/:id/d0/emergency-actions/:actionId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -138,7 +135,7 @@ router.patch("/capas/:id/d0/emergency-actions/:actionId", requireAuth, async (re
 
     res.json(actions[idx]);
   } catch (error) {
-    console.error("Error updating emergency action:", error);
+    logger.error({ err: error }, 'Error updating emergency action');
     res.status(500).json({ error: "Failed to update emergency action" });
   }
 });
@@ -146,8 +143,7 @@ router.patch("/capas/:id/d0/emergency-actions/:actionId", requireAuth, async (re
 // D0 complete
 router.post("/capas/:id/d0/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -184,7 +180,7 @@ router.post("/capas/:id/d0/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D0 completed successfully" });
   } catch (error) {
-    console.error("Error completing D0:", error);
+    logger.error({ err: error }, 'Error completing D0');
     res.status(500).json({ error: "Failed to complete D0" });
   }
 });
@@ -192,8 +188,7 @@ router.post("/capas/:id/d0/complete", requireAuth, async (req, res) => {
 // D0 verify
 router.post("/capas/:id/d0/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -221,7 +216,7 @@ router.post("/capas/:id/d0/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D0 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D0:", error);
+    logger.error({ err: error }, 'Error verifying D0');
     res.status(500).json({ error: "Failed to verify D0" });
   }
 });
@@ -232,8 +227,7 @@ router.post("/capas/:id/d0/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d1", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -243,15 +237,14 @@ router.get("/capas/:id/d1", requireAuth, async (req, res) => {
     const d1 = await storage.getCapaD1(capaId);
     res.json(d1 || null);
   } catch (error) {
-    console.error("Error fetching D1:", error);
+    logger.error({ err: error }, 'Error fetching D1');
     res.status(500).json({ error: "Failed to fetch D1 data" });
   }
 });
 
 router.put("/capas/:id/d1", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -276,7 +269,7 @@ router.put("/capas/:id/d1", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error updating D1:", error);
+    logger.error({ err: error }, 'Error updating D1');
     res.status(500).json({ error: "Failed to update D1 data" });
   }
 });
@@ -284,8 +277,7 @@ router.put("/capas/:id/d1", requireAuth, async (req, res) => {
 // D1 add meeting
 router.post("/capas/:id/d1/meetings", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -313,7 +305,7 @@ router.post("/capas/:id/d1/meetings", requireAuth, async (req, res) => {
 
     res.status(201).json(newMeeting);
   } catch (error) {
-    console.error("Error adding meeting:", error);
+    logger.error({ err: error }, 'Error adding meeting');
     res.status(500).json({ error: "Failed to add meeting" });
   }
 });
@@ -321,8 +313,7 @@ router.post("/capas/:id/d1/meetings", requireAuth, async (req, res) => {
 // D1 approve resources
 router.post("/capas/:id/d1/approve-resources", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -340,7 +331,7 @@ router.post("/capas/:id/d1/approve-resources", requireAuth, async (req, res) => 
 
     res.json({ message: "Resources approved" });
   } catch (error) {
-    console.error("Error approving resources:", error);
+    logger.error({ err: error }, 'Error approving resources');
     res.status(500).json({ error: "Failed to approve resources" });
   }
 });
@@ -348,8 +339,7 @@ router.post("/capas/:id/d1/approve-resources", requireAuth, async (req, res) => 
 // D1 complete
 router.post("/capas/:id/d1/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -392,7 +382,7 @@ router.post("/capas/:id/d1/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D1 completed successfully" });
   } catch (error) {
-    console.error("Error completing D1:", error);
+    logger.error({ err: error }, 'Error completing D1');
     res.status(500).json({ error: "Failed to complete D1" });
   }
 });
@@ -400,8 +390,7 @@ router.post("/capas/:id/d1/complete", requireAuth, async (req, res) => {
 // D1 verify
 router.post("/capas/:id/d1/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -429,7 +418,7 @@ router.post("/capas/:id/d1/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D1 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D1:", error);
+    logger.error({ err: error }, 'Error verifying D1');
     res.status(500).json({ error: "Failed to verify D1" });
   }
 });
@@ -440,8 +429,7 @@ router.post("/capas/:id/d1/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d2", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -451,15 +439,14 @@ router.get("/capas/:id/d2", requireAuth, async (req, res) => {
     const d2 = await storage.getCapaD2(capaId);
     res.json(d2 || null);
   } catch (error) {
-    console.error("Error fetching D2:", error);
+    logger.error({ err: error }, 'Error fetching D2');
     res.status(500).json({ error: "Failed to fetch D2 data" });
   }
 });
 
 router.put("/capas/:id/d2", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -484,7 +471,7 @@ router.put("/capas/:id/d2", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error updating D2:", error);
+    logger.error({ err: error }, 'Error updating D2');
     res.status(500).json({ error: "Failed to update D2 data" });
   }
 });
@@ -492,8 +479,7 @@ router.put("/capas/:id/d2", requireAuth, async (req, res) => {
 // D2 Is/Is Not update by dimension
 router.put("/capas/:id/d2/is-not/:dimension", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const dimension = req.params.dimension;
     const validDimensions = ['what', 'where', 'when', 'howMany'];
@@ -523,7 +509,7 @@ router.put("/capas/:id/d2/is-not/:dimension", requireAuth, async (req, res) => {
     const updated = await storage.updateCapaD2(capaId, updateData);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating Is/Is Not:", error);
+    logger.error({ err: error }, 'Error updating Is/Is Not');
     res.status(500).json({ error: "Failed to update Is/Is Not" });
   }
 });
@@ -531,8 +517,7 @@ router.put("/capas/:id/d2/is-not/:dimension", requireAuth, async (req, res) => {
 // D2 verify problem statement
 router.post("/capas/:id/d2/verify-problem-statement", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -549,7 +534,7 @@ router.post("/capas/:id/d2/verify-problem-statement", requireAuth, async (req, r
 
     res.json({ message: "Problem statement verified" });
   } catch (error) {
-    console.error("Error verifying problem statement:", error);
+    logger.error({ err: error }, 'Error verifying problem statement');
     res.status(500).json({ error: "Failed to verify problem statement" });
   }
 });
@@ -557,8 +542,7 @@ router.post("/capas/:id/d2/verify-problem-statement", requireAuth, async (req, r
 // D2 data points
 router.post("/capas/:id/d2/data-points", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -581,7 +565,7 @@ router.post("/capas/:id/d2/data-points", requireAuth, async (req, res) => {
 
     res.status(201).json(newPoint);
   } catch (error) {
-    console.error("Error adding data point:", error);
+    logger.error({ err: error }, 'Error adding data point');
     res.status(500).json({ error: "Failed to add data point" });
   }
 });
@@ -589,8 +573,7 @@ router.post("/capas/:id/d2/data-points", requireAuth, async (req, res) => {
 // D2 verify measurement system
 router.post("/capas/:id/d2/verify-measurement-system", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -607,7 +590,7 @@ router.post("/capas/:id/d2/verify-measurement-system", requireAuth, async (req, 
 
     res.json({ message: "Measurement system verified" });
   } catch (error) {
-    console.error("Error verifying measurement system:", error);
+    logger.error({ err: error }, 'Error verifying measurement system');
     res.status(500).json({ error: "Failed to verify measurement system" });
   }
 });
@@ -615,8 +598,7 @@ router.post("/capas/:id/d2/verify-measurement-system", requireAuth, async (req, 
 // D2 complete
 router.post("/capas/:id/d2/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -650,7 +632,7 @@ router.post("/capas/:id/d2/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D2 completed successfully" });
   } catch (error) {
-    console.error("Error completing D2:", error);
+    logger.error({ err: error }, 'Error completing D2');
     res.status(500).json({ error: "Failed to complete D2" });
   }
 });
@@ -658,8 +640,7 @@ router.post("/capas/:id/d2/complete", requireAuth, async (req, res) => {
 // D2 verify
 router.post("/capas/:id/d2/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -687,7 +668,7 @@ router.post("/capas/:id/d2/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D2 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D2:", error);
+    logger.error({ err: error }, 'Error verifying D2');
     res.status(500).json({ error: "Failed to verify D2" });
   }
 });
@@ -698,8 +679,7 @@ router.post("/capas/:id/d2/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d3", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -709,15 +689,14 @@ router.get("/capas/:id/d3", requireAuth, async (req, res) => {
     const d3 = await storage.getCapaD3(capaId);
     res.json(d3 || null);
   } catch (error) {
-    console.error("Error fetching D3:", error);
+    logger.error({ err: error }, 'Error fetching D3');
     res.status(500).json({ error: "Failed to fetch D3 data" });
   }
 });
 
 router.put("/capas/:id/d3", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -742,7 +721,7 @@ router.put("/capas/:id/d3", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error updating D3:", error);
+    logger.error({ err: error }, 'Error updating D3');
     res.status(500).json({ error: "Failed to update D3 data" });
   }
 });
@@ -750,8 +729,7 @@ router.put("/capas/:id/d3", requireAuth, async (req, res) => {
 // D3 add containment action
 router.post("/capas/:id/d3/actions", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -781,7 +759,7 @@ router.post("/capas/:id/d3/actions", requireAuth, async (req, res) => {
 
     res.status(201).json(newAction);
   } catch (error) {
-    console.error("Error adding containment action:", error);
+    logger.error({ err: error }, 'Error adding containment action');
     res.status(500).json({ error: "Failed to add containment action" });
   }
 });
@@ -789,8 +767,7 @@ router.post("/capas/:id/d3/actions", requireAuth, async (req, res) => {
 // D3 update containment action
 router.patch("/capas/:id/d3/actions/:actionId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -810,7 +787,7 @@ router.patch("/capas/:id/d3/actions/:actionId", requireAuth, async (req, res) =>
 
     res.json(actions[idx]);
   } catch (error) {
-    console.error("Error updating containment action:", error);
+    logger.error({ err: error }, 'Error updating containment action');
     res.status(500).json({ error: "Failed to update containment action" });
   }
 });
@@ -818,8 +795,7 @@ router.patch("/capas/:id/d3/actions/:actionId", requireAuth, async (req, res) =>
 // D3 verify action effectiveness
 router.post("/capas/:id/d3/actions/:actionId/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -845,7 +821,7 @@ router.post("/capas/:id/d3/actions/:actionId/verify", requireAuth, async (req, r
 
     res.json(actions[idx]);
   } catch (error) {
-    console.error("Error verifying action:", error);
+    logger.error({ err: error }, 'Error verifying action');
     res.status(500).json({ error: "Failed to verify action" });
   }
 });
@@ -853,8 +829,7 @@ router.post("/capas/:id/d3/actions/:actionId/verify", requireAuth, async (req, r
 // D3 sort results
 router.post("/capas/:id/d3/sort-results", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -876,7 +851,7 @@ router.post("/capas/:id/d3/sort-results", requireAuth, async (req, res) => {
 
     res.json({ message: "Sort results updated" });
   } catch (error) {
-    console.error("Error updating sort results:", error);
+    logger.error({ err: error }, 'Error updating sort results');
     res.status(500).json({ error: "Failed to update sort results" });
   }
 });
@@ -884,8 +859,7 @@ router.post("/capas/:id/d3/sort-results", requireAuth, async (req, res) => {
 // D3 verify effectiveness
 router.post("/capas/:id/d3/verify-effectiveness", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -903,7 +877,7 @@ router.post("/capas/:id/d3/verify-effectiveness", requireAuth, async (req, res) 
 
     res.json({ message: "Containment effectiveness verified" });
   } catch (error) {
-    console.error("Error verifying effectiveness:", error);
+    logger.error({ err: error }, 'Error verifying effectiveness');
     res.status(500).json({ error: "Failed to verify effectiveness" });
   }
 });
@@ -911,8 +885,7 @@ router.post("/capas/:id/d3/verify-effectiveness", requireAuth, async (req, res) 
 // D3 complete
 router.post("/capas/:id/d3/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -944,7 +917,7 @@ router.post("/capas/:id/d3/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D3 completed successfully" });
   } catch (error) {
-    console.error("Error completing D3:", error);
+    logger.error({ err: error }, 'Error completing D3');
     res.status(500).json({ error: "Failed to complete D3" });
   }
 });
@@ -952,8 +925,7 @@ router.post("/capas/:id/d3/complete", requireAuth, async (req, res) => {
 // D3 verify
 router.post("/capas/:id/d3/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -981,7 +953,7 @@ router.post("/capas/:id/d3/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D3 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D3:", error);
+    logger.error({ err: error }, 'Error verifying D3');
     res.status(500).json({ error: "Failed to verify D3" });
   }
 });
@@ -992,8 +964,7 @@ router.post("/capas/:id/d3/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d4", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1007,15 +978,14 @@ router.get("/capas/:id/d4", requireAuth, async (req, res) => {
     }
     res.json(null);
   } catch (error) {
-    console.error("Error fetching D4:", error);
+    logger.error({ err: error }, 'Error fetching D4');
     res.status(500).json({ error: "Failed to fetch D4 data" });
   }
 });
 
 router.put("/capas/:id/d4", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1040,7 +1010,7 @@ router.put("/capas/:id/d4", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error updating D4:", error);
+    logger.error({ err: error }, 'Error updating D4');
     res.status(500).json({ error: "Failed to update D4 data" });
   }
 });
@@ -1048,8 +1018,7 @@ router.put("/capas/:id/d4", requireAuth, async (req, res) => {
 // D4 five-why chain
 router.post("/capas/:id/d4/five-why", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1078,7 +1047,7 @@ router.post("/capas/:id/d4/five-why", requireAuth, async (req, res) => {
 
     res.status(201).json(newChain);
   } catch (error) {
-    console.error("Error adding 5-Why chain:", error);
+    logger.error({ err: error }, 'Error adding 5-Why chain');
     res.status(500).json({ error: "Failed to add 5-Why chain" });
   }
 });
@@ -1086,8 +1055,7 @@ router.post("/capas/:id/d4/five-why", requireAuth, async (req, res) => {
 // D4 update five-why chain
 router.patch("/capas/:id/d4/five-why/:chainId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1107,7 +1075,7 @@ router.patch("/capas/:id/d4/five-why/:chainId", requireAuth, async (req, res) =>
 
     res.json(chains[idx]);
   } catch (error) {
-    console.error("Error updating 5-Why chain:", error);
+    logger.error({ err: error }, 'Error updating 5-Why chain');
     res.status(500).json({ error: "Failed to update 5-Why chain" });
   }
 });
@@ -1115,8 +1083,7 @@ router.patch("/capas/:id/d4/five-why/:chainId", requireAuth, async (req, res) =>
 // D4 fishbone diagram
 router.put("/capas/:id/d4/fishbone", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1137,7 +1104,7 @@ router.put("/capas/:id/d4/fishbone", requireAuth, async (req, res) => {
     const updated = await storage.getCapaD4(capaId);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating fishbone:", error);
+    logger.error({ err: error }, 'Error updating fishbone');
     res.status(500).json({ error: "Failed to update fishbone diagram" });
   }
 });
@@ -1145,8 +1112,7 @@ router.put("/capas/:id/d4/fishbone", requireAuth, async (req, res) => {
 // D4 root cause candidates
 router.post("/capas/:id/d4/candidates", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1176,7 +1142,7 @@ router.post("/capas/:id/d4/candidates", requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: fromError(error).toString() });
     }
-    console.error("Error adding root cause candidate:", error);
+    logger.error({ err: error }, 'Error adding root cause candidate');
     res.status(500).json({ error: "Failed to add root cause candidate" });
   }
 });
@@ -1184,9 +1150,8 @@ router.post("/capas/:id/d4/candidates", requireAuth, async (req, res) => {
 // D4 update candidate
 router.patch("/capas/:id/d4/candidates/:candidateId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const candidateId = parseInt(req.params.candidateId);
-    if (isNaN(capaId) || isNaN(candidateId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const candidateId = req.params.candidateId;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1201,7 +1166,7 @@ router.patch("/capas/:id/d4/candidates/:candidateId", requireAuth, async (req, r
     const updated = await storage.updateD4Candidate(candidateId, req.body);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating candidate:", error);
+    logger.error({ err: error }, 'Error updating candidate');
     res.status(500).json({ error: "Failed to update candidate" });
   }
 });
@@ -1209,9 +1174,8 @@ router.patch("/capas/:id/d4/candidates/:candidateId", requireAuth, async (req, r
 // D4 verify candidate as root cause
 router.post("/capas/:id/d4/candidates/:candidateId/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const candidateId = parseInt(req.params.candidateId);
-    if (isNaN(capaId) || isNaN(candidateId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const candidateId = req.params.candidateId;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1240,7 +1204,7 @@ router.post("/capas/:id/d4/candidates/:candidateId/verify", requireAuth, async (
 
     res.json(updated);
   } catch (error) {
-    console.error("Error verifying candidate:", error);
+    logger.error({ err: error }, 'Error verifying candidate');
     res.status(500).json({ error: "Failed to verify candidate" });
   }
 });
@@ -1248,8 +1212,7 @@ router.post("/capas/:id/d4/candidates/:candidateId/verify", requireAuth, async (
 // D4 verification tests
 router.post("/capas/:id/d4/verification-tests", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1272,7 +1235,7 @@ router.post("/capas/:id/d4/verification-tests", requireAuth, async (req, res) =>
 
     res.status(201).json(newTest);
   } catch (error) {
-    console.error("Error adding verification test:", error);
+    logger.error({ err: error }, 'Error adding verification test');
     res.status(500).json({ error: "Failed to add verification test" });
   }
 });
@@ -1280,8 +1243,7 @@ router.post("/capas/:id/d4/verification-tests", requireAuth, async (req, res) =>
 // D4 verify occurrence root cause
 router.post("/capas/:id/d4/verify-occurrence", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1299,7 +1261,7 @@ router.post("/capas/:id/d4/verify-occurrence", requireAuth, async (req, res) => 
 
     res.json({ message: "Occurrence root cause verified" });
   } catch (error) {
-    console.error("Error verifying occurrence root cause:", error);
+    logger.error({ err: error }, 'Error verifying occurrence root cause');
     res.status(500).json({ error: "Failed to verify occurrence root cause" });
   }
 });
@@ -1307,8 +1269,7 @@ router.post("/capas/:id/d4/verify-occurrence", requireAuth, async (req, res) => 
 // D4 verify escape root cause
 router.post("/capas/:id/d4/verify-escape", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1326,7 +1287,7 @@ router.post("/capas/:id/d4/verify-escape", requireAuth, async (req, res) => {
 
     res.json({ message: "Escape root cause verified" });
   } catch (error) {
-    console.error("Error verifying escape root cause:", error);
+    logger.error({ err: error }, 'Error verifying escape root cause');
     res.status(500).json({ error: "Failed to verify escape root cause" });
   }
 });
@@ -1334,8 +1295,7 @@ router.post("/capas/:id/d4/verify-escape", requireAuth, async (req, res) => {
 // D4 complete
 router.post("/capas/:id/d4/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1369,7 +1329,7 @@ router.post("/capas/:id/d4/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D4 completed successfully" });
   } catch (error) {
-    console.error("Error completing D4:", error);
+    logger.error({ err: error }, 'Error completing D4');
     res.status(500).json({ error: "Failed to complete D4" });
   }
 });
@@ -1377,8 +1337,7 @@ router.post("/capas/:id/d4/complete", requireAuth, async (req, res) => {
 // D4 verify
 router.post("/capas/:id/d4/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
 
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) {
@@ -1406,7 +1365,7 @@ router.post("/capas/:id/d4/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D4 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D4:", error);
+    logger.error({ err: error }, 'Error verifying D4');
     res.status(500).json({ error: "Failed to verify D4" });
   }
 });
@@ -1417,22 +1376,20 @@ router.post("/capas/:id/d4/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d5", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
     const d5 = await storage.getCapaD5(capaId);
     res.json(d5 || null);
   } catch (error) {
-    console.error("Error fetching D5:", error);
+    logger.error({ err: error }, 'Error fetching D5');
     res.status(500).json({ error: "Failed to fetch D5 data" });
   }
 });
 
 router.put("/capas/:id/d5", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1448,7 +1405,7 @@ router.put("/capas/:id/d5", requireAuth, async (req, res) => {
     res.json(d5);
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
-    console.error("Error updating D5:", error);
+    logger.error({ err: error }, 'Error updating D5');
     res.status(500).json({ error: "Failed to update D5 data" });
   }
 });
@@ -1456,8 +1413,7 @@ router.put("/capas/:id/d5", requireAuth, async (req, res) => {
 // D5 add corrective action
 router.post("/capas/:id/d5/actions", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1472,7 +1428,7 @@ router.post("/capas/:id/d5/actions", requireAuth, async (req, res) => {
     await storage.updateCapaD5(capaId, { correctiveActionsSelected: JSON.stringify(actions) });
     res.status(201).json(newAction);
   } catch (error) {
-    console.error("Error adding corrective action:", error);
+    logger.error({ err: error }, 'Error adding corrective action');
     res.status(500).json({ error: "Failed to add corrective action" });
   }
 });
@@ -1480,8 +1436,7 @@ router.post("/capas/:id/d5/actions", requireAuth, async (req, res) => {
 // D5 update corrective action
 router.patch("/capas/:id/d5/actions/:actionId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1496,7 +1451,7 @@ router.patch("/capas/:id/d5/actions/:actionId", requireAuth, async (req, res) =>
     await storage.updateCapaD5(capaId, { correctiveActionsSelected: JSON.stringify(actions) });
     res.json(actions[idx]);
   } catch (error) {
-    console.error("Error updating corrective action:", error);
+    logger.error({ err: error }, 'Error updating corrective action');
     res.status(500).json({ error: "Failed to update corrective action" });
   }
 });
@@ -1504,8 +1459,7 @@ router.patch("/capas/:id/d5/actions/:actionId", requireAuth, async (req, res) =>
 // D5 add alternative considered
 router.post("/capas/:id/d5/alternatives", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1520,7 +1474,7 @@ router.post("/capas/:id/d5/alternatives", requireAuth, async (req, res) => {
     await storage.updateCapaD5(capaId, { alternativesConsidered: JSON.stringify(alternatives) });
     res.status(201).json(newAlt);
   } catch (error) {
-    console.error("Error adding alternative:", error);
+    logger.error({ err: error }, 'Error adding alternative');
     res.status(500).json({ error: "Failed to add alternative" });
   }
 });
@@ -1528,8 +1482,7 @@ router.post("/capas/:id/d5/alternatives", requireAuth, async (req, res) => {
 // D5 risk assessment
 router.put("/capas/:id/d5/risk-assessment", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1540,7 +1493,7 @@ router.put("/capas/:id/d5/risk-assessment", requireAuth, async (req, res) => {
     const updated = await storage.getCapaD5(capaId);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating risk assessment:", error);
+    logger.error({ err: error }, 'Error updating risk assessment');
     res.status(500).json({ error: "Failed to update risk assessment" });
   }
 });
@@ -1548,8 +1501,7 @@ router.put("/capas/:id/d5/risk-assessment", requireAuth, async (req, res) => {
 // D5 request approval
 router.post("/capas/:id/d5/request-approval", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1565,7 +1517,7 @@ router.post("/capas/:id/d5/request-approval", requireAuth, async (req, res) => {
 
     res.json({ message: "Approval requested" });
   } catch (error) {
-    console.error("Error requesting approval:", error);
+    logger.error({ err: error }, 'Error requesting approval');
     res.status(500).json({ error: "Failed to request approval" });
   }
 });
@@ -1573,8 +1525,7 @@ router.post("/capas/:id/d5/request-approval", requireAuth, async (req, res) => {
 // D5 approve
 router.post("/capas/:id/d5/approve", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1591,7 +1542,7 @@ router.post("/capas/:id/d5/approve", requireAuth, requireRole("admin", "quality_
 
     res.json({ message: "D5 approved" });
   } catch (error) {
-    console.error("Error approving D5:", error);
+    logger.error({ err: error }, 'Error approving D5');
     res.status(500).json({ error: "Failed to approve D5" });
   }
 });
@@ -1599,8 +1550,7 @@ router.post("/capas/:id/d5/approve", requireAuth, requireRole("admin", "quality_
 // D5 reject
 router.post("/capas/:id/d5/reject", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1616,7 +1566,7 @@ router.post("/capas/:id/d5/reject", requireAuth, requireRole("admin", "quality_m
 
     res.json({ message: "D5 rejected" });
   } catch (error) {
-    console.error("Error rejecting D5:", error);
+    logger.error({ err: error }, 'Error rejecting D5');
     res.status(500).json({ error: "Failed to reject D5" });
   }
 });
@@ -1624,8 +1574,7 @@ router.post("/capas/:id/d5/reject", requireAuth, requireRole("admin", "quality_m
 // D5 complete
 router.post("/capas/:id/d5/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1647,7 +1596,7 @@ router.post("/capas/:id/d5/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D5 completed successfully" });
   } catch (error) {
-    console.error("Error completing D5:", error);
+    logger.error({ err: error }, 'Error completing D5');
     res.status(500).json({ error: "Failed to complete D5" });
   }
 });
@@ -1655,8 +1604,7 @@ router.post("/capas/:id/d5/complete", requireAuth, async (req, res) => {
 // D5 verify
 router.post("/capas/:id/d5/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1672,7 +1620,7 @@ router.post("/capas/:id/d5/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D5 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D5:", error);
+    logger.error({ err: error }, 'Error verifying D5');
     res.status(500).json({ error: "Failed to verify D5" });
   }
 });
@@ -1683,22 +1631,20 @@ router.post("/capas/:id/d5/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d6", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
     const d6 = await storage.getCapaD6(capaId);
     res.json(d6 || null);
   } catch (error) {
-    console.error("Error fetching D6:", error);
+    logger.error({ err: error }, 'Error fetching D6');
     res.status(500).json({ error: "Failed to fetch D6 data" });
   }
 });
 
 router.put("/capas/:id/d6", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1714,7 +1660,7 @@ router.put("/capas/:id/d6", requireAuth, async (req, res) => {
     res.json(d6);
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
-    console.error("Error updating D6:", error);
+    logger.error({ err: error }, 'Error updating D6');
     res.status(500).json({ error: "Failed to update D6 data" });
   }
 });
@@ -1722,8 +1668,7 @@ router.put("/capas/:id/d6", requireAuth, async (req, res) => {
 // D6 implementation log
 router.post("/capas/:id/d6/implementation-log", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1738,7 +1683,7 @@ router.post("/capas/:id/d6/implementation-log", requireAuth, async (req, res) =>
     await storage.updateCapaD6(capaId, { implementationLog: JSON.stringify(log) });
     res.status(201).json(entry);
   } catch (error) {
-    console.error("Error adding implementation log:", error);
+    logger.error({ err: error }, 'Error adding implementation log');
     res.status(500).json({ error: "Failed to add implementation log entry" });
   }
 });
@@ -1746,8 +1691,7 @@ router.post("/capas/:id/d6/implementation-log", requireAuth, async (req, res) =>
 // D6 mark action as implemented
 router.post("/capas/:id/d6/actions/:actionId/implement", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1776,7 +1720,7 @@ router.post("/capas/:id/d6/actions/:actionId/implement", requireAuth, async (req
 
     res.json({ message: "Action marked as implemented" });
   } catch (error) {
-    console.error("Error implementing action:", error);
+    logger.error({ err: error }, 'Error implementing action');
     res.status(500).json({ error: "Failed to mark action as implemented" });
   }
 });
@@ -1784,8 +1728,7 @@ router.post("/capas/:id/d6/actions/:actionId/implement", requireAuth, async (req
 // D6 record delay
 router.post("/capas/:id/d6/delays", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1798,7 +1741,7 @@ router.post("/capas/:id/d6/delays", requireAuth, async (req, res) => {
     await storage.updateCapaD6(capaId, { delaysEncountered: JSON.stringify(delays) });
     res.status(201).json(delay);
   } catch (error) {
-    console.error("Error recording delay:", error);
+    logger.error({ err: error }, 'Error recording delay');
     res.status(500).json({ error: "Failed to record delay" });
   }
 });
@@ -1806,8 +1749,7 @@ router.post("/capas/:id/d6/delays", requireAuth, async (req, res) => {
 // D6 validation tests
 router.post("/capas/:id/d6/validation-tests", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1822,7 +1764,7 @@ router.post("/capas/:id/d6/validation-tests", requireAuth, async (req, res) => {
     await storage.updateCapaD6(capaId, { validationTests: JSON.stringify(tests) });
     res.status(201).json(newTest);
   } catch (error) {
-    console.error("Error adding validation test:", error);
+    logger.error({ err: error }, 'Error adding validation test');
     res.status(500).json({ error: "Failed to add validation test" });
   }
 });
@@ -1830,8 +1772,7 @@ router.post("/capas/:id/d6/validation-tests", requireAuth, async (req, res) => {
 // D6 record validation test result
 router.post("/capas/:id/d6/validation-tests/:testId/result", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1846,7 +1787,7 @@ router.post("/capas/:id/d6/validation-tests/:testId/result", requireAuth, async 
     await storage.updateCapaD6(capaId, { validationTests: JSON.stringify(tests) });
     res.json(tests[idx]);
   } catch (error) {
-    console.error("Error recording test result:", error);
+    logger.error({ err: error }, 'Error recording test result');
     res.status(500).json({ error: "Failed to record test result" });
   }
 });
@@ -1854,8 +1795,7 @@ router.post("/capas/:id/d6/validation-tests/:testId/result", requireAuth, async 
 // D6 statistical validation
 router.put("/capas/:id/d6/statistical-validation", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1866,7 +1806,7 @@ router.put("/capas/:id/d6/statistical-validation", requireAuth, async (req, res)
     const updated = await storage.getCapaD6(capaId);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating statistical validation:", error);
+    logger.error({ err: error }, 'Error updating statistical validation');
     res.status(500).json({ error: "Failed to update statistical validation" });
   }
 });
@@ -1874,8 +1814,7 @@ router.put("/capas/:id/d6/statistical-validation", requireAuth, async (req, res)
 // D6 remove containment
 router.post("/capas/:id/d6/remove-containment", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1896,7 +1835,7 @@ router.post("/capas/:id/d6/remove-containment", requireAuth, async (req, res) =>
 
     res.json({ message: "Containment removed" });
   } catch (error) {
-    console.error("Error removing containment:", error);
+    logger.error({ err: error }, 'Error removing containment');
     res.status(500).json({ error: "Failed to remove containment" });
   }
 });
@@ -1904,8 +1843,7 @@ router.post("/capas/:id/d6/remove-containment", requireAuth, async (req, res) =>
 // D6 verify effectiveness
 router.post("/capas/:id/d6/verify-effectiveness", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1922,7 +1860,7 @@ router.post("/capas/:id/d6/verify-effectiveness", requireAuth, async (req, res) 
 
     res.json({ message: "Effectiveness verified" });
   } catch (error) {
-    console.error("Error verifying effectiveness:", error);
+    logger.error({ err: error }, 'Error verifying effectiveness');
     res.status(500).json({ error: "Failed to verify effectiveness" });
   }
 });
@@ -1930,8 +1868,7 @@ router.post("/capas/:id/d6/verify-effectiveness", requireAuth, async (req, res) 
 // D6 reoccurrence check
 router.post("/capas/:id/d6/reoccurrence-check", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1946,7 +1883,7 @@ router.post("/capas/:id/d6/reoccurrence-check", requireAuth, async (req, res) =>
 
     res.json({ message: "Reoccurrence check recorded" });
   } catch (error) {
-    console.error("Error recording reoccurrence check:", error);
+    logger.error({ err: error }, 'Error recording reoccurrence check');
     res.status(500).json({ error: "Failed to record reoccurrence check" });
   }
 });
@@ -1954,8 +1891,7 @@ router.post("/capas/:id/d6/reoccurrence-check", requireAuth, async (req, res) =>
 // D6 complete
 router.post("/capas/:id/d6/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1977,7 +1913,7 @@ router.post("/capas/:id/d6/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D6 completed successfully" });
   } catch (error) {
-    console.error("Error completing D6:", error);
+    logger.error({ err: error }, 'Error completing D6');
     res.status(500).json({ error: "Failed to complete D6" });
   }
 });
@@ -1985,8 +1921,7 @@ router.post("/capas/:id/d6/complete", requireAuth, async (req, res) => {
 // D6 verify
 router.post("/capas/:id/d6/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2002,7 +1937,7 @@ router.post("/capas/:id/d6/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D6 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D6:", error);
+    logger.error({ err: error }, 'Error verifying D6');
     res.status(500).json({ error: "Failed to verify D6" });
   }
 });
@@ -2013,22 +1948,20 @@ router.post("/capas/:id/d6/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d7", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
     const d7 = await storage.getCapaD7(capaId);
     res.json(d7 || null);
   } catch (error) {
-    console.error("Error fetching D7:", error);
+    logger.error({ err: error }, 'Error fetching D7');
     res.status(500).json({ error: "Failed to fetch D7 data" });
   }
 });
 
 router.put("/capas/:id/d7", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2044,7 +1977,7 @@ router.put("/capas/:id/d7", requireAuth, async (req, res) => {
     res.json(d7);
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
-    console.error("Error updating D7:", error);
+    logger.error({ err: error }, 'Error updating D7');
     res.status(500).json({ error: "Failed to update D7 data" });
   }
 });
@@ -2052,8 +1985,7 @@ router.put("/capas/:id/d7", requireAuth, async (req, res) => {
 // D7 systemic analysis
 router.post("/capas/:id/d7/systemic-analysis", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2070,7 +2002,7 @@ router.post("/capas/:id/d7/systemic-analysis", requireAuth, async (req, res) => 
 
     res.json({ message: "Systemic analysis recorded" });
   } catch (error) {
-    console.error("Error recording systemic analysis:", error);
+    logger.error({ err: error }, 'Error recording systemic analysis');
     res.status(500).json({ error: "Failed to record systemic analysis" });
   }
 });
@@ -2078,8 +2010,7 @@ router.post("/capas/:id/d7/systemic-analysis", requireAuth, async (req, res) => 
 // D7 similar processes
 router.post("/capas/:id/d7/similar-processes", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2092,7 +2023,7 @@ router.post("/capas/:id/d7/similar-processes", requireAuth, async (req, res) => 
     await storage.updateCapaD7(capaId, { similarProcessesIdentified: JSON.stringify(processes) });
     res.status(201).json(newProcess);
   } catch (error) {
-    console.error("Error adding similar process:", error);
+    logger.error({ err: error }, 'Error adding similar process');
     res.status(500).json({ error: "Failed to add similar process" });
   }
 });
@@ -2100,8 +2031,7 @@ router.post("/capas/:id/d7/similar-processes", requireAuth, async (req, res) => 
 // D7 add preventive action
 router.post("/capas/:id/d7/actions", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2116,7 +2046,7 @@ router.post("/capas/:id/d7/actions", requireAuth, async (req, res) => {
     await storage.updateCapaD7(capaId, { preventiveActions: JSON.stringify(actions) });
     res.status(201).json(newAction);
   } catch (error) {
-    console.error("Error adding preventive action:", error);
+    logger.error({ err: error }, 'Error adding preventive action');
     res.status(500).json({ error: "Failed to add preventive action" });
   }
 });
@@ -2124,8 +2054,7 @@ router.post("/capas/:id/d7/actions", requireAuth, async (req, res) => {
 // D7 update preventive action
 router.patch("/capas/:id/d7/actions/:actionId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2140,7 +2069,7 @@ router.patch("/capas/:id/d7/actions/:actionId", requireAuth, async (req, res) =>
     await storage.updateCapaD7(capaId, { preventiveActions: JSON.stringify(actions) });
     res.json(actions[idx]);
   } catch (error) {
-    console.error("Error updating preventive action:", error);
+    logger.error({ err: error }, 'Error updating preventive action');
     res.status(500).json({ error: "Failed to update preventive action" });
   }
 });
@@ -2148,8 +2077,7 @@ router.patch("/capas/:id/d7/actions/:actionId", requireAuth, async (req, res) =>
 // D7 verify preventive action
 router.post("/capas/:id/d7/actions/:actionId/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2164,7 +2092,7 @@ router.post("/capas/:id/d7/actions/:actionId/verify", requireAuth, async (req, r
     await storage.updateCapaD7(capaId, { preventiveActions: JSON.stringify(actions) });
     res.json(actions[idx]);
   } catch (error) {
-    console.error("Error verifying preventive action:", error);
+    logger.error({ err: error }, 'Error verifying preventive action');
     res.status(500).json({ error: "Failed to verify preventive action" });
   }
 });
@@ -2172,8 +2100,7 @@ router.post("/capas/:id/d7/actions/:actionId/verify", requireAuth, async (req, r
 // D7 horizontal deployment
 router.put("/capas/:id/d7/horizontal-deployment", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2184,7 +2111,7 @@ router.put("/capas/:id/d7/horizontal-deployment", requireAuth, async (req, res) 
     const updated = await storage.getCapaD7(capaId);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating horizontal deployment:", error);
+    logger.error({ err: error }, 'Error updating horizontal deployment');
     res.status(500).json({ error: "Failed to update horizontal deployment" });
   }
 });
@@ -2192,8 +2119,7 @@ router.put("/capas/:id/d7/horizontal-deployment", requireAuth, async (req, res) 
 // D7 deployment status for location
 router.post("/capas/:id/d7/horizontal-deployment/:location", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2207,7 +2133,7 @@ router.post("/capas/:id/d7/horizontal-deployment/:location", requireAuth, async 
     await storage.updateCapaD7(capaId, { horizontalDeploymentPlan: JSON.stringify(plan) });
     res.json({ message: `Deployment status updated for ${location}` });
   } catch (error) {
-    console.error("Error updating deployment status:", error);
+    logger.error({ err: error }, 'Error updating deployment status');
     res.status(500).json({ error: "Failed to update deployment status" });
   }
 });
@@ -2215,8 +2141,7 @@ router.post("/capas/:id/d7/horizontal-deployment/:location", requireAuth, async 
 // D7 lesson learned
 router.post("/capas/:id/d7/lesson-learned", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2229,7 +2154,7 @@ router.post("/capas/:id/d7/lesson-learned", requireAuth, async (req, res) => {
     await storage.updateCapaD7(capaId, { knowledgeBaseEntries: JSON.stringify(entries), lessonLearnedCreated: 1 });
     res.status(201).json(entry);
   } catch (error) {
-    console.error("Error creating lesson learned:", error);
+    logger.error({ err: error }, 'Error creating lesson learned');
     res.status(500).json({ error: "Failed to create lesson learned" });
   }
 });
@@ -2237,8 +2162,7 @@ router.post("/capas/:id/d7/lesson-learned", requireAuth, async (req, res) => {
 // D7 complete
 router.post("/capas/:id/d7/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2256,7 +2180,7 @@ router.post("/capas/:id/d7/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D7 completed successfully" });
   } catch (error) {
-    console.error("Error completing D7:", error);
+    logger.error({ err: error }, 'Error completing D7');
     res.status(500).json({ error: "Failed to complete D7" });
   }
 });
@@ -2264,8 +2188,7 @@ router.post("/capas/:id/d7/complete", requireAuth, async (req, res) => {
 // D7 verify
 router.post("/capas/:id/d7/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2281,7 +2204,7 @@ router.post("/capas/:id/d7/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D7 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D7:", error);
+    logger.error({ err: error }, 'Error verifying D7');
     res.status(500).json({ error: "Failed to verify D7" });
   }
 });
@@ -2292,22 +2215,20 @@ router.post("/capas/:id/d7/verify", requireAuth, async (req, res) => {
 
 router.get("/capas/:id/d8", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
     const d8 = await storage.getCapaD8(capaId);
     res.json(d8 || null);
   } catch (error) {
-    console.error("Error fetching D8:", error);
+    logger.error({ err: error }, 'Error fetching D8');
     res.status(500).json({ error: "Failed to fetch D8 data" });
   }
 });
 
 router.put("/capas/:id/d8", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2323,7 +2244,7 @@ router.put("/capas/:id/d8", requireAuth, async (req, res) => {
     res.json(d8);
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
-    console.error("Error updating D8:", error);
+    logger.error({ err: error }, 'Error updating D8');
     res.status(500).json({ error: "Failed to update D8 data" });
   }
 });
@@ -2331,8 +2252,7 @@ router.put("/capas/:id/d8", requireAuth, async (req, res) => {
 // D8 closure criteria
 router.post("/capas/:id/d8/closure-criteria/:itemId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2344,7 +2264,7 @@ router.post("/capas/:id/d8/closure-criteria/:itemId", requireAuth, async (req, r
     await storage.updateCapaD8(capaId, { closureCriteriaChecklist: JSON.stringify(checklist) });
     res.json({ message: `Criteria ${req.params.itemId} marked as met` });
   } catch (error) {
-    console.error("Error updating closure criteria:", error);
+    logger.error({ err: error }, 'Error updating closure criteria');
     res.status(500).json({ error: "Failed to update closure criteria" });
   }
 });
@@ -2352,8 +2272,7 @@ router.post("/capas/:id/d8/closure-criteria/:itemId", requireAuth, async (req, r
 // D8 team recognition
 router.put("/capas/:id/d8/team-recognition", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2369,7 +2288,7 @@ router.put("/capas/:id/d8/team-recognition", requireAuth, async (req, res) => {
     const updated = await storage.getCapaD8(capaId);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating team recognition:", error);
+    logger.error({ err: error }, 'Error updating team recognition');
     res.status(500).json({ error: "Failed to update team recognition" });
   }
 });
@@ -2377,8 +2296,7 @@ router.put("/capas/:id/d8/team-recognition", requireAuth, async (req, res) => {
 // D8 success metrics
 router.put("/capas/:id/d8/success-metrics", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2389,7 +2307,7 @@ router.put("/capas/:id/d8/success-metrics", requireAuth, async (req, res) => {
     const updated = await storage.getCapaD8(capaId);
     res.json(updated);
   } catch (error) {
-    console.error("Error updating success metrics:", error);
+    logger.error({ err: error }, 'Error updating success metrics');
     res.status(500).json({ error: "Failed to update success metrics" });
   }
 });
@@ -2397,8 +2315,7 @@ router.put("/capas/:id/d8/success-metrics", requireAuth, async (req, res) => {
 // D8 lessons learned
 router.post("/capas/:id/d8/lessons-learned", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2411,7 +2328,7 @@ router.post("/capas/:id/d8/lessons-learned", requireAuth, async (req, res) => {
     await storage.updateCapaD8(capaId, { teamFeedback: JSON.stringify(feedback), lessonsLearnedShared: 1 });
     res.status(201).json(entry);
   } catch (error) {
-    console.error("Error adding lessons learned:", error);
+    logger.error({ err: error }, 'Error adding lessons learned');
     res.status(500).json({ error: "Failed to add lessons learned" });
   }
 });
@@ -2419,8 +2336,7 @@ router.post("/capas/:id/d8/lessons-learned", requireAuth, async (req, res) => {
 // D8 submit for approval
 router.post("/capas/:id/d8/submit-for-approval", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2433,7 +2349,7 @@ router.post("/capas/:id/d8/submit-for-approval", requireAuth, async (req, res) =
 
     res.json({ message: "Submitted for closure approval" });
   } catch (error) {
-    console.error("Error submitting for approval:", error);
+    logger.error({ err: error }, 'Error submitting for approval');
     res.status(500).json({ error: "Failed to submit for approval" });
   }
 });
@@ -2441,8 +2357,7 @@ router.post("/capas/:id/d8/submit-for-approval", requireAuth, async (req, res) =
 // D8 approve closure
 router.post("/capas/:id/d8/approve-closure", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2459,7 +2374,7 @@ router.post("/capas/:id/d8/approve-closure", requireAuth, requireRole("admin", "
 
     res.json({ message: "Closure approved" });
   } catch (error) {
-    console.error("Error approving closure:", error);
+    logger.error({ err: error }, 'Error approving closure');
     res.status(500).json({ error: "Failed to approve closure" });
   }
 });
@@ -2467,8 +2382,7 @@ router.post("/capas/:id/d8/approve-closure", requireAuth, requireRole("admin", "
 // D8 close
 router.post("/capas/:id/d8/close", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2487,7 +2401,7 @@ router.post("/capas/:id/d8/close", requireAuth, async (req, res) => {
 
     res.json({ message: "CAPA closed successfully" });
   } catch (error) {
-    console.error("Error closing CAPA:", error);
+    logger.error({ err: error }, 'Error closing CAPA');
     res.status(500).json({ error: "Failed to close CAPA" });
   }
 });
@@ -2495,8 +2409,7 @@ router.post("/capas/:id/d8/close", requireAuth, async (req, res) => {
 // D8 reopen
 router.post("/capas/:id/d8/reopen", requireAuth, requireRole("admin", "quality_manager"), async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2518,7 +2431,7 @@ router.post("/capas/:id/d8/reopen", requireAuth, requireRole("admin", "quality_m
 
     res.json({ message: "CAPA reopened" });
   } catch (error) {
-    console.error("Error reopening CAPA:", error);
+    logger.error({ err: error }, 'Error reopening CAPA');
     res.status(500).json({ error: "Failed to reopen CAPA" });
   }
 });
@@ -2526,8 +2439,7 @@ router.post("/capas/:id/d8/reopen", requireAuth, requireRole("admin", "quality_m
 // D8 final report
 router.get("/capas/:id/d8/final-report", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2549,7 +2461,7 @@ router.get("/capas/:id/d8/final-report", requireAuth, async (req, res) => {
       auditLogSummary: { totalEntries: auditLogs.length, latestEntry: auditLogs[0] || null },
     });
   } catch (error) {
-    console.error("Error generating final report:", error);
+    logger.error({ err: error }, 'Error generating final report');
     res.status(500).json({ error: "Failed to generate final report" });
   }
 });
@@ -2557,8 +2469,7 @@ router.get("/capas/:id/d8/final-report", requireAuth, async (req, res) => {
 // D8 complete
 router.post("/capas/:id/d8/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2574,7 +2485,7 @@ router.post("/capas/:id/d8/complete", requireAuth, async (req, res) => {
 
     res.json({ message: "D8 completed successfully" });
   } catch (error) {
-    console.error("Error completing D8:", error);
+    logger.error({ err: error }, 'Error completing D8');
     res.status(500).json({ error: "Failed to complete D8" });
   }
 });
@@ -2582,8 +2493,7 @@ router.post("/capas/:id/d8/complete", requireAuth, async (req, res) => {
 // D8 verify
 router.post("/capas/:id/d8/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -2599,7 +2509,7 @@ router.post("/capas/:id/d8/verify", requireAuth, async (req, res) => {
 
     res.json({ message: "D8 verified successfully" });
   } catch (error) {
-    console.error("Error verifying D8:", error);
+    logger.error({ err: error }, 'Error verifying D8');
     res.status(500).json({ error: "Failed to verify D8" });
   }
 });

@@ -1814,7 +1814,7 @@ export const documentLinkEnhancedRelations = relations(documentLinkEnhanced, ({ 
 // ==========================================
 
 export const capa = pgTable('capa', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   capaNumber: text('capa_number').notNull(),
   title: text('title').notNull(),
@@ -1866,9 +1866,9 @@ export const capa = pgTable('capa', {
 }));
 
 export const capaTeamMember = pgTable('capa_team_member', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(),
   userName: text('user_name').notNull(),
   userEmail: text('user_email'),
@@ -1894,9 +1894,9 @@ export const capaTeamMember = pgTable('capa_team_member', {
 }));
 
 export const capaSource = pgTable('capa_source', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   sourceType: text('source_type').notNull(),
   sourceSystem: text('source_system'), // internal / customer_portal / supplier_portal / qms / erp / manual
   externalId: text('external_id'),
@@ -1933,9 +1933,9 @@ export const capaSource = pgTable('capa_source', {
 }));
 
 export const capaAttachment = pgTable('capa_attachment', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   discipline: text('discipline'), // D0-D8 or general
   attachmentType: text('attachment_type').notNull(), // photo / video / document / report / drawing / data / email / presentation / form / certificate / other
   title: text('title').notNull(),
@@ -1968,9 +1968,9 @@ export const capaAttachment = pgTable('capa_attachment', {
 }));
 
 export const capaRelatedRecord = pgTable('capa_related_record', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   relatedType: text('related_type').notNull(), // capa / document / pfmea / pfmea_row / control_plan / control_plan_row / part / process / equipment / gage / supplier / training_record / audit
   relatedId: integer('related_id').notNull(),
   relationshipType: text('relationship_type').notNull(), // caused_by / affected / updated_as_result / evidence_for / similar_issue / duplicate_of / parent / child / reference
@@ -1987,7 +1987,7 @@ export const capaRelatedRecord = pgTable('capa_related_record', {
 }));
 
 export const capaNumberSequence = pgTable('capa_number_sequence', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   year: integer('year').notNull(),
   lastNumber: integer('last_number').notNull().default(0),
@@ -2003,9 +2003,9 @@ export const capaNumberSequence = pgTable('capa_number_sequence', {
 // ==========================================
 
 export const capaD0Emergency = pgTable('capa_d0_emergency', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   emergencyResponseRequired: integer('emergency_response_required').notNull().default(0),
   responseType: text('response_type'), // containment / stop_shipment / customer_notification / recall / none
   immediateThreat: text('immediate_threat'),
@@ -2050,9 +2050,9 @@ export const capaD0Emergency = pgTable('capa_d0_emergency', {
 }));
 
 export const capaD1TeamDetail = pgTable('capa_d1_team_detail', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   teamFormationDate: timestamp('team_formation_date'),
   teamFormationMethod: text('team_formation_method'), // ad_hoc / standard_roster / cross_functional
   teamCharterDefined: integer('team_charter_defined').default(0),
@@ -2084,9 +2084,9 @@ export const capaD1TeamDetail = pgTable('capa_d1_team_detail', {
 }));
 
 export const capaD2Problem = pgTable('capa_d2_problem', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   problemStatement: text('problem_statement').notNull(),
   problemStatementVerified: integer('problem_statement_verified').default(0),
   problemStatementVerifiedBy: text('problem_statement_verified_by'),
@@ -2126,9 +2126,9 @@ export const capaD2Problem = pgTable('capa_d2_problem', {
 }));
 
 export const capaD3Containment = pgTable('capa_d3_containment', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   containmentRequired: integer('containment_required').notNull().default(1),
   containmentNotRequiredReason: text('containment_not_required_reason'),
   containmentStrategy: text('containment_strategy'),
@@ -2184,9 +2184,9 @@ export const capaD3Containment = pgTable('capa_d3_containment', {
 // ==========================================
 
 export const capaD4RootCause = pgTable('capa_d4_root_cause', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   analysisApproach: text('analysis_approach').default('[]'),
   possibleCauses: text('possible_causes').default('[]'),
   fiveWhyAnalysis: text('five_why_analysis').default('[]'),
@@ -2233,10 +2233,10 @@ export const capaD4RootCause = pgTable('capa_d4_root_cause', {
 }));
 
 export const capaD4RootCauseCandidate = pgTable('capa_d4_root_cause_candidate', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
-  d4Id: integer('d4_id').notNull().references(() => capaD4RootCause.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  d4Id: uuid('d4_id').notNull().references(() => capaD4RootCause.id, { onDelete: 'cascade' }),
   causeType: text('cause_type').notNull(), // occurrence / escape / systemic / contributing
   category: text('category'), // man / machine / material / method / measurement / environment
   description: text('description').notNull(),
@@ -2263,9 +2263,9 @@ export const capaD4RootCauseCandidate = pgTable('capa_d4_root_cause_candidate', 
 }));
 
 export const capaD5CorrectiveAction = pgTable('capa_d5_corrective_action', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   correctiveActionsSelected: text('corrective_actions_selected').default('[]'),
   alternativesConsidered: text('alternatives_considered').default('[]'),
   selectionCriteria: text('selection_criteria').default('{}'),
@@ -2314,9 +2314,9 @@ export const capaD5CorrectiveAction = pgTable('capa_d5_corrective_action', {
 }));
 
 export const capaD6Validation = pgTable('capa_d6_validation', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   implementationStatus: text('implementation_status').default('not_started'), // not_started / in_progress / complete
   implementationProgress: integer('implementation_progress').default(0),
   implementationLog: text('implementation_log').default('[]'),
@@ -2376,9 +2376,9 @@ export const capaD6Validation = pgTable('capa_d6_validation', {
 // ==========================================
 
 export const capaD7Preventive = pgTable('capa_d7_preventive', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   systemicAnalysisComplete: integer('systemic_analysis_complete').default(0),
   systemicAnalysisSummary: text('systemic_analysis_summary'),
   managementSystemsReviewed: text('management_systems_reviewed').default('[]'),
@@ -2423,9 +2423,9 @@ export const capaD7Preventive = pgTable('capa_d7_preventive', {
 }));
 
 export const capaD8Closure = pgTable('capa_d8_closure', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   closureCriteriaMet: integer('closure_criteria_met').default(0),
   closureCriteriaChecklist: text('closure_criteria_checklist').default('{}'),
   allActionsComplete: integer('all_actions_complete').default(0),
@@ -2475,9 +2475,9 @@ export const capaD8Closure = pgTable('capa_d8_closure', {
 }));
 
 export const capaAuditLog = pgTable('capa_audit_log', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull(), // NO cascade - keep orphan logs
+  capaId: uuid('capa_id').notNull(), // NO cascade - keep orphan logs
   discipline: text('discipline'),
   action: text('action').notNull(),
   entityType: text('entity_type'),
@@ -2503,7 +2503,7 @@ export const capaAuditLog = pgTable('capa_audit_log', {
 }));
 
 export const capaMetricSnapshot = pgTable('capa_metric_snapshot', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
   snapshotDate: timestamp('snapshot_date').notNull(),
   snapshotPeriod: text('snapshot_period').notNull(), // daily / weekly / monthly
@@ -2539,9 +2539,9 @@ export const capaMetricSnapshot = pgTable('capa_metric_snapshot', {
 // ==========================================
 
 export const capaAnalysisTool = pgTable('capa_analysis_tool', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   orgId: uuid('org_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  capaId: integer('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
+  capaId: uuid('capa_id').notNull().references(() => capa.id, { onDelete: 'cascade' }),
   toolType: text('tool_type').notNull(), // is_is_not / five_why / three_leg_five_why / fishbone / fault_tree / comparative / change_point / pareto
   name: text('name'),
   discipline: text('discipline'), // D2, D4, etc.

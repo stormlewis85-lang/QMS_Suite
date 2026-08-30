@@ -6,15 +6,10 @@ import express, {
   NextFunction,
 } from "express";
 import { registerRoutes } from "./routes";
+import logger from "./logger";
 
 export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-  console.log(`${formattedTime} [${source}] ${message}`);
+  logger.info({ source }, message);
 }
 
 export const app = express();
@@ -69,7 +64,7 @@ export default async function runApp(
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
+    logger.error({ err, status }, message);
   });
 
   await setup(app, server);

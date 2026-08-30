@@ -3,6 +3,7 @@ import { pfmea, pfmeaRow, controlPlan, controlPlanRow, part, auditLog } from '@s
 import { eq, and } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+import logger from '../logger';
 import { PassThrough } from 'stream';
 import { randomUUID } from 'crypto';
 
@@ -91,7 +92,7 @@ export class ExportService {
         },
       });
     } catch (error) {
-      console.error('Failed to log export:', error);
+      logger.error({ err: error }, 'Failed to log export');
     }
   }
   

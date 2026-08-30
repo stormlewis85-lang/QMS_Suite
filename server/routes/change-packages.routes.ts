@@ -12,6 +12,7 @@ import {
   cancelChangePackage,
   advanceWorkflow
 } from "../change-package-service";
+import logger from "../logger";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ router.get("/change-packages", async (req, res) => {
     const packages = await storage.getAllChangePackages();
     res.json(packages);
   } catch (error) {
-    console.error("Error fetching change packages:", error);
+    logger.error({ err: error }, "Error fetching change packages");
     res.status(500).json({ message: "Failed to fetch change packages" });
   }
 });
@@ -34,7 +35,7 @@ router.get("/change-packages/:id", async (req, res) => {
     }
     res.json(pkg);
   } catch (error) {
-    console.error("Error fetching change package:", error);
+    logger.error({ err: error }, "Error fetching change package");
     res.status(500).json({ message: "Failed to fetch change package" });
   }
 });
@@ -48,7 +49,7 @@ router.post("/change-packages", async (req, res) => {
     });
     res.status(201).json(pkg);
   } catch (error) {
-    console.error("Error creating change package:", error);
+    logger.error({ err: error }, "Error creating change package");
     res.status(500).json({ message: "Failed to create change package" });
   }
 });
@@ -59,7 +60,7 @@ router.patch("/change-packages/:id", async (req, res) => {
     const pkg = await storage.updateChangePackage(id, req.body);
     res.json(pkg);
   } catch (error) {
-    console.error("Error updating change package:", error);
+    logger.error({ err: error }, "Error updating change package");
     res.status(500).json({ message: "Failed to update change package" });
   }
 });
@@ -70,7 +71,7 @@ router.delete("/change-packages/:id", async (req, res) => {
     await storage.deleteChangePackage(id);
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting change package:", error);
+    logger.error({ err: error }, "Error deleting change package");
     res.status(500).json({ message: "Failed to delete change package" });
   }
 });
@@ -103,7 +104,7 @@ router.post("/change-packages/:id/transition", async (req, res) => {
     const pkg = await storage.updateChangePackage(id, { status: newStatus });
     res.json(pkg);
   } catch (error) {
-    console.error("Error transitioning change package:", error);
+    logger.error({ err: error }, "Error transitioning change package");
     res.status(500).json({ message: "Failed to transition change package" });
   }
 });
@@ -118,7 +119,7 @@ router.post("/change-packages/:packageId/items", async (req, res) => {
     });
     res.status(201).json(item);
   } catch (error) {
-    console.error("Error creating change package item:", error);
+    logger.error({ err: error }, "Error creating change package item");
     res.status(500).json({ message: "Failed to create change package item" });
   }
 });
@@ -129,7 +130,7 @@ router.delete("/change-package-items/:id", async (req, res) => {
     await storage.deleteChangePackageItem(id);
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting change package item:", error);
+    logger.error({ err: error }, "Error deleting change package item");
     res.status(500).json({ message: "Failed to delete change package item" });
   }
 });
@@ -141,7 +142,7 @@ router.get("/change-packages/:packageId/approvals", async (req, res) => {
     const approvals = await storage.getChangePackageApprovals(packageId);
     res.json(approvals);
   } catch (error) {
-    console.error("Error fetching approvals:", error);
+    logger.error({ err: error }, "Error fetching approvals");
     res.status(500).json({ message: "Failed to fetch approvals" });
   }
 });
@@ -155,7 +156,7 @@ router.post("/change-packages/:packageId/approvals", async (req, res) => {
     });
     res.status(201).json(approval);
   } catch (error) {
-    console.error("Error creating approval:", error);
+    logger.error({ err: error }, "Error creating approval");
     res.status(500).json({ message: "Failed to create approval" });
   }
 });
@@ -169,7 +170,7 @@ router.patch("/change-package-approvals/:id", async (req, res) => {
     }
     res.json(approval);
   } catch (error) {
-    console.error("Error updating approval:", error);
+    logger.error({ err: error }, "Error updating approval");
     res.status(500).json({ message: "Failed to update approval" });
   }
 });
@@ -181,7 +182,7 @@ router.get("/change-packages/:packageId/propagations", async (req, res) => {
     const propagations = await storage.getChangePackagePropagations(packageId);
     res.json(propagations);
   } catch (error) {
-    console.error("Error fetching propagations:", error);
+    logger.error({ err: error }, "Error fetching propagations");
     res.status(500).json({ message: "Failed to fetch propagations" });
   }
 });
@@ -195,7 +196,7 @@ router.post("/change-packages/:packageId/propagations", async (req, res) => {
     });
     res.status(201).json(propagation);
   } catch (error) {
-    console.error("Error creating propagation:", error);
+    logger.error({ err: error }, "Error creating propagation");
     res.status(500).json({ message: "Failed to create propagation" });
   }
 });
@@ -209,7 +210,7 @@ router.patch("/change-package-propagations/:id", async (req, res) => {
     }
     res.json(propagation);
   } catch (error) {
-    console.error("Error updating propagation:", error);
+    logger.error({ err: error }, "Error updating propagation");
     res.status(500).json({ message: "Failed to update propagation" });
   }
 });
@@ -220,7 +221,7 @@ router.get('/change-packages/:packageId/workflow', async (req, res) => {
     const status = await advanceWorkflow(req.params.packageId);
     res.json(status);
   } catch (error) {
-    console.error('Get workflow error:', error);
+    logger.error({ err: error }, 'Get workflow error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to get workflow status'
     });
@@ -232,7 +233,7 @@ router.post('/change-packages/:packageId/impact-analysis', async (req, res) => {
     const result = await runImpactAnalysis(req.params.packageId);
     res.json(result);
   } catch (error) {
-    console.error('Impact analysis error:', error);
+    logger.error({ err: error }, 'Impact analysis error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to run impact analysis'
     });
@@ -244,7 +245,7 @@ router.post('/change-packages/:packageId/workflow/auto-review', async (req, res)
     const result = await runChangePackageAutoReview(req.params.packageId);
     res.json(result);
   } catch (error) {
-    console.error('Package auto-review error:', error);
+    logger.error({ err: error }, 'Package auto-review error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to run auto-review'
     });
@@ -262,7 +263,7 @@ router.post('/change-packages/:packageId/request-approvals', async (req, res) =>
     const approvals = await requestApprovals(req.params.packageId, approvers);
     res.json(approvals);
   } catch (error) {
-    console.error('Request approvals error:', error);
+    logger.error({ err: error }, 'Request approvals error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to request approvals'
     });
@@ -288,7 +289,7 @@ router.post('/change-packages/approvals/:approvalId/decision', async (req, res) 
 
     res.json(result);
   } catch (error) {
-    console.error('Process approval error:', error);
+    logger.error({ err: error }, 'Process approval error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to process approval'
     });
@@ -310,7 +311,7 @@ router.post('/change-packages/:packageId/propagate', async (req, res) => {
     const result = await propagateChanges(req.params.packageId, decisions, decidedBy);
     res.json(result);
   } catch (error) {
-    console.error('Propagate changes error:', error);
+    logger.error({ err: error }, 'Propagate changes error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to propagate changes'
     });
@@ -328,7 +329,7 @@ router.post('/change-packages/:packageId/cancel', async (req, res) => {
     await cancelChangePackage(req.params.packageId, reason);
     res.json({ success: true });
   } catch (error) {
-    console.error('Cancel package error:', error);
+    logger.error({ err: error }, 'Cancel package error');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to cancel package'
     });

@@ -104,7 +104,7 @@ function ProgressTimeline({ currentDiscipline, capa }: { currentDiscipline: stri
 
 // ─── Team Panel ───
 
-function TeamPanel({ capaId }: { capaId: number }) {
+function TeamPanel({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [newMember, setNewMember] = useState({ userName: "", role: "member", userId: "", userEmail: "" });
@@ -239,7 +239,7 @@ function TeamPanel({ capaId }: { capaId: number }) {
 
 // ─── D0: Emergency Response ───
 
-function D0Tab({ capaId }: { capaId: number }) {
+function D0Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d0, isLoading } = useQuery<any>({
     queryKey: ["/api/capas", capaId, "d0"],
@@ -475,7 +475,7 @@ function D0Tab({ capaId }: { capaId: number }) {
 
 // ─── D1: Team Formation ───
 
-function D1Tab({ capaId }: { capaId: number }) {
+function D1Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d1, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d1"] });
 
@@ -603,7 +603,7 @@ function D1Tab({ capaId }: { capaId: number }) {
 
 // ─── D2: Problem Description ───
 
-function D2Tab({ capaId }: { capaId: number }) {
+function D2Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d2, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d2"] });
 
@@ -801,7 +801,7 @@ function D2Tab({ capaId }: { capaId: number }) {
 
 // ─── D3: Containment ───
 
-function D3Tab({ capaId }: { capaId: number }) {
+function D3Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d3, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d3"] });
 
@@ -995,7 +995,7 @@ function D3Tab({ capaId }: { capaId: number }) {
 
 // ─── D4: Root Cause ───
 
-function D4Tab({ capaId }: { capaId: number }) {
+function D4Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d4, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d4"] });
   const { data: candidates } = useQuery<any[]>({ queryKey: ["/api/capas", capaId, "d4", "candidates"] });
@@ -1275,7 +1275,7 @@ function D4Tab({ capaId }: { capaId: number }) {
 
 // ─── D5: Corrective Actions ───
 
-function D5Tab({ capaId }: { capaId: number }) {
+function D5Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d5, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d5"] });
 
@@ -1434,7 +1434,7 @@ function D5Tab({ capaId }: { capaId: number }) {
 
 // ─── D6: Validation ───
 
-function D6Tab({ capaId }: { capaId: number }) {
+function D6Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d6, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d6"] });
 
@@ -1638,7 +1638,7 @@ function D6Tab({ capaId }: { capaId: number }) {
 
 // ─── D7: Preventive Actions ───
 
-function D7Tab({ capaId }: { capaId: number }) {
+function D7Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d7, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d7"] });
 
@@ -1824,7 +1824,7 @@ function D7Tab({ capaId }: { capaId: number }) {
 
 // ─── D8: Closure ───
 
-function D8Tab({ capaId }: { capaId: number }) {
+function D8Tab({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: d8, isLoading } = useQuery<any>({ queryKey: ["/api/capas", capaId, "d8"] });
 
@@ -2032,7 +2032,7 @@ function D8Tab({ capaId }: { capaId: number }) {
 
 // ─── Attachments Panel ───
 
-function AttachmentsPanel({ capaId }: { capaId: number }) {
+function AttachmentsPanel({ capaId }: { capaId: string }) {
   const { toast } = useToast();
   const { data: attachments, isLoading } = useQuery<any[]>({
     queryKey: ["/api/capas", capaId, "attachments"],
@@ -2069,7 +2069,7 @@ function AttachmentsPanel({ capaId }: { capaId: number }) {
 
 // ─── Audit Trail Panel ───
 
-function AuditTrailPanel({ capaId }: { capaId: number }) {
+function AuditTrailPanel({ capaId }: { capaId: string }) {
   const { data: logs, isLoading } = useQuery<any[]>({
     queryKey: ["/api/capas", capaId, "audit-log"],
   });
@@ -2156,13 +2156,13 @@ function OverviewTab({ capa }: { capa: any }) {
 
 export default function CapaDetail() {
   const [, params] = useRoute("/capa/:id");
-  const capaId = params?.id ? parseInt(params.id) : 0;
+  const capaId = params?.id ?? '';
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
 
   const { data: capa, isLoading } = useQuery<any>({
     queryKey: ["/api/capas", capaId],
-    enabled: capaId > 0,
+    enabled: !!capaId,
   });
 
   const advanceMutation = useMutation({

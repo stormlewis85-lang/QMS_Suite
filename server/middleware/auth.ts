@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
 import { sanitizeUser, type AuthContext, type AuthUser } from '../auth';
+import logger from '../logger';
 
 // Extend Express Request type
 declare global {
@@ -57,7 +58,7 @@ export async function requireAuth(
 
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    logger.error({ err: error }, 'Auth middleware error');
     res.status(500).json({ error: 'Authentication error' });
   }
 }

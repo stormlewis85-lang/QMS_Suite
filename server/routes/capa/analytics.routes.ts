@@ -6,6 +6,7 @@ import { storage } from "../../storage";
 import { db } from "../../db";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { getErrorMessage, parseToolData, updateToolData } from "../_helpers";
+import logger from '../../logger';
 import {
   capaAuditLog,
   capaMetricSnapshot,
@@ -24,8 +25,7 @@ const router = Router();
 
 router.get("/capas/:id/audit-log", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -40,7 +40,7 @@ router.get("/capas/:id/audit-log", requireAuth, async (req, res) => {
     }
     res.json(logs);
   } catch (error) {
-    console.error("Error fetching audit log:", error);
+    logger.error({ err: error }, 'Error fetching audit log');
     res.status(500).json({ error: "Failed to fetch audit log" });
   }
 });
@@ -52,20 +52,19 @@ router.get("/capa-audit-logs", requireAuth, async (req, res) => {
     const logs = await storage.getRecentCapaActivity(orgId, limit);
     res.json(logs);
   } catch (error) {
-    console.error("Error fetching audit logs:", error);
+    logger.error({ err: error }, 'Error fetching audit logs');
     res.status(500).json({ error: "Failed to fetch audit logs" });
   }
 });
 
 router.get("/capas/:id/audit-log/verify-chain", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
     const logs = await storage.getCapaAuditLogs(capaId);
-    const sortedLogs = logs.sort((a, b) => a.id - b.id);
+    const sortedLogs = logs.sort((a, b) => a.id.localeCompare(b.id));
 
     let valid = true;
     for (let i = 1; i < sortedLogs.length; i++) {
@@ -77,7 +76,7 @@ router.get("/capas/:id/audit-log/verify-chain", requireAuth, async (req, res) =>
 
     res.json({ valid, totalEntries: sortedLogs.length, checkedAt: new Date().toISOString() });
   } catch (error) {
-    console.error("Error verifying audit chain:", error);
+    logger.error({ err: error }, 'Error verifying audit chain');
     res.status(500).json({ error: "Failed to verify audit chain" });
   }
 });
@@ -106,7 +105,7 @@ router.get("/capa-analytics/summary", requireAuth, async (req, res) => {
       recurrenceRate: closed.length ? recurred.length / closed.length : 0,
     });
   } catch (error) {
-    console.error("Error fetching analytics summary:", error);
+    logger.error({ err: error }, 'Error fetching analytics summary');
     res.status(500).json({ error: "Failed to fetch analytics summary" });
   }
 });
@@ -116,7 +115,7 @@ router.get("/capa-analytics/by-status", requireAuth, async (req, res) => {
     const metrics = await storage.getCapaMetrics(req.orgId!);
     res.json(metrics.byStatus);
   } catch (error) {
-    console.error("Error fetching by-status analytics:", error);
+    logger.error({ err: error }, 'Error fetching by-status analytics');
     res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
@@ -126,7 +125,7 @@ router.get("/capa-analytics/by-priority", requireAuth, async (req, res) => {
     const metrics = await storage.getCapaMetrics(req.orgId!);
     res.json(metrics.byPriority);
   } catch (error) {
-    console.error("Error fetching by-priority analytics:", error);
+    logger.error({ err: error }, 'Error fetching by-priority analytics');
     res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
@@ -140,7 +139,7 @@ router.get("/capa-analytics/by-source", requireAuth, async (req, res) => {
     }
     res.json(bySource);
   } catch (error) {
-    console.error("Error fetching by-source analytics:", error);
+    logger.error({ err: error }, 'Error fetching by-source analytics');
     res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
@@ -155,7 +154,7 @@ router.get("/capa-analytics/by-category", requireAuth, async (req, res) => {
     }
     res.json(byCategory);
   } catch (error) {
-    console.error("Error fetching by-category analytics:", error);
+    logger.error({ err: error }, 'Error fetching by-category analytics');
     res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
@@ -168,7 +167,7 @@ router.get("/capa-analytics/trends", requireAuth, async (req, res) => {
     const snapshots = await storage.getCapaSnapshotsByPeriod(orgId, period, limit);
     res.json(snapshots);
   } catch (error) {
-    console.error("Error fetching trends:", error);
+    logger.error({ err: error }, 'Error fetching trends');
     res.status(500).json({ error: "Failed to fetch trends" });
   }
 });
@@ -192,7 +191,7 @@ router.get("/capa-analytics/pareto", requireAuth, async (req, res) => {
     });
     res.json(pareto);
   } catch (error) {
-    console.error("Error fetching pareto:", error);
+    logger.error({ err: error }, 'Error fetching pareto');
     res.status(500).json({ error: "Failed to fetch pareto analysis" });
   }
 });
@@ -213,7 +212,7 @@ router.get("/capa-analytics/aging", requireAuth, async (req, res) => {
     }
     res.json(buckets);
   } catch (error) {
-    console.error("Error fetching aging:", error);
+    logger.error({ err: error }, 'Error fetching aging');
     res.status(500).json({ error: "Failed to fetch aging analysis" });
   }
 });
@@ -245,7 +244,7 @@ router.get("/capa-analytics/team-performance", requireAuth, async (req, res) => 
 
     res.json(results);
   } catch (error) {
-    console.error("Error fetching team performance:", error);
+    logger.error({ err: error }, 'Error fetching team performance');
     res.status(500).json({ error: "Failed to fetch team performance" });
   }
 });
@@ -256,8 +255,7 @@ router.get("/capa-analytics/team-performance", requireAuth, async (req, res) => 
 
 router.get("/capas/:id/report", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -282,7 +280,7 @@ router.get("/capas/:id/report", requireAuth, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error generating report:", error);
+    logger.error({ err: error }, 'Error generating report');
     res.status(500).json({ error: "Failed to generate report" });
   }
 });
@@ -305,7 +303,7 @@ router.post("/capa-reports/batch", requireAuth, async (req, res) => {
 
     res.json({ reports, generatedAt: new Date().toISOString() });
   } catch (error) {
-    console.error("Error generating batch report:", error);
+    logger.error({ err: error }, 'Error generating batch report');
     res.status(500).json({ error: "Failed to generate batch report" });
   }
 });
@@ -325,7 +323,7 @@ router.get("/capa-reports/summary", requireAuth, async (req, res) => {
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Error generating summary report:", error);
+    logger.error({ err: error }, 'Error generating summary report');
     res.status(500).json({ error: "Failed to generate summary report" });
   }
 });
@@ -342,7 +340,7 @@ router.get("/capa-metrics/snapshots", requireAuth, async (req, res) => {
     const snapshots = await storage.getCapaSnapshotsByPeriod(orgId, period, limit);
     res.json(snapshots);
   } catch (error) {
-    console.error("Error fetching snapshots:", error);
+    logger.error({ err: error }, 'Error fetching snapshots');
     res.status(500).json({ error: "Failed to fetch snapshots" });
   }
 });
@@ -390,7 +388,7 @@ router.post("/capa-metrics/snapshot", requireAuth, requireRole("admin"), async (
     res.status(201).json(snapshot);
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
-    console.error("Error creating snapshot:", error);
+    logger.error({ err: error }, 'Error creating snapshot');
     res.status(500).json({ error: "Failed to create snapshot" });
   }
 });
@@ -399,8 +397,8 @@ router.get("/capa-metrics/compare", requireAuth, async (req, res) => {
   try {
     const orgId = req.orgId!;
     const snapshots = await storage.getCapaSnapshotsByPeriod(orgId, 'monthly', 100);
-    const id1 = parseInt(req.query.snapshot1 as string);
-    const id2 = parseInt(req.query.snapshot2 as string);
+    const id1 = req.query.snapshot1 as string;
+    const id2 = req.query.snapshot2 as string;
 
     const s1 = snapshots.find(s => s.id === id1);
     const s2 = snapshots.find(s => s.id === id2);
@@ -409,7 +407,7 @@ router.get("/capa-metrics/compare", requireAuth, async (req, res) => {
 
     res.json({ snapshot1: s1, snapshot2: s2 });
   } catch (error) {
-    console.error("Error comparing snapshots:", error);
+    logger.error({ err: error }, 'Error comparing snapshots');
     res.status(500).json({ error: "Failed to compare snapshots" });
   }
 });
@@ -417,8 +415,7 @@ router.get("/capa-metrics/compare", requireAuth, async (req, res) => {
 // Single CAPA export (with :id param - safe to be here)
 router.get("/capas/:id/export", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -432,7 +429,7 @@ router.get("/capas/:id/export", requireAuth, async (req, res) => {
 
     res.json({ capa: capaRecord, d0, d1, d2, d3, d4, d5, d6, d7, d8, team, sources, attachments: attachments.filter(a => !a.deletedAt) });
   } catch (error) {
-    console.error("Error exporting CAPA:", error);
+    logger.error({ err: error }, 'Error exporting CAPA');
     res.status(500).json({ error: "Failed to export CAPA" });
   }
 });
@@ -444,8 +441,7 @@ router.get("/capas/:id/export", requireAuth, async (req, res) => {
 // List analysis tools
 router.get("/capas/:id/analysis-tools", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -465,7 +461,7 @@ router.get("/capas/:id/analysis-tools", requireAuth, async (req, res) => {
 
     res.json({ tools: tools.map(t => ({ ...t, data: parseToolData(t) })) });
   } catch (error) {
-    console.error("Error listing analysis tools:", error);
+    logger.error({ err: error }, 'Error listing analysis tools');
     res.status(500).json({ error: "Failed to list analysis tools" });
   }
 });
@@ -473,8 +469,7 @@ router.get("/capas/:id/analysis-tools", requireAuth, async (req, res) => {
 // Create analysis tool
 router.post("/capas/:id/analysis-tools", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    if (isNaN(capaId)) return res.status(400).json({ error: "Invalid CAPA ID" });
+    const capaId = req.params.id;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -497,7 +492,7 @@ router.post("/capas/:id/analysis-tools", requireAuth, async (req, res) => {
     res.status(201).json({ ...tool, data: parseToolData(tool) });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: fromError(error).toString() });
-    console.error("Error creating analysis tool:", error);
+    logger.error({ err: error }, 'Error creating analysis tool');
     res.status(500).json({ error: "Failed to create analysis tool" });
   }
 });
@@ -505,9 +500,8 @@ router.post("/capas/:id/analysis-tools", requireAuth, async (req, res) => {
 // Get analysis tool
 router.get("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -516,7 +510,7 @@ router.get("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) =>
 
     res.json({ ...tool, data: parseToolData(tool) });
   } catch (error) {
-    console.error("Error fetching analysis tool:", error);
+    logger.error({ err: error }, 'Error fetching analysis tool');
     res.status(500).json({ error: "Failed to fetch analysis tool" });
   }
 });
@@ -524,9 +518,8 @@ router.get("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) =>
 // Update analysis tool
 router.put("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -542,7 +535,7 @@ router.put("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) =>
     const updated = await storage.updateCapaAnalysisTool(toolId, updates);
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating analysis tool:", error);
+    logger.error({ err: error }, 'Error updating analysis tool');
     res.status(500).json({ error: "Failed to update analysis tool" });
   }
 });
@@ -550,9 +543,8 @@ router.put("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) =>
 // Delete analysis tool
 router.delete("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -562,7 +554,7 @@ router.delete("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res)
     await storage.deleteCapaAnalysisTool(toolId);
     res.json({ deleted: true });
   } catch (error) {
-    console.error("Error deleting analysis tool:", error);
+    logger.error({ err: error }, 'Error deleting analysis tool');
     res.status(500).json({ error: "Failed to delete analysis tool" });
   }
 });
@@ -570,9 +562,8 @@ router.delete("/capas/:id/analysis-tools/:toolId", requireAuth, async (req, res)
 // Complete analysis tool
 router.post("/capas/:id/analysis-tools/:toolId/complete", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -583,7 +574,7 @@ router.post("/capas/:id/analysis-tools/:toolId/complete", requireAuth, async (re
     const updated = await storage.completeCapaAnalysisTool(toolId, req.auth!.user.id, conclusion);
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error completing analysis tool:", error);
+    logger.error({ err: error }, 'Error completing analysis tool');
     res.status(500).json({ error: "Failed to complete analysis tool" });
   }
 });
@@ -591,9 +582,8 @@ router.post("/capas/:id/analysis-tools/:toolId/complete", requireAuth, async (re
 // Verify analysis tool
 router.post("/capas/:id/analysis-tools/:toolId/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -604,7 +594,7 @@ router.post("/capas/:id/analysis-tools/:toolId/verify", requireAuth, async (req,
     const updated = await storage.verifyCapaAnalysisTool(toolId, req.auth!.user.id);
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error verifying analysis tool:", error);
+    logger.error({ err: error }, 'Error verifying analysis tool');
     res.status(500).json({ error: "Failed to verify analysis tool" });
   }
 });
@@ -612,9 +602,8 @@ router.post("/capas/:id/analysis-tools/:toolId/verify", requireAuth, async (req,
 // Link to root cause
 router.post("/capas/:id/analysis-tools/:toolId/link-to-root-cause", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -624,7 +613,7 @@ router.post("/capas/:id/analysis-tools/:toolId/link-to-root-cause", requireAuth,
     const updated = await storage.linkAnalysisToolToRootCause(toolId);
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error linking to root cause:", error);
+    logger.error({ err: error }, 'Error linking to root cause');
     res.status(500).json({ error: "Failed to link to root cause" });
   }
 });
@@ -635,9 +624,8 @@ router.post("/capas/:id/analysis-tools/:toolId/link-to-root-cause", requireAuth,
 
 router.put("/capas/:id/analysis-tools/:toolId/is-is-not/:dimension", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -656,16 +644,15 @@ router.put("/capas/:id/analysis-tools/:toolId/is-is-not/:dimension", requireAuth
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating Is/Is Not dimension:", error);
+    logger.error({ err: error }, 'Error updating Is/Is Not dimension');
     res.status(500).json({ error: "Failed to update dimension" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/is-is-not/verify-therefore", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -681,7 +668,7 @@ router.post("/capas/:id/analysis-tools/:toolId/is-is-not/verify-therefore", requ
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error verifying therefore:", error);
+    logger.error({ err: error }, 'Error verifying therefore');
     res.status(500).json({ error: "Failed to verify therefore" });
   }
 });
@@ -692,9 +679,8 @@ router.post("/capas/:id/analysis-tools/:toolId/is-is-not/verify-therefore", requ
 
 router.post("/capas/:id/analysis-tools/:toolId/five-why/add-why", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -708,17 +694,17 @@ router.post("/capas/:id/analysis-tools/:toolId/five-why/add-why", requireAuth, a
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error adding why:", error);
+    logger.error({ err: error }, 'Error adding why');
     res.status(500).json({ error: "Failed to add why" });
   }
 });
 
 router.put("/capas/:id/analysis-tools/:toolId/five-why/whys/:level", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const level = parseInt(req.params.level);
-    if (isNaN(capaId) || isNaN(toolId) || isNaN(level)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(level)) return res.status(400).json({ error: "Invalid level" });
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -733,16 +719,15 @@ router.put("/capas/:id/analysis-tools/:toolId/five-why/whys/:level", requireAuth
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating why:", error);
+    logger.error({ err: error }, 'Error updating why');
     res.status(500).json({ error: "Failed to update why" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/five-why/set-root-cause", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -756,16 +741,15 @@ router.post("/capas/:id/analysis-tools/:toolId/five-why/set-root-cause", require
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data), conclusion: req.body.rootCause });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error setting root cause:", error);
+    logger.error({ err: error }, 'Error setting root cause');
     res.status(500).json({ error: "Failed to set root cause" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/five-why/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -781,7 +765,7 @@ router.post("/capas/:id/analysis-tools/:toolId/five-why/verify", requireAuth, as
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error verifying 5-Why:", error);
+    logger.error({ err: error }, 'Error verifying 5-Why');
     res.status(500).json({ error: "Failed to verify 5-Why" });
   }
 });
@@ -792,9 +776,8 @@ router.post("/capas/:id/analysis-tools/:toolId/five-why/verify", requireAuth, as
 
 router.put("/capas/:id/analysis-tools/:toolId/three-leg/:leg", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -812,16 +795,15 @@ router.put("/capas/:id/analysis-tools/:toolId/three-leg/:leg", requireAuth, asyn
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating 3-leg:", error);
+    logger.error({ err: error }, 'Error updating 3-leg');
     res.status(500).json({ error: "Failed to update leg" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/three-leg/:leg/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -839,7 +821,7 @@ router.post("/capas/:id/analysis-tools/:toolId/three-leg/:leg/verify", requireAu
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error verifying leg:", error);
+    logger.error({ err: error }, 'Error verifying leg');
     res.status(500).json({ error: "Failed to verify leg" });
   }
 });
@@ -850,9 +832,8 @@ router.post("/capas/:id/analysis-tools/:toolId/three-leg/:leg/verify", requireAu
 
 router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -870,16 +851,15 @@ router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause", requireAuth, asy
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ cause: newCause, tool: { ...updated, data: parseToolData(updated) } });
   } catch (error) {
-    console.error("Error adding fishbone cause:", error);
+    logger.error({ err: error }, 'Error adding fishbone cause');
     res.status(500).json({ error: "Failed to add cause" });
   }
 });
 
 router.put("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -902,16 +882,15 @@ router.put("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId", requireA
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating fishbone cause:", error);
+    logger.error({ err: error }, 'Error updating fishbone cause');
     res.status(500).json({ error: "Failed to update cause" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/verify", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -934,16 +913,15 @@ router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/verify", 
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error verifying cause:", error);
+    logger.error({ err: error }, 'Error verifying cause');
     res.status(500).json({ error: "Failed to verify cause" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/rule-out", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -965,16 +943,15 @@ router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/rule-out"
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error ruling out cause:", error);
+    logger.error({ err: error }, 'Error ruling out cause');
     res.status(500).json({ error: "Failed to rule out cause" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/sub-cause", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -997,7 +974,7 @@ router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/sub-cause
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ subCause, tool: { ...updated, data: parseToolData(updated) } });
   } catch (error) {
-    console.error("Error adding sub-cause:", error);
+    logger.error({ err: error }, 'Error adding sub-cause');
     res.status(500).json({ error: "Failed to add sub-cause" });
   }
 });
@@ -1008,9 +985,8 @@ router.post("/capas/:id/analysis-tools/:toolId/fishbone/cause/:causeId/sub-cause
 
 router.post("/capas/:id/analysis-tools/:toolId/fault-tree/node", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1025,16 +1001,15 @@ router.post("/capas/:id/analysis-tools/:toolId/fault-tree/node", requireAuth, as
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ node: newNode, tool: { ...updated, data: parseToolData(updated) } });
   } catch (error) {
-    console.error("Error adding fault tree node:", error);
+    logger.error({ err: error }, 'Error adding fault tree node');
     res.status(500).json({ error: "Failed to add node" });
   }
 });
 
 router.put("/capas/:id/analysis-tools/:toolId/fault-tree/node/:nodeId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1050,16 +1025,15 @@ router.put("/capas/:id/analysis-tools/:toolId/fault-tree/node/:nodeId", requireA
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating fault tree node:", error);
+    logger.error({ err: error }, 'Error updating fault tree node');
     res.status(500).json({ error: "Failed to update node" });
   }
 });
 
 router.delete("/capas/:id/analysis-tools/:toolId/fault-tree/node/:nodeId", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1085,16 +1059,15 @@ router.delete("/capas/:id/analysis-tools/:toolId/fault-tree/node/:nodeId", requi
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error deleting fault tree node:", error);
+    logger.error({ err: error }, 'Error deleting fault tree node');
     res.status(500).json({ error: "Failed to delete node" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/fault-tree/calculate", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1123,7 +1096,7 @@ router.post("/capas/:id/analysis-tools/:toolId/fault-tree/calculate", requireAut
 
     res.json(data.calculation);
   } catch (error) {
-    console.error("Error calculating fault tree:", error);
+    logger.error({ err: error }, 'Error calculating fault tree');
     res.status(500).json({ error: "Failed to calculate fault tree" });
   }
 });
@@ -1134,9 +1107,8 @@ router.post("/capas/:id/analysis-tools/:toolId/fault-tree/calculate", requireAut
 
 router.post("/capas/:id/analysis-tools/:toolId/comparative/items", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1150,16 +1122,15 @@ router.post("/capas/:id/analysis-tools/:toolId/comparative/items", requireAuth, 
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error adding comparative item:", error);
+    logger.error({ err: error }, 'Error adding comparative item');
     res.status(500).json({ error: "Failed to add item" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/comparative/factors", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1174,17 +1145,17 @@ router.post("/capas/:id/analysis-tools/:toolId/comparative/factors", requireAuth
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error adding factor:", error);
+    logger.error({ err: error }, 'Error adding factor');
     res.status(500).json({ error: "Failed to add factor" });
   }
 });
 
 router.put("/capas/:id/analysis-tools/:toolId/comparative/factors/:index", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const index = parseInt(req.params.index);
-    if (isNaN(capaId) || isNaN(toolId) || isNaN(index)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(index)) return res.status(400).json({ error: "Invalid index" });
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1199,16 +1170,15 @@ router.put("/capas/:id/analysis-tools/:toolId/comparative/factors/:index", requi
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating factor:", error);
+    logger.error({ err: error }, 'Error updating factor');
     res.status(500).json({ error: "Failed to update factor" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/comparative/verify-hypothesis", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1224,7 +1194,7 @@ router.post("/capas/:id/analysis-tools/:toolId/comparative/verify-hypothesis", r
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error verifying hypothesis:", error);
+    logger.error({ err: error }, 'Error verifying hypothesis');
     res.status(500).json({ error: "Failed to verify hypothesis" });
   }
 });
@@ -1235,9 +1205,8 @@ router.post("/capas/:id/analysis-tools/:toolId/comparative/verify-hypothesis", r
 
 router.post("/capas/:id/analysis-tools/:toolId/change-point/changes", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1251,17 +1220,17 @@ router.post("/capas/:id/analysis-tools/:toolId/change-point/changes", requireAut
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error adding change:", error);
+    logger.error({ err: error }, 'Error adding change');
     res.status(500).json({ error: "Failed to add change" });
   }
 });
 
 router.put("/capas/:id/analysis-tools/:toolId/change-point/changes/:index", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const index = parseInt(req.params.index);
-    if (isNaN(capaId) || isNaN(toolId) || isNaN(index)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(index)) return res.status(400).json({ error: "Invalid index" });
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1276,17 +1245,17 @@ router.put("/capas/:id/analysis-tools/:toolId/change-point/changes/:index", requ
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating change:", error);
+    logger.error({ err: error }, 'Error updating change');
     res.status(500).json({ error: "Failed to update change" });
   }
 });
 
 router.post("/capas/:id/analysis-tools/:toolId/change-point/changes/:index/rule-out", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const index = parseInt(req.params.index);
-    if (isNaN(capaId) || isNaN(toolId) || isNaN(index)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(index)) return res.status(400).json({ error: "Invalid index" });
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1303,7 +1272,7 @@ router.post("/capas/:id/analysis-tools/:toolId/change-point/changes/:index/rule-
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error ruling out change:", error);
+    logger.error({ err: error }, 'Error ruling out change');
     res.status(500).json({ error: "Failed to rule out change" });
   }
 });
@@ -1314,9 +1283,8 @@ router.post("/capas/:id/analysis-tools/:toolId/change-point/changes/:index/rule-
 
 router.put("/capas/:id/analysis-tools/:toolId/pareto/data", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1335,7 +1303,7 @@ router.put("/capas/:id/analysis-tools/:toolId/pareto/data", requireAuth, async (
     const updated = await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ ...updated, data: parseToolData(updated) });
   } catch (error) {
-    console.error("Error updating pareto data:", error);
+    logger.error({ err: error }, 'Error updating pareto data');
     res.status(500).json({ error: "Failed to update pareto data" });
   }
 });
@@ -1346,9 +1314,8 @@ router.put("/capas/:id/analysis-tools/:toolId/pareto/data", requireAuth, async (
 
 router.post("/capas/:id/analysis-tools/:toolId/export", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1365,7 +1332,7 @@ router.post("/capas/:id/analysis-tools/:toolId/export", requireAuth, async (req,
     // For other formats, return the JSON data with format metadata
     res.json({ tool: { ...tool, data }, format, exportedAt: new Date().toISOString(), note: `${format} rendering available on client` });
   } catch (error) {
-    console.error("Error exporting analysis tool:", error);
+    logger.error({ err: error }, 'Error exporting analysis tool');
     res.status(500).json({ error: "Failed to export analysis tool" });
   }
 });
@@ -1395,7 +1362,7 @@ router.get("/analysis-tool-templates", requireAuth, async (_req, res) => {
     };
     res.json(templates);
   } catch (error) {
-    console.error("Error fetching templates:", error);
+    logger.error({ err: error }, 'Error fetching templates');
     res.status(500).json({ error: "Failed to fetch templates" });
   }
 });
@@ -1418,7 +1385,7 @@ router.get("/analysis-tool-templates/fishbone/:category", requireAuth, async (re
     if (!causes) return res.status(404).json({ error: "Category not found" });
     res.json({ causes });
   } catch (error) {
-    console.error("Error fetching fishbone causes:", error);
+    logger.error({ err: error }, 'Error fetching fishbone causes');
     res.status(500).json({ error: "Failed to fetch causes" });
   }
 });
@@ -1429,9 +1396,8 @@ router.get("/analysis-tool-templates/fishbone/:category", requireAuth, async (re
 
 router.post("/capas/:id/analysis-tools/:toolId/link", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1454,16 +1420,15 @@ router.post("/capas/:id/analysis-tools/:toolId/link", requireAuth, async (req, r
     await storage.updateCapaAnalysisTool(toolId, { data: JSON.stringify(data) });
     res.json({ message: "Link created" });
   } catch (error) {
-    console.error("Error linking tools:", error);
+    logger.error({ err: error }, 'Error linking tools');
     res.status(500).json({ error: "Failed to link tools" });
   }
 });
 
 router.get("/capas/:id/analysis-tools/:toolId/links", requireAuth, async (req, res) => {
   try {
-    const capaId = parseInt(req.params.id);
-    const toolId = parseInt(req.params.toolId);
-    if (isNaN(capaId) || isNaN(toolId)) return res.status(400).json({ error: "Invalid ID" });
+    const capaId = req.params.id;
+    const toolId = req.params.toolId;
     const capaRecord = await storage.getCapa(capaId);
     if (!capaRecord || capaRecord.orgId !== req.orgId!) return res.status(404).json({ error: "CAPA not found" });
 
@@ -1482,7 +1447,7 @@ router.get("/capas/:id/analysis-tools/:toolId/links", requireAuth, async (req, r
 
     res.json(enriched);
   } catch (error) {
-    console.error("Error fetching tool links:", error);
+    logger.error({ err: error }, 'Error fetching tool links');
     res.status(500).json({ error: "Failed to fetch tool links" });
   }
 });

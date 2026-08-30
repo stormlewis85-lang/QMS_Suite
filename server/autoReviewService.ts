@@ -12,6 +12,7 @@ import {
   type AutoReviewRun, type AutoReviewFinding
 } from '@shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
+import logger from './logger';
 
 export interface Finding {
   level: 'error' | 'warning' | 'info';
@@ -536,7 +537,7 @@ export async function runAutoReview(
     try {
       rule(ctx, findings);
     } catch (err) {
-      console.error('Validation rule error:', err);
+      logger.error({ err }, 'Validation rule error');
     }
   }
 

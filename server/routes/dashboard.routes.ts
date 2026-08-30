@@ -3,6 +3,7 @@ import { db } from "../db";
 import { eq, desc, and, count, sql } from "drizzle-orm";
 import { pfmea, pfmeaRow, controlPlan, part, auditLog, user as userTable } from "@shared/schema";
 import { getErrorMessage } from "./_helpers";
+import logger from '../logger';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/summary', async (req, res) => {
       totalFailureModes: fmCount.value,
     });
   } catch (error) {
-    console.error("Error fetching dashboard summary:", error);
+    logger.error({ err: error }, 'Error fetching dashboard summary');
     res.status(500).json({ error: "Failed to fetch dashboard summary" });
   }
 });
