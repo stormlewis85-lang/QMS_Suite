@@ -1,203 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE */
-:root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
-  --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
-  --background: 210 5% 98%;
-  --foreground: 210 6% 12%;
-  --border: 210 5% 91%;
-  --card: 210 5% 96%;
-  --card-foreground: 210 6% 12%;
-  --card-border: 210 5% 93%;
-  --sidebar: 210 5% 94%;
-  --sidebar-foreground: 210 6% 12%;
-  --sidebar-border: 210 5% 90%;
-  --sidebar-primary: 210 78% 42%;
-  --sidebar-primary-foreground: 210 78% 98%;
-  --sidebar-accent: 210 8% 88%;
-  --sidebar-accent-foreground: 210 8% 18%;
-  --sidebar-ring: 210 78% 42%;
-  --popover: 210 6% 92%;
-  --popover-foreground: 210 6% 12%;
-  --popover-border: 210 6% 88%;
-  --primary: 210 78% 42%;
-  --primary-foreground: 210 78% 98%;
-  --secondary: 210 8% 86%;
-  --secondary-foreground: 210 8% 18%;
-  --muted: 210 8% 90%;
-  --muted-foreground: 210 8% 28%;
-  --accent: 210 8% 92%;
-  --accent-foreground: 210 8% 18%;
-  --destructive: 0 72% 48%;
-  --destructive-foreground: 0 72% 98%;
-  --input: 210 12% 72%;
-  --ring: 210 78% 42%;
-  --chart-1: 210 78% 42%;
-  --chart-2: 195 72% 38%;
-  --chart-3: 168 68% 32%;
-  --chart-4: 142 62% 35%;
-  --chart-5: 28 82% 45%;
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: "JetBrains Mono", Consolas, monospace;
-  --radius: .5rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(210 5% 12% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(210 5% 12% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(210 5% 12% / 0.00), 0px 1px 2px -1px hsl(210 5% 12% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(210 5% 12% / 0.00), 0px 1px 2px -1px hsl(210 5% 12% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(210 5% 12% / 0.00), 0px 2px 4px -1px hsl(210 5% 12% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(210 5% 12% / 0.00), 0px 4px 6px -1px hsl(210 5% 12% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(210 5% 12% / 0.00), 0px 8px 10px -1px hsl(210 5% 12% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(210 5% 12% / 0.00);
-  --tracking-normal: 0em;
-  --spacing: 0.25rem;
-
-/* Fallback for older browsers */
-  --sidebar-primary-border: hsl(var(--sidebar-primary));
-  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --sidebar-accent-border: hsl(var(--sidebar-accent));
-  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --primary-border: hsl(var(--primary));
-  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --secondary-border: hsl(var(--secondary));
-  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --muted-border: hsl(var(--muted));
-  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --accent-border: hsl(var(--accent));
-  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --destructive-border: hsl(var(--destructive));
-  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-}
-
-.dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
-  --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
-  --background: 210 6% 8%;
-  --foreground: 210 6% 96%;
-  --border: 210 6% 16%;
-  --card: 210 6% 10%;
-  --card-foreground: 210 6% 96%;
-  --card-border: 210 6% 13%;
-  --sidebar: 210 6% 12%;
-  --sidebar-foreground: 210 6% 96%;
-  --sidebar-border: 210 6% 15%;
-  --sidebar-primary: 210 78% 52%;
-  --sidebar-primary-foreground: 210 78% 98%;
-  --sidebar-accent: 210 12% 18%;
-  --sidebar-accent-foreground: 210 12% 92%;
-  --sidebar-ring: 210 78% 52%;
-  --popover: 210 8% 14%;
-  --popover-foreground: 210 8% 96%;
-  --popover-border: 210 8% 18%;
-  --primary: 210 78% 52%;
-  --primary-foreground: 210 78% 98%;
-  --secondary: 210 10% 20%;
-  --secondary-foreground: 210 10% 92%;
-  --muted: 210 10% 18%;
-  --muted-foreground: 210 10% 78%;
-  --accent: 210 10% 16%;
-  --accent-foreground: 210 10% 92%;
-  --destructive: 0 72% 48%;
-  --destructive-foreground: 0 72% 98%;
-  --input: 210 12% 32%;
-  --ring: 210 78% 52%;
-  --chart-1: 210 78% 62%;
-  --chart-2: 195 72% 58%;
-  --chart-3: 168 68% 52%;
-  --chart-4: 142 62% 55%;
-  --chart-5: 28 82% 65%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(210 6% 96% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(210 6% 96% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(210 6% 96% / 0.00), 0px 1px 2px -1px hsl(210 6% 96% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(210 6% 96% / 0.00), 0px 1px 2px -1px hsl(210 6% 96% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(210 6% 96% / 0.00), 0px 2px 4px -1px hsl(210 6% 96% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(210 6% 96% / 0.00), 0px 4px 6px -1px hsl(210 6% 96% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(210 6% 96% / 0.00), 0px 8px 10px -1px hsl(210 6% 96% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(210 6% 96% / 0.00);
-
-/* Fallback for older browsers */
-  --sidebar-primary-border: hsl(var(--sidebar-primary));
-  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --sidebar-accent-border: hsl(var(--sidebar-accent));
-  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --primary-border: hsl(var(--primary));
-  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --secondary-border: hsl(var(--secondary));
-  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --muted-border: hsl(var(--muted));
-  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --accent-border: hsl(var(--accent));
-  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --destructive-border: hsl(var(--destructive));
-  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-}
-
 @layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 168 80% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 168 80% 32%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 347 77% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --success: 168 80% 32%;
+    --success-foreground: 0 0% 100%;
+    --border: 214 20% 92%;
+    --input: 214 20% 92%;
+    --ring: 168 80% 32%;
+    --chart-1: 168 80% 32%;
+    --chart-2: 38 92% 50%;
+    --chart-3: 347 77% 50%;
+    --chart-4: 215 20% 65%;
+    --chart-5: 222 47% 30%;
+    --radius: 0.75rem;
+    --sidebar: 222 47% 11%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-muted: 222 40% 18%;
+    --sidebar-accent: 168 80% 32%;
+  }
+
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 210 20% 98%;
+    --card: 222 47% 9%;
+    --card-foreground: 210 20% 98%;
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 168 76% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 40% 14%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 222 40% 14%;
+    --muted-foreground: 215 16% 57%;
+    --accent: 168 76% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 347 77% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 30% 18%;
+    --input: 222 30% 18%;
+    --ring: 168 76% 42%;
+    --chart-1: 168 76% 42%;
+    --chart-2: 38 92% 50%;
+    --chart-3: 347 77% 50%;
+    --chart-4: 215 20% 55%;
+    --chart-5: 210 20% 70%;
+  }
+
   * {
     @apply border-border;
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-/**
- * Using the elevate system.
- * Automatic contrast adjustment.
- *
- * <element className="hover-elevate" />
- * <element className="active-elevate-2" />
- *
- * // Using the tailwind utility when a data attribute is "on"
- * <element className="toggle-elevate data-[state=on]:toggle-elevated" />
- * // Or manually controlling the toggle state
- * <element className="toggle-elevate toggle-elevated" />
- *
- * Elevation systems have to handle many states.
- * - not-hovered, vs. hovered vs. active  (three mutually exclusive states)
- * - toggled or not
- * - focused or not (this is not handled with these utilities)
- *
- * Even without handling focused or not, this is six possible combinations that
- * need to be distinguished from eachother visually.
- */
 @layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 
-  /* Hide ugly search cancel button in Chrome until we can style it properly */
+  /* Hide ugly search cancel button in Chrome */
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }
@@ -208,86 +94,175 @@
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
+}
 
-  /* .no-default-hover-elevate/no-default-active-elevate is an escape hatch so consumers of
-   * buttons/badges can remove the automatic brightness adjustment on interactions
-   * and program their own. */
-  .no-default-hover-elevate {}
-
-  .no-default-active-elevate {}
-
-
-  /**
-   * Toggleable backgrounds go behind the content. Hoverable/active goes on top.
-   * This way they can stack/compound. Both will overlap the parent's borders!
-   * So borders will be automatically adjusted both on toggle, and hover/active,
-   * and they will be compounded.
-   */
-  .toggle-elevate::before,
-  .toggle-elevate-2::before {
-    content: "";
-    pointer-events: none;
-    position: absolute;
-    inset: 0px;
-    /*border-radius: inherit;   match rounded corners */
-    border-radius: inherit;
-    z-index: -1;
-    /* sits behind content but above backdrop */
-  }
-
-  .toggle-elevate.toggle-elevated::before {
-    background-color: var(--elevate-2);
-  }
-
-  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
-  .border.toggle-elevate::before {
-    inset: -1px;
-  }
-
-  /* Does not work on elements with overflow:hidden! */
-  .hover-elevate:not(.no-default-hover-elevate),
-  .active-elevate:not(.no-default-active-elevate),
-  .hover-elevate-2:not(.no-default-hover-elevate),
-  .active-elevate-2:not(.no-default-active-elevate) {
-    position: relative;
-    z-index: 0;
-  }
-
-  .hover-elevate:not(.no-default-hover-elevate)::after,
-  .active-elevate:not(.no-default-active-elevate)::after,
-  .hover-elevate-2:not(.no-default-hover-elevate)::after,
-  .active-elevate-2:not(.no-default-active-elevate)::after {
-    content: "";
-    pointer-events: none;
-    position: absolute;
-    inset: 0px;
-    /*border-radius: inherit;   match rounded corners */
-    border-radius: inherit;
-    z-index: 999;
-    /* sits in front of content */
-  }
-
-  .hover-elevate:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate:active:not(.no-default-active-elevate)::after {
-    background-color: var(--elevate-1);
-  }
-
-  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate-2:active:not(.no-default-active-elevate)::after {
-    background-color: var(--elevate-2);
-  }
-
-  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
-  .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
-  .border.active-elevate:not(.no-active-interaction-elevate)::after,
-  .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
-  .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
-  .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
-    inset: -1px;
+/* Tap highlight removal for mobile */
+@media (pointer: coarse) {
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
-/* ========== PRINT STYLES ========== */
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Page transition animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fadeIn 0.25s ease-out;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--muted-foreground) / 0.08) 50%, hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius);
+}
+
+/* Button press animation */
+@keyframes press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.active\:press:active {
+  animation: press 0.15s ease-out;
+}
+
+/* Slide down (for offline banner) */
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out;
+}
+
+/* Slide up (for mobile sheets) */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slideUp 0.25s ease-out;
+}
+
+/* Scale in (for cards and dialogs) */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+/* Slide left (question transition) */
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-left {
+  animation: slideLeft 0.2s ease-out;
+}
+
+/* Slide right (question transition) */
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-right {
+  animation: slideRight 0.2s ease-out;
+}
+
+/* Swipe hint arrows */
+@keyframes bounceX {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-4px); }
+}
+@keyframes bounceXReverse {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+.animate-bounce-x {
+  animation: bounceX 1s ease-in-out infinite;
+}
+.animate-bounce-x-reverse {
+  animation: bounceXReverse 1s ease-in-out infinite;
+}
+
+/* Safe area for notched phones */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Touch target minimum size for mobile (WCAG 2.5.5 / Apple HIG) */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  [role="combobox"],
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="date"],
+  input[type="search"],
+  textarea {
+    min-height: 44px;
+  }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-slide-down,
+  .animate-slide-up,
+  .animate-scale-in,
+  .animate-slide-left,
+  .animate-slide-right,
+  .animate-bounce-x,
+  .animate-bounce-x-reverse {
+    animation: none !important;
+  }
+  .skeleton {
+    animation: none !important;
+  }
+}
+
+/* ========== PRINT STYLES (PFMEA-specific) ========== */
 @media print {
   /* Hide non-essential elements */
   .no-print,
@@ -301,7 +276,7 @@
   [role="navigation"] {
     display: none !important;
   }
-  
+
   /* Reset layout */
   body {
     background: white !important;
@@ -309,64 +284,64 @@
     font-size: 12pt;
     line-height: 1.4;
   }
-  
+
   main {
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
   }
-  
+
   .container {
     width: 100% !important;
     max-width: none !important;
     padding: 0 !important;
   }
-  
+
   /* Table styles */
   table {
     width: 100% !important;
     border-collapse: collapse;
     font-size: 10pt;
   }
-  
+
   th, td {
     border: 1px solid #ccc !important;
     padding: 4px 8px !important;
     text-align: left;
   }
-  
+
   th {
     background-color: #f3f4f6 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   /* AP colors for print */
   .ap-high {
     background-color: #fee2e2 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   .ap-medium {
     background-color: #fef3c7 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   .ap-low {
     background-color: #dcfce7 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   /* Special characteristics */
   .special-char {
     background-color: #f3e8ff !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   /* Badge colors for print */
   .badge-high {
     background-color: #ef4444 !important;
@@ -374,41 +349,41 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   .badge-medium {
     background-color: #f59e0b !important;
     color: white !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   .badge-low {
     background-color: #22c55e !important;
     color: white !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  
+
   /* Page breaks */
   .page-break-before {
     page-break-before: always;
   }
-  
+
   .page-break-after {
     page-break-after: always;
   }
-  
+
   .avoid-break {
     page-break-inside: avoid;
   }
-  
+
   /* Cards for print */
   .card {
     border: 1px solid #e5e7eb !important;
     box-shadow: none !important;
     margin-bottom: 16px;
   }
-  
+
   /* QR code section */
   .qr-code-print {
     display: block !important;
@@ -417,7 +392,7 @@
     padding-top: 20px;
     border-top: 1px solid #ccc;
   }
-  
+
   /* Header for printed documents */
   .print-header {
     display: block !important;
@@ -426,18 +401,18 @@
     padding-bottom: 10px;
     border-bottom: 2px solid #000;
   }
-  
+
   .print-header h1 {
     font-size: 18pt;
     font-weight: bold;
     margin-bottom: 8px;
   }
-  
+
   .print-header .doc-info {
     font-size: 10pt;
     color: #666;
   }
-  
+
   /* Footer for printed documents */
   .print-footer {
     display: block !important;
@@ -451,13 +426,13 @@
     border-top: 1px solid #ccc;
     padding-top: 8px;
   }
-  
+
   /* Links */
   a {
     color: black !important;
     text-decoration: none !important;
   }
-  
+
   a[href]:after {
     content: none !important;
   }
